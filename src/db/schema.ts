@@ -6,20 +6,22 @@ import {
   timestamp,
   varchar,
   boolean,
+  bigint,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-// Media categories (e.g. Action, Drama, Anime)
+// Existing tables and columns are retained. R2 additions are nullable so old
+// records keep their original IDs, URLs, labels, and relationships.
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull().unique(),
   slug: varchar("slug", { length: 100 }).notNull().unique(),
 });
 
-// Media: movies, anime, tv series
 export const media = pgTable("media", {
   id: serial("id").primaryKey(),
-  type: varchar("type", { length: 20 }).notNull(), // 'movie' | 'anime' | 'series'
+  type: varchar("type", { length: 20 }).notNull(), // movie | anime | series
   title: varchar("title", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).notNull().unique(),
   description: text("description"),
@@ -33,7 +35,6 @@ export const media = pgTable("media", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Seasons for series/anime
 export const seasons = pgTable("seasons", {
   id: serial("id").primaryKey(),
   mediaId: integer("media_id")
@@ -43,7 +44,6 @@ export const seasons = pgTable("seasons", {
   name: varchar("name", { length: 255 }),
 });
 
-// Episodes within a season
 export const episodes = pgTable("episodes", {
   id: serial("id").primaryKey(),
   mediaId: integer("media_id")
@@ -54,31 +54,70 @@ export const episodes = pgTable("episodes", {
     .references(() => seasons.id, { onDelete: "cascade" }),
   episodeNumber: integer("episode_number").notNull(),
   title: varchar("title", { length: 255 }),
-  duration: varchar("duration", { length: 20 }), // e.g. "24m"
+  duration: varchar("duration", { length: 20 }),
 });
 
-// Download links: attached to a movie OR an episode
 export const downloadLinks = pgTable("download_links", {
   id: serial("id").primaryKey(),
-  mediaId: integer("media_id").references(() => media.id, {
-    onDelete: "cascade",
-  }),
-  episodeId: integer("episode_id").references(() => episodes.id, {
-    onDelete: "cascade",
-  }),
+  mediaId: integer("media_id").references(() => media.id, { onDelete: "cascade" }),
+  episodeId: integer("episode_id").references(() => episodes.id, { onDelete: "cascade" }),
   label: varchar("label", { length: 50 }).default("Download"),
   url: text("url").notNull(),
   fileSize: varchar("file_size", { length: 30 }),
   isUploaded: boolean("is_uploaded").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+  // Additive storage/quality metadata. Legacy null values are inferred at read time.
+  seasonId: integer("season_id").references(() => seasons.id, { onDelete: "cascade" }),
+  quality: varchar("quality", { length: 10 }),
+  storageProvider: varchar("storage_provider", { length: 16 }),
+  objectKey: text("object_key").unique(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }),
+}, (table) => [
+  index("download_links_media_id_idx").on(table.mediaId),
+  index("download_links_season_id_idx").on(table.seasonId),
+  index("download_links_episode_id_idx").on(table.episodeId),
+]);
 
-// Relations
+// Audit/lifecycle record for a private R2 multipart upload. Multipart IDs and
+// credentials never leave the server. Completed objects are never auto-deleted.
+// Target IDs intentionally have no FK: deleting a title must not erase upload history.
+export const r2Uploads = pgTable("r2_uploads", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  objectKey: text("object_key").notNull().unique(),
+  bucket: varchar("bucket", { length: 255 }).notNull(),
+  multipartUploadId: text("multipart_upload_id").notNull(),
+  kind: varchar("kind", { length: 16 }).notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  fileName: text("file_name").notNull(),
+  contentType: varchar("content_type", { length: 255 }).notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number"}).notNull(),
+  partSize: integer("part_size").notNull(),
+  mediaId: integer("media_id"),
+  seasonId: integer("season_id"),
+  episodeId: integer("episode_id"),
+  quality: varchar("quality", { length: 10 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  // Lease for completing/aborting so a crashed worker cannot lock a row forever.
+  operationExpiresAt: timestamp("operation_expires_at", { withTimezone: true }),
+  operationId: varchar("operation_id", { length: 36 }),
+}, (table) => [
+  index("r2_uploads_status_expires_idx").on(table.status, table.expiresAt),
+]);
+
+// Shared, atomic login-attempt counters. Keys are HMACs, never raw IP addresses.
+// The table contains no passwords, cookies, or R2 credentials.
+export const authRateLimits = pgTable("auth_rate_limits", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  attempts: integer("attempts").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  index("auth_rate_limits_expires_at_idx").on(table.expiresAt),
+]);
+
 export const mediaRelations = relations(media, ({ one, many }) => ({
-  category: one(categories, {
-    fields: [media.categoryId],
-    references: [categories.id],
-  }),
+  category: one(categories, { fields: [media.categoryId], references: [categories.id] }),
   seasons: many(seasons),
   downloadLinks: many(downloadLinks),
 }));
@@ -86,6 +125,7 @@ export const mediaRelations = relations(media, ({ one, many }) => ({
 export const seasonsRelations = relations(seasons, ({ one, many }) => ({
   media: one(media, { fields: [seasons.mediaId], references: [media.id] }),
   episodes: many(episodes),
+  downloadLinks: many(downloadLinks),
 }));
 
 export const episodesRelations = relations(episodes, ({ one, many }) => ({
@@ -96,10 +136,8 @@ export const episodesRelations = relations(episodes, ({ one, many }) => ({
 
 export const downloadLinksRelations = relations(downloadLinks, ({ one }) => ({
   media: one(media, { fields: [downloadLinks.mediaId], references: [media.id] }),
-  episode: one(episodes, {
-    fields: [downloadLinks.episodeId],
-    references: [episodes.id],
-  }),
+  season: one(seasons, { fields: [downloadLinks.seasonId], references: [seasons.id] }),
+  episode: one(episodes, { fields: [downloadLinks.episodeId], references: [episodes.id] }),
 }));
 
 export const categoriesRelations = relations(categories, ({ many }) => ({

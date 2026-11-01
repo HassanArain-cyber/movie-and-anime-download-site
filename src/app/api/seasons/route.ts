@@ -1,33 +1,23 @@
 import { NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { seasons } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { media, seasons } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
+import { ApiError, errorResponse, positiveId, readJson, text } from "@/lib/validation";
 
-// POST /api/seasons - add a season (admin)
 export async function POST(req: Request) {
-  const authCheck = await requireAdmin();
-  if (authCheck !== true) return authCheck;
-
+  const auth = await requireAdmin(req);
+  if (auth !== true) return auth;
   try {
-    const { mediaId, seasonNumber, name } = await req.json();
-    if (!mediaId || !seasonNumber) {
-      return NextResponse.json(
-        { error: "mediaId and seasonNumber are required" },
-        { status: 400 }
-      );
-    }
-    const [season] = await db
-      .insert(seasons)
-      .values({
-        mediaId: Number(mediaId),
-        seasonNumber: Number(seasonNumber),
-        name: name || null,
-      })
-      .returning();
+    const body = await readJson(req);
+    const mediaId = positiveId(body.mediaId, "mediaId");
+    const seasonNumber = positiveId(body.seasonNumber, "seasonNumber");
+    const [item] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
+    if (!item) throw new ApiError(404, "Media not found");
+    if (item.type === "movie") throw new ApiError(400, "Movies cannot have seasons");
+    const [duplicate] = await db.select({ id: seasons.id }).from(seasons).where(and(eq(seasons.mediaId, mediaId), eq(seasons.seasonNumber, seasonNumber))).limit(1);
+    if (duplicate) throw new ApiError(409, "That season number already exists for this title");
+    const [season] = await db.insert(seasons).values({ mediaId, seasonNumber, name: text(body.name, "Season name", 255) }).returning();
     return NextResponse.json(season, { status: 201 });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }

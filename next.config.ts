@@ -1,20 +1,30 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The Arena live preview is served from an e2b.app subdomain in development.
+  allowedDevOrigins: ["*.e2b.app", "127.0.0.1", "localhost"],
   images: {
-    // Allow arbitrary remote images; using unoptimized for external URLs already,
-    // but we list common patterns so next/image can render them.
-    remotePatterns: [
-      { protocol: "https", hostname: "**" },
-      { protocol: "http", hostname: "**" },
-    ],
+    // External and R2 posters are rendered unoptimized by the UI. Do not expose
+    // the server-side optimizer as an arbitrary URL fetcher (SSRF surface).
+    remotePatterns: [],
+    localPatterns: [{ pathname: "/uploads/**" }],
+    dangerouslyAllowSVG: false,
+    contentDispositionType: "inline",
+    maximumRedirects: 0,
   },
-  // Increase API body size for video uploads
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "2gb",
-    },
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+      ],
+    }];
   },
+  // Video/archive bytes go directly from the browser to R2. Next.js only
+  // handles JSON metadata and signed URLs, so no large server body is needed.
 };
 
 export default nextConfig;

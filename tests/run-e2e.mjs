@@ -1,0 +1,105 @@
+// Disposable-service E2E runner used by CI and local verification.
+// It refuses non-loopback database/app/R2 targets so it cannot accidentally
+// mutate a production database or contact a real bucket.
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const appPort = Number(process.env.E2E_APP_PORT || 3001);
+const r2Port = Number(process.env.MOCK_R2_PORT || 9000);
+const base = `http://127.0.0.1:${appPort}`;
+const dbUrl = process.env.DATABASE_URL || `postgresql://postgres:postgres@127.0.0.1:5433/postgres`;
+const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+function assertLoopback(value, name) {
+  let url;
+  try { url = new URL(value); } catch { throw new Error(`${name} is not a valid URL`); }
+  if (!loopback.has(url.hostname)) throw new Error(`${name} must be loopback for E2E; refusing to touch a remote service`);
+}
+assertLoopback(dbUrl, "DATABASE_URL");
+assertLoopback(base, "E2E_BASE_URL");
+
+const password = process.env.E2E_ADMIN_PASSWORD || "test-admin-password";
+const env = {
+  ...process.env,
+  DATABASE_URL: dbUrl,
+  E2E_BASE_URL: base,
+  E2E_ADMIN_PASSWORD: password,
+  ADMIN_PASSWORD: password,
+  APP_ORIGIN: base,
+  NEXT_TELEMETRY_DISABLED: "1",
+  ADMIN_LOGIN_TRUSTED_IP_HEADER: "x-e2e-client-ip",
+  ADMIN_LOGIN_WINDOW_SECONDS: process.env.ADMIN_LOGIN_WINDOW_SECONDS || "5",
+  ADMIN_LOGIN_MAX_ATTEMPTS: process.env.ADMIN_LOGIN_MAX_ATTEMPTS || "5",
+  ADMIN_LOGIN_GLOBAL_MAX_ATTEMPTS: process.env.ADMIN_LOGIN_GLOBAL_MAX_ATTEMPTS || "1000",
+  R2_ACCOUNT_ID: "test-account",
+  R2_ACCESS_KEY_ID: "test-access-key",
+  R2_SECRET_ACCESS_KEY: "test-secret-key",
+  R2_BUCKET_NAME: "test-bucket",
+  R2_ENDPOINT: `http://127.0.0.1:${r2Port}`,
+  R2_PART_SIZE_BYTES: String(5 * 1024 * 1024),
+  MOCK_R2_PORT: String(r2Port),
+  MOCK_R2_BUCKET_NAME: "test-bucket",
+  MOCK_R2_ACCESS_KEY_ID: "test-access-key",
+  MOCK_R2_SECRET_ACCESS_KEY: "test-secret-key",
+};
+assertLoopback(env.R2_ENDPOINT, "R2_ENDPOINT");
+
+await mkdir("test-results", { recursive: true });
+const children = [];
+async function run(command, args, runEnv = env) {
+  const child = spawn(command, args, { env: runEnv, stdio: "inherit" });
+  const [code] = await once(child, "exit");
+  if (code !== 0) throw new Error(`${command} ${args.join(" ")} exited ${code}`);
+}
+async function start(name, command, args) {
+  const log = path.join("test-results", `${name}.log`);
+  const child = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  const chunks = [];
+  child.stdout.on("data", (chunk) => chunks.push(chunk));
+  child.stderr.on("data", (chunk) => chunks.push(chunk));
+  children.push({ name, child, log, chunks });
+  return child;
+}
+async function waitFor(url, name, timeoutMs = 120000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { const res = await fetch(url); if (res.ok || res.status === 403 || res.status === 404) return; } catch { /* starting */ }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`${name} did not become ready`);
+}
+async function cleanup() {
+  for (const { child } of children.reverse()) {
+    if (child.exitCode === null) child.kill("SIGTERM");
+  }
+  await Promise.all(children.map(async ({ child }) => {
+    if (child.exitCode !== null) return;
+    const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+    await once(child, "exit").catch(() => undefined);
+    clearTimeout(timer);
+  }));
+  for (const { log, chunks } of children) await writeFile(log, Buffer.concat(chunks)).catch(() => undefined);
+}
+
+let failure;
+try {
+  await run("node", ["tests/seed-legacy.mjs"]);
+  await start("mock-r2", process.execPath, ["tests/mock-r2.mjs"]);
+  await waitFor(`http://127.0.0.1:${r2Port}/`, "mock R2", 15000).catch(async (error) => {
+    // A 403/404 still proves the listener is up.
+    try { await fetch(`http://127.0.0.1:${r2Port}/`); } catch { throw error; }
+  });
+  await start("next-app", process.execPath, ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", String(appPort)]);
+  await waitFor(`${base}/api/health`, "Next app");
+  await run(process.execPath, ["tests/e2e.mjs"]);
+} catch (error) {
+  failure = error;
+} finally {
+  await cleanup();
+  if (failure) {
+    for (const { name, log } of children) console.error(`\n--- ${name} log: ${log} ---`);
+    console.error(failure);
+    process.exitCode = 1;
+  }
+}

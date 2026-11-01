@@ -83,8 +83,9 @@ export default function MediaForm({ categories, editing, onCancel, onSaved }: Pr
 
       <div className="grid gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-4 md:grid-cols-2">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-neutral-400">Type</label>
+          <label htmlFor="media-type" className="text-xs font-medium text-neutral-400">Type</label>
           <select
+            id="media-type"
             value={type}
             onChange={(e) => setType(e.target.value)}
             disabled={!!editing}
@@ -99,8 +100,9 @@ export default function MediaForm({ categories, editing, onCancel, onSaved }: Pr
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-neutral-400">Title</label>
+          <label htmlFor="media-title" className="text-xs font-medium text-neutral-400">Title</label>
           <input
+            id="media-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -110,8 +112,9 @@ export default function MediaForm({ categories, editing, onCancel, onSaved }: Pr
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-neutral-400">Year</label>
+          <label htmlFor="media-year" className="text-xs font-medium text-neutral-400">Year</label>
           <input
+            id="media-year"
             type="number"
             value={year}
             onChange={(e) => setYear(e.target.value)}
@@ -121,8 +124,9 @@ export default function MediaForm({ categories, editing, onCancel, onSaved }: Pr
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-neutral-400">Category</label>
+          <label htmlFor="media-category" className="text-xs font-medium text-neutral-400">Category</label>
           <select
+            id="media-category"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
             className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700"
@@ -137,8 +141,9 @@ export default function MediaForm({ categories, editing, onCancel, onSaved }: Pr
         </div>
 
         <div className="space-y-1 md:col-span-2">
-          <label className="text-xs font-medium text-neutral-400">Description</label>
+          <label htmlFor="media-description" className="text-xs font-medium text-neutral-400">Description</label>
           <textarea
+            id="media-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
@@ -153,6 +158,7 @@ export default function MediaForm({ categories, editing, onCancel, onSaved }: Pr
           <ImageUploader
             currentUrl={posterUrl}
             onUpload={(url) => setPosterUrl(url)}
+            mediaId={editing?.id}
           />
           <div className="flex-1 space-y-2">
             <input
