@@ -1,47 +1,39 @@
 import { NextResponse } from "next/server";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { seasons } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
+import { ApiError, errorResponse, positiveId, readJson, text } from "@/lib/validation";
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authCheck = await requireAdmin();
-  if (authCheck !== true) return authCheck;
+type Context = { params: Promise<{ id: string }> };
 
-  const { id } = await params;
+export async function PATCH(req: Request, { params }: Context) {
+  const auth = await requireAdmin();
+  if (auth !== true) return auth;
   try {
-    const { seasonNumber, name } = await req.json();
-    const [updated] = await db
-      .update(seasons)
-      .set({
-        seasonNumber: seasonNumber ? Number(seasonNumber) : undefined,
-        name: name ?? undefined,
-      })
-      .where(eq(seasons.id, Number(id)))
-      .returning();
+    const id = positiveId((await params).id);
+    const body = await readJson(req);
+    const [existing] = await db.select().from(seasons).where(eq(seasons.id, id)).limit(1);
+    if (!existing) throw new ApiError(404, "Season not found");
+    const updates: Partial<typeof seasons.$inferInsert> = {};
+    if ("seasonNumber" in body) updates.seasonNumber = positiveId(body.seasonNumber, "seasonNumber");
+    if ("name" in body) updates.name = text(body.name, "Season name", 255);
+    if (updates.seasonNumber !== undefined) {
+      const [duplicate] = await db.select({ id: seasons.id }).from(seasons).where(and(eq(seasons.mediaId, existing.mediaId), eq(seasons.seasonNumber, updates.seasonNumber), ne(seasons.id, id))).limit(1);
+      if (duplicate) throw new ApiError(409, "That season number already exists for this title");
+    }
+    const [updated] = await db.update(seasons).set(updates).where(eq(seasons.id, id)).returning();
     return NextResponse.json(updated);
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authCheck = await requireAdmin();
-  if (authCheck !== true) return authCheck;
-
-  const { id } = await params;
+export async function DELETE(_req: Request, { params }: Context) {
+  const auth = await requireAdmin();
+  if (auth !== true) return auth;
   try {
-    await db.delete(seasons).where(eq(seasons.id, Number(id)));
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+    const id = positiveId((await params).id);
+    const [deleted] = await db.delete(seasons).where(eq(seasons.id, id)).returning({ id: seasons.id });
+    if (!deleted) throw new ApiError(404, "Season not found");
+    return NextResponse.json({ success: true, objectRetained: true });
+  } catch (error) { return errorResponse(error); }
 }

@@ -1,20 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The Arena live preview is served from an e2b.app subdomain in development.
+  allowedDevOrigins: ["*.e2b.app", "127.0.0.1", "localhost"],
   images: {
-    // Allow arbitrary remote images; using unoptimized for external URLs already,
-    // but we list common patterns so next/image can render them.
+    // Existing external poster URLs remain supported. R2 posters are served
+    // through /api/image as short-lived signed redirects and are unoptimized.
     remotePatterns: [
       { protocol: "https", hostname: "**" },
       { protocol: "http", hostname: "**" },
     ],
   },
-  // Increase API body size for video uploads
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "2gb",
-    },
-  },
+  // Video/archive bytes go directly from the browser to R2. Next.js only
+  // handles JSON metadata and signed URLs, so no large server body is needed.
 };
 
 export default nextConfig;

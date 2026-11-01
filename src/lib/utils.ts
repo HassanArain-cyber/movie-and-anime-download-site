@@ -22,6 +22,8 @@ export function parseSize(input: string): string {
   return input.trim();
 }
 
+export { needsUnoptimizedImage } from "./media-links";
+
 // Basic placeholder poster SVG as data URL (when no poster provided)
 export function placeholderPoster(title: string): string {
   const letter = (title || "?").charAt(0).toUpperCase();

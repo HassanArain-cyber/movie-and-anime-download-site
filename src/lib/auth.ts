@@ -4,9 +4,15 @@ import { cookies } from "next/headers";
 const COOKIE_NAME = "admin_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
+export function isAdminConfigured(): boolean {
+  return !!process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 8;
+}
+
 function getSecret(): string {
-  const secret = process.env.ADMIN_PASSWORD || "admin123";
-  // Use a stable server-side secret derived from the password
+  const secret = process.env.ADMIN_PASSWORD;
+  if (!secret) throw new Error("ADMIN_PASSWORD is required");
+  // Preserve the existing cookie derivation so configured deployments keep
+  // their current sessions when this update is deployed.
   return crypto.createHash("sha256").update(secret).digest("hex");
 }
 
@@ -20,21 +26,19 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 function sign(value: string): string {
-  return crypto
-    .createHmac("sha256", getSecret())
-    .update(value)
-    .digest("hex");
+  return crypto.createHmac("sha256", getSecret()).update(value).digest("hex");
 }
 
 export async function login(password: string): Promise<boolean> {
-  const expected = process.env.ADMIN_PASSWORD || "admin123";
-  if (password !== expected) return false;
+  const expected = process.env.ADMIN_PASSWORD;
+  if (!isAdminConfigured() || !expected) return false;
+  const a = crypto.createHash("sha256").update(password).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  if (!crypto.timingSafeEqual(a, b)) return false;
 
   const expires = Date.now() + MAX_AGE * 1000;
   const payload = `admin.${expires}`;
-  const signature = sign(payload);
-  const cookieVal = `${payload}.${signature}`;
-
+  const cookieVal = `${payload}.${sign(payload)}`;
   (await cookies()).set(COOKIE_NAME, cookieVal, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -50,40 +54,31 @@ export async function logout(): Promise<void> {
 }
 
 export async function isAdmin(): Promise<boolean> {
+  if (!isAdminConfigured()) return false;
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return false;
-
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   const [role, expiresStr, signature] = parts;
   if (role !== "admin") return false;
-
   const expires = Number(expiresStr);
-  if (!expires || Date.now() > expires) return false;
-
-  const expected = sign(`admin.${expiresStr}`);
-  const valid = timingSafeEqual(signature, expected);
-  return valid;
+  if (!Number.isFinite(expires) || expires <= 0 || Date.now() > expires) return false;
+  try { return timingSafeEqual(signature, sign(`admin.${expiresStr}`)); }
+  catch { return false; }
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  try {
-    return crypto.timingSafeEqual(bufA, bufB);
-  } catch {
-    return false;
-  }
+  try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
+  catch { return false; }
 }
 
-// Helper to verify admin in server actions / route handlers
 export async function requireAdmin(): Promise<true | Response> {
   if (!(await isAdmin())) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   }
   return true;

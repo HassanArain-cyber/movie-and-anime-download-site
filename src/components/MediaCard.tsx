@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Media } from "@/lib/types";
-import { placeholderPoster } from "@/lib/utils";
+import { placeholderPoster, needsUnoptimizedImage } from "@/lib/utils";
 
 export default function MediaCard({ item }: { item: Media }) {
   const typeLabel =
@@ -20,7 +20,7 @@ export default function MediaCard({ item }: { item: Media }) {
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             className="object-cover transition group-hover:scale-105"
-            unoptimized={item.posterUrl.startsWith("data:") || item.posterUrl.startsWith("http")}
+            unoptimized={needsUnoptimizedImage(item.posterUrl)}
           />
         ) : (
           <Image

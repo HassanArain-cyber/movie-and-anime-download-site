@@ -1,132 +1,61 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { media, categories, downloadLinks } from "@/db/schema";
-import { eq, like, or, and, desc, sql } from "drizzle-orm";
+import { media, categories } from "@/db/schema";
+import { eq, ilike, or, and, desc, type SQL } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
-import { slugify } from "@/lib/utils";
+import { getMediaDetails } from "@/lib/library";
+import { uniqueSlug } from "@/lib/slugs";
+import { errorResponse, mediaType, optionalId, readJson, text, year } from "@/lib/validation";
 
-// GET /api/media - list media with optional filters
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type");
-  const q = searchParams.get("q");
+  const q = searchParams.get("q")?.trim();
   const category = searchParams.get("category");
   const slug = searchParams.get("slug");
-
   try {
-    let query = db
-      .select({
-        id: media.id,
-        type: media.type,
-        title: media.title,
-        slug: media.slug,
-        description: media.description,
-        posterUrl: media.posterUrl,
-        thumbnailUrl: media.thumbnailUrl,
-        year: media.year,
-        categoryId: media.categoryId,
-        categoryName: categories.name,
-        createdAt: media.createdAt,
-        updatedAt: media.updatedAt,
-      })
-      .from(media)
-      .leftJoin(categories, eq(media.categoryId, categories.id));
-
-    const conditions = [];
-    if (type) conditions.push(eq(media.type, type as string));
-    if (category) conditions.push(eq(categories.slug, category as string));
+    const conditions: SQL[] = [];
+    if (type) conditions.push(eq(media.type, type));
+    if (category) conditions.push(eq(categories.slug, category));
+    if (slug) conditions.push(eq(media.slug, slug));
     if (q) {
-      const search = `%${q}%`;
-      conditions.push(
-        or(
-          like(media.title, search),
-          like(media.description ?? "", search)
-        )
-      );
+      const search = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+      conditions.push(or(ilike(media.title, search), ilike(media.description, search))!);
     }
-    if (slug) conditions.push(eq(media.slug, slug as string));
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as typeof query;
-    }
-    query = query.orderBy(desc(media.createdAt)) as typeof query;
-
-    const results = await query;
-
+    const results = await db.select({
+      id: media.id, type: media.type, title: media.title, slug: media.slug,
+      description: media.description, posterUrl: media.posterUrl, thumbnailUrl: media.thumbnailUrl,
+      year: media.year, categoryId: media.categoryId, categoryName: categories.name,
+      createdAt: media.createdAt, updatedAt: media.updatedAt,
+    }).from(media).leftJoin(categories, eq(media.categoryId, categories.id))
+      .where(conditions.length ? and(...conditions) : undefined).orderBy(desc(media.createdAt), desc(media.id));
     if (slug) {
-      const item = results[0];
-      if (!item) {
-        return NextResponse.json({ error: "Not found" }, { status: 404 });
-      }
-      // Also fetch direct download links (for movies)
-      const links = await db
-        .select()
-        .from(downloadLinks)
-        .where(
-          and(eq(downloadLinks.mediaId, item.id), eq(downloadLinks.episodeId, sql`null`))
-        );
-      return NextResponse.json({ ...item, downloadLinks: links });
+      if (!results[0]) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(await getMediaDetails(results[0].id));
     }
-
     return NextResponse.json(results);
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }
 
-// POST /api/media - create new media (admin only)
 export async function POST(req: Request) {
-  const authCheck = await requireAdmin();
-  if (authCheck !== true) return authCheck;
-
+  const auth = await requireAdmin();
+  if (auth !== true) return auth;
   try {
-    const body = await req.json();
-    const { type, title, description, posterUrl, thumbnailUrl, year, categoryId } =
-      body;
-
-    if (!type || !["movie", "anime", "series"].includes(type)) {
-      return NextResponse.json(
-        { error: "Invalid type. Must be movie, anime, or series." },
-        { status: 400 }
-      );
+    const body = await readJson(req);
+    const type = mediaType(body.type);
+    const title = text(body.title, "Title", 255, true)!;
+    const categoryId = optionalId(body.categoryId, "categoryId");
+    if (categoryId !== null) {
+      const [category] = await db.select({ id: categories.id }).from(categories).where(eq(categories.id, categoryId)).limit(1);
+      if (!category) return NextResponse.json({ error: "Category not found" }, { status: 400 });
     }
-    if (!title) {
-      return NextResponse.json({ error: "Title is required" }, { status: 400 });
-    }
-
-    // Generate unique slug
-    const baseSlug = slugify(title);
-    let slug = baseSlug;
-    let n = 1;
-    while (true) {
-      const existing = await db
-        .select({ id: media.id })
-        .from(media)
-        .where(eq(media.slug, slug))
-        .limit(1);
-      if (existing.length === 0) break;
-      n++;
-      slug = `${baseSlug}-${n}`;
-    }
-
-    const [newItem] = await db
-      .insert(media)
-      .values({
-        type,
-        title,
-        slug,
-        description: description || null,
-        posterUrl: posterUrl || null,
-        thumbnailUrl: thumbnailUrl || null,
-        year: year ? Number(year) : null,
-        categoryId: categoryId ? Number(categoryId) : null,
-      })
-      .returning();
-
+    const [newItem] = await db.insert(media).values({
+      type, title, slug: await uniqueSlug(title),
+      description: text(body.description, "Description", 20000),
+      posterUrl: text(body.posterUrl, "Poster URL", 8192),
+      thumbnailUrl: text(body.thumbnailUrl, "Thumbnail URL", 8192),
+      year: year(body.year), categoryId,
+    }).returning();
     return NextResponse.json(newItem, { status: 201 });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }
