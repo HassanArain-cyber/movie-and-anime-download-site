@@ -5,7 +5,7 @@ import { eq, ilike, or, and, desc, type SQL } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
 import { uniqueSlug } from "@/lib/slugs";
-import { errorResponse, mediaType, optionalId, readJson, text, year } from "@/lib/validation";
+import { errorResponse, imageUrl, mediaType, optionalId, readJson, text, year } from "@/lib/validation";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const body = await readJson(req);
@@ -52,8 +52,8 @@ export async function POST(req: Request) {
     const [newItem] = await db.insert(media).values({
       type, title, slug: await uniqueSlug(title),
       description: text(body.description, "Description", 20000),
-      posterUrl: text(body.posterUrl, "Poster URL", 8192),
-      thumbnailUrl: text(body.thumbnailUrl, "Thumbnail URL", 8192),
+      posterUrl: imageUrl(body.posterUrl, "Poster URL"),
+      thumbnailUrl: imageUrl(body.thumbnailUrl, "Thumbnail URL"),
       year: year(body.year), categoryId,
     }).returning();
     return NextResponse.json(newItem, { status: 201 });

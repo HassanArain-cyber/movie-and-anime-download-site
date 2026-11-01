@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { ApiError, errorResponse, positiveId, readJson, text } from "@/lib/validation";
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const body = await readJson(req);

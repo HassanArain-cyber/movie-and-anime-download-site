@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { assertSameOrigin } from "./request-security";
 
 const COOKIE_NAME = "admin_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -14,15 +15,6 @@ function getSecret(): string {
   // Preserve the existing cookie derivation so configured deployments keep
   // their current sessions when this update is deployed.
   return crypto.createHash("sha256").update(secret).digest("hex");
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    crypto.scrypt(password, getSecret(), 64, (err, derivedKey) => {
-      if (err) reject(err);
-      else resolve(derivedKey.toString("hex"));
-    });
-  });
 }
 
 function sign(value: string): string {
@@ -74,7 +66,17 @@ function timingSafeEqual(a: string, b: string): boolean {
   catch { return false; }
 }
 
-export async function requireAdmin(): Promise<true | Response> {
+export async function requireAdmin(req?: Request): Promise<true | Response> {
+  if (req && req.method !== "GET" && req.method !== "HEAD") {
+    try { assertSameOrigin(req); }
+    catch (error) {
+      const status = (error as { status?: number })?.status ?? 403;
+      return new Response(JSON.stringify({ error: status === 403 ? "Cross-site requests are not allowed" : "Request origin is not configured correctly" }), {
+        status,
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      });
+    }
+  }
   if (!(await isAdmin())) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,

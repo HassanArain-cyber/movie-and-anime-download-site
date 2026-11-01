@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
 import { uniqueSlug } from "@/lib/slugs";
-import { ApiError, errorResponse, mediaType, optionalId, positiveId, readJson, text, year } from "@/lib/validation";
+import { ApiError, errorResponse, imageUrl, mediaType, optionalId, positiveId, readJson, text, year } from "@/lib/validation";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: Context) {
 }
 
 export async function PATCH(req: Request, { params }: Context) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
@@ -29,8 +29,8 @@ export async function PATCH(req: Request, { params }: Context) {
       if (updates.title !== existing.title) updates.slug = await uniqueSlug(updates.title, id);
     }
     if ("description" in body) updates.description = text(body.description, "Description", 20000);
-    if ("posterUrl" in body) updates.posterUrl = text(body.posterUrl, "Poster URL", 8192);
-    if ("thumbnailUrl" in body) updates.thumbnailUrl = text(body.thumbnailUrl, "Thumbnail URL", 8192);
+    if ("posterUrl" in body) updates.posterUrl = imageUrl(body.posterUrl, "Poster URL");
+    if ("thumbnailUrl" in body) updates.thumbnailUrl = imageUrl(body.thumbnailUrl, "Thumbnail URL");
     if ("year" in body) updates.year = year(body.year);
     if ("categoryId" in body) {
       const categoryId = optionalId(body.categoryId, "categoryId");
@@ -45,8 +45,8 @@ export async function PATCH(req: Request, { params }: Context) {
   } catch (error) { return errorResponse(error); }
 }
 
-export async function DELETE(_req: Request, { params }: Context) {
-  const auth = await requireAdmin();
+export async function DELETE(req: Request, { params }: Context) {
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);

@@ -6,8 +6,8 @@ import { errorResponse, uuid } from "@/lib/validation";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdmin();
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const result = await completeUpload(uuid((await params).id));

@@ -9,7 +9,7 @@ type Context = { params: Promise<{ id: string }> };
 
 // Refresh part URLs / inspect status. Existing completed parts are reported so
 // a retry does not upload them again.
-export async function GET(_req: Request, { params }: Context) {
+export async function GET(req: Request, { params }: Context) {
   const auth = await requireAdmin();
   if (auth !== true) return auth;
   try {
@@ -21,8 +21,8 @@ export async function GET(_req: Request, { params }: Context) {
 }
 
 // Cancel an incomplete multipart upload. Completed objects are always retained.
-export async function DELETE(_req: Request, { params }: Context) {
-  const auth = await requireAdmin();
+export async function DELETE(req: Request, { params }: Context) {
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     await abortUpload(uuid((await params).id));

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // Only metadata and short-lived part URLs pass through Next.js. File bytes go
 // directly from the browser to private R2 storage, never to the app server disk.
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const body = await readJson(req);

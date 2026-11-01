@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isIP } from "node:net";
 import { safeExternalUrl } from "./media-links";
 import type { MediaType, VideoQuality } from "./types";
 
@@ -9,11 +10,36 @@ export class ApiError extends Error {
   }
 }
 
-export async function readJson(req: Request): Promise<Record<string, unknown>> {
-  const text = await req.text();
-  if (text.length > 1024 * 1024) throw new ApiError(413, "Request is too large");
+const JSON_TYPE = /^application\/(?:[\w.+-]+\+)?json(?:\s*;|$)/i;
+
+/** Stream JSON with a hard byte ceiling; never buffer an unbounded request body. */
+export async function readJson(req: Request, maxBytes = 1024 * 1024): Promise<Record<string, unknown>> {
+  const type = req.headers.get("content-type") || "";
+  if (!JSON_TYPE.test(type)) throw new ApiError(415, "Content-Type must be application/json");
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new ApiError(413, "Request is too large");
+  if (!req.body) throw new ApiError(400, "Invalid JSON body");
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new ApiError(413, "Request is too large");
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   let body: unknown;
-  try { body = JSON.parse(text); } catch { throw new ApiError(400, "Invalid JSON body"); }
+  try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
+  catch { throw new ApiError(400, "Invalid JSON body"); }
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(400, "Expected a JSON object");
   return body as Record<string, unknown>;
 }
@@ -59,14 +85,47 @@ export function mediaType(value: unknown): MediaType {
 
 export function year(value: unknown): number | null {
   if (value === undefined || value === null || value === "") return null;
-  const result = Number(value);
-  if (!Number.isInteger(result) || result < 1800 || result > 2200) throw new ApiError(400, "Year must be between 1800 and 2200");
-  return result;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1800 || number > 2200) throw new ApiError(400, "Year must be between 1800 and 2200");
+  return number;
 }
 
 export function externalUrl(value: unknown): string {
   const result = text(value, "URL", 8192, true)!;
   if (!safeExternalUrl(result)) throw new ApiError(400, "Use an HTTPS, HTTP, Telegram, or magnet link. Upload files to R2 instead of entering a local path.");
+  return result;
+}
+
+function isPrivateHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  const version = isIP(host);
+  if (version === 4) {
+    const [a, b] = host.split(".").map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+  }
+  if (version === 6) {
+    return host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:") || host.startsWith("::ffff:");
+  }
+  return false;
+}
+
+/** Poster/thumbnail URLs must be safe to render and must not point the image optimizer at private networks. */
+export function imageUrl(value: unknown, name = "Image URL"): string | null {
+  const result = text(value, name, 8192);
+  if (!result) return null;
+  if (result.startsWith("/uploads/") && !result.includes("\\") && !result.includes("\0")) return result;
+  if (result.startsWith("/api/image?")) {
+    const params = new URL(result, "http://local").searchParams;
+    const upload = params.get("upload");
+    if (params.size === 1 && upload && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(upload)) return result;
+    throw new ApiError(400, `${name} must reference a valid image upload`);
+  }
+  let url: URL;
+  try { url = new URL(result); } catch { throw new ApiError(400, `${name} must be an HTTP(S), legacy upload, or R2 image URL`); }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || isPrivateHostname(url.hostname)) {
+    throw new ApiError(400, `${name} must be a public HTTP(S) image URL`);
+  }
   return result;
 }
 
@@ -77,11 +136,13 @@ export function uuid(value: unknown, name = "id"): string {
   return value;
 }
 
+const NO_STORE = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+
 export function errorResponse(error: unknown): NextResponse {
-  if (error instanceof ApiError) return NextResponse.json({ error: error.message }, { status: error.status });
+  if (error instanceof ApiError) return NextResponse.json({ error: error.message }, { status: error.status, headers: NO_STORE });
   const code = (error as { code?: string; cause?: { code?: string } })?.code ?? (error as { cause?: { code?: string } })?.cause?.code;
-  if (code === "23505") return NextResponse.json({ error: "That record already exists" }, { status: 409 });
-  if (code === "23503") return NextResponse.json({ error: "The related media, season, or episode no longer exists" }, { status: 409 });
+  if (code === "23505") return NextResponse.json({ error: "That record already exists" }, { status: 409, headers: NO_STORE });
+  if (code === "23503") return NextResponse.json({ error: "The related media, season, or episode no longer exists" }, { status: 409, headers: NO_STORE });
   console.error(error);
-  return NextResponse.json({ error: "Server error. Please try again." }, { status: 500 });
+  return NextResponse.json({ error: "Server error. Please try again." }, { status: 500, headers: NO_STORE });
 }

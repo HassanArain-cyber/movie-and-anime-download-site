@@ -8,7 +8,7 @@ import { getUpload, r2LinkValues } from "@/lib/storage";
 import { errorResponse, externalUrl, quality, readJson, text, uuid } from "@/lib/validation";
 
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const body = await readJson(req);

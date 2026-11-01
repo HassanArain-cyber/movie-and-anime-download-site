@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // uses /api/uploads (browser -> private R2 multipart) and /api/image.
 // Existing /uploads/... database records remain readable through /api/download.
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   void req;
   return NextResponse.json({

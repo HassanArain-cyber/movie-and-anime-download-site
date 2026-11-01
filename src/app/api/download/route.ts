@@ -24,11 +24,12 @@ function redirect(url: string) {
   return NextResponse.redirect(url, { status: 302, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
 }
 
-async function legacyResponse(req: Request, url: string) {
+async function legacyResponse(req: Request, url: string, alreadyDecoded = false) {
   const root = await realpath(path.join(process.cwd(), "public", "uploads")).catch(() => null);
   if (!root) throw new ApiError(404, "Legacy upload directory is not available on this deployment");
   let decoded: string;
-  try { decoded = decodeURIComponent(url); } catch { throw new ApiError(400, "Invalid file path"); }
+  if (alreadyDecoded) decoded = url;
+  else { try { decoded = decodeURIComponent(url); } catch { throw new ApiError(400, "Invalid file path"); } }
   if (decoded.includes("\0") || decoded.includes("\\")) throw new ApiError(400, "Invalid file path");
   const candidate = path.resolve(process.cwd(), "public", `.${decoded}`);
   const filePath = await realpath(candidate).catch(() => null);
@@ -74,6 +75,7 @@ async function handle(req: Request) {
   const params = new URL(req.url).searchParams;
   const idParam = params.get("id");
   let url = params.get("url");
+  if (idParam !== null && url !== null) throw new ApiError(400, "Provide either id or url, not both");
   if (idParam !== null) {
     const id = positiveId(idParam, "id");
     const [link] = await db.select().from(downloadLinks).where(eq(downloadLinks.id, id)).limit(1);
@@ -83,17 +85,16 @@ async function handle(req: Request) {
       if (!key) throw new ApiError(404, "R2 object metadata is missing");
       const [object] = await db.select().from(r2Uploads).where(eq(r2Uploads.objectKey, key)).limit(1);
       if (!object || object.status !== "completed" || object.kind === "image") throw new ApiError(404, "R2 object is not available");
-      return redirect(await signedObjectUrl(object));
+      return redirect(await signedObjectUrl(object, req.method === "HEAD" ? "HEAD" : "GET"));
     }
     url = link.url;
   }
   if (!url) throw new ApiError(400, "Missing url or id");
-  if (isLegacyUpload(url)) {
-    // Direct path access is only allowed for a path already recorded in the DB.
-    const [known] = await db.select({ id: downloadLinks.id }).from(downloadLinks).where(eq(downloadLinks.url, url)).limit(1);
-    if (!known) throw new ApiError(404, "File not available");
-    return legacyResponse(req, url);
-  }
+  // Direct URL access is only allowed for a URL already recorded in the DB.
+  // This prevents the endpoint from becoming an open redirect for arbitrary URLs.
+  const [known] = await db.select({ id: downloadLinks.id }).from(downloadLinks).where(eq(downloadLinks.url, url)).limit(1);
+  if (!known) throw new ApiError(404, "File not available");
+  if (isLegacyUpload(url)) return legacyResponse(req, url, true);
   const external = safeExternalUrl(url);
   if (!external) throw new ApiError(400, "Unsupported download URL");
   return redirect(external);

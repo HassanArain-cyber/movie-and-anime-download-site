@@ -62,6 +62,13 @@ Set these on the server/hosting platform, not in client-side code:
 ```dotenv
 DATABASE_URL=postgresql://...
 ADMIN_PASSWORD=use-a-long-random-password
+# Optional but recommended behind a proxy:
+# APP_ORIGIN=https://your-site.example
+# Only set this to a single-IP header your trusted proxy overwrites:
+# ADMIN_LOGIN_TRUSTED_IP_HEADER=x-real-ip
+ADMIN_LOGIN_WINDOW_SECONDS=900
+ADMIN_LOGIN_MAX_ATTEMPTS=5
+ADMIN_LOGIN_GLOBAL_MAX_ATTEMPTS=30
 
 R2_ACCOUNT_ID=your-account-id
 R2_ACCESS_KEY_ID=your-access-key-id
@@ -120,6 +127,8 @@ Existing `/uploads/...` links still work through `/api/download` if the files ex
 
 - Keep the bucket private. Video/archive downloads use signed GET URLs.
 - Posters use `/api/image?upload=...`, which redirects to a signed image URL. Only completed image uploads are exposed there.
-- `ADMIN_PASSWORD` is required and must be at least 8 characters. The old `admin123` default is removed.
+- `ADMIN_PASSWORD` is required and must be at least 8 characters. The old `admin123` default is removed. Login attempts are rate-limited in PostgreSQL; see `docs/SECURITY_REVIEW.md` for proxy-trust configuration.
 - External links are restricted to HTTP(S), Telegram (`tg:`), and magnet URLs. `javascript:`/`data:` links are not rendered as clickable downloads.
-- Local legacy downloads are path-contained and must correspond to a recorded database URL.
+- Local legacy downloads are path-contained and must correspond to a recorded database URL. Direct `/api/download?url=...` redirects also require a recorded URL.
+- Upload sessions expire and are bound to the configured bucket. HEAD downloads use HEAD-signed URLs.
+- New poster/thumbnail URLs reject unsafe schemes and private-network targets.

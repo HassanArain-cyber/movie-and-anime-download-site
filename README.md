@@ -36,7 +36,7 @@ Migrations are explicit and additive. They do not run automatically during `dev`
 npm run db:migrate
 ```
 
-`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records.
+`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses.
 
 ## Tests
 
@@ -47,31 +47,19 @@ npm test
 npm run build
 ```
 
-End-to-end tests use a local PostgreSQL-compatible test database and a local S3-compatible mock. They do **not** contact Cloudflare:
+End-to-end tests use a disposable PostgreSQL-compatible test database and a local S3-compatible mock. They do **not** contact Cloudflare. The CI runner starts/stops the mock and app, seeds legacy fixtures, and refuses non-loopback database/app/R2 targets:
 
 ```bash
-# Terminal 1: test database
-npx pglite-server --port 5433 --host 127.0.0.1 --max-connections 10
-# Terminal 2: mock R2
-node tests/mock-r2.mjs
-# Terminal 3: app pointed at the test services
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres \
-ADMIN_PASSWORD=test-admin-password \
-R2_ACCOUNT_ID=test R2_ACCESS_KEY_ID=test R2_SECRET_ACCESS_KEY=test \
-R2_BUCKET_NAME=test-bucket R2_ENDPOINT=http://127.0.0.1:9000 R2_PART_SIZE_BYTES=5242880 \
-npm run dev -- --hostname 0.0.0.0 --port 3001
-# Terminal 4: seed legacy fixtures and run E2E
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres node tests/seed-legacy.mjs
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres npm run test:e2e
+# Terminal 1: disposable test database
+npx pglite-server --port 5433 --host 127.0.0.1 --max-connections 8
+# Terminal 2: migrate, seed, start mock/app, run browser/API E2E, clean up
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres npm run db:migrate
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres npm run test:e2e:ci
 ```
 
-On Debian/Ubuntu, the bundled serverless Chromium may need NSS/NSPR libraries. If `npm run test:e2e` reports missing `libnspr4.so`/`libnss3.so`, install your distro's Chromium runtime dependencies or run:
+GitHub Actions runs the same suite in the `e2e` job against a disposable PostgreSQL 16 service. Logs are uploaded as an artifact if that job fails. The mock verifies presigned SigV4 method/expiry/tampering; it is not a production S3/IAM implementation.
 
-```bash
-LD_LIBRARY_PATH=/tmp/al2023/lib npm run test:e2e
-```
-
-after `node -e "import('@sparticuz/chromium').then(m=>m.inflate('node_modules/@sparticuz/chromium/bin/al2023.tar.br'))"` has extracted the bundled libraries.
+See [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the authentication/R2 review, fixes, and remaining deployment responsibilities.
 
 ## Maintenance
 

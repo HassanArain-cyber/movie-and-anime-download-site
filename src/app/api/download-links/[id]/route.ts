@@ -10,7 +10,7 @@ import { ApiError, errorResponse, externalUrl, positiveId, quality, readJson, te
 type Context = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Context) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
@@ -44,8 +44,8 @@ export async function PATCH(req: Request, { params }: Context) {
   } catch (error) { return errorResponse(error); }
 }
 
-export async function DELETE(_req: Request, { params }: Context) {
-  const auth = await requireAdmin();
+export async function DELETE(req: Request, { params }: Context) {
+  const auth = await requireAdmin(req);
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);

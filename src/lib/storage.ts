@@ -11,11 +11,12 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { r2Uploads } from "@/db/schema";
 import { ApiError } from "./validation";
 import { formatBytes } from "./media-links";
+import { parseR2Endpoint } from "./r2-endpoint";
 import type { CompletedUpload, InitializedUpload, StorageStatus, UploadKind, UploadPart, VideoQuality } from "./types";
 
 const MIB = 1024 * 1024;
@@ -68,11 +69,8 @@ function getConfig(): R2Config {
   const accountId = process.env.R2_ACCOUNT_ID!.trim();
   if (!/^[a-zA-Z0-9-]+$/.test(accountId)) throw new ApiError(503, "R2_ACCOUNT_ID is invalid");
   let endpoint: URL;
-  try { endpoint = new URL(process.env.R2_ENDPOINT?.trim() || `https://${accountId}.r2.cloudflarestorage.com`); }
-  catch { throw new ApiError(503, "R2_ENDPOINT is invalid"); }
-  if (!["https:", "http:"].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-    throw new ApiError(503, "R2_ENDPOINT must be an HTTP(S) endpoint without credentials or query parameters");
-  }
+  try { endpoint = parseR2Endpoint(process.env.R2_ENDPOINT?.trim() || `https://${accountId}.r2.cloudflarestorage.com`); }
+  catch (error) { throw new ApiError(503, (error as Error).message); }
   return {
     endpoint: endpoint.toString().replace(/\/$/, ""),
     bucket: process.env.R2_BUCKET_NAME!.trim(),
@@ -205,10 +203,20 @@ export async function getUpload(id: string): Promise<UploadRow> {
   return row;
 }
 
+function assertUploadBucket(row: UploadRow, config: R2Config): void {
+  if (row.bucket !== config.bucket) throw new ApiError(409, "This upload belongs to a different R2 bucket");
+}
+
+function assertUploadActive(row: UploadRow): void {
+  if (row.expiresAt.getTime() <= Date.now()) throw new ApiError(410, "This upload session has expired. Start a new upload.");
+}
+
 export async function refreshUpload(id: string): Promise<InitializedUpload> {
   const row = await getUpload(id);
   if (row.status !== "pending") throw new ApiError(409, `Upload is ${row.status}, not pending`);
   const config = getConfig();
+  assertUploadBucket(row, config);
+  assertUploadActive(row);
   const signed = await presignParts(client(config), config, row);
   return { id, kind: row.kind as UploadKind, fileName: row.fileName, sizeBytes: row.sizeBytes, partSizeBytes: row.partSize, ...signed };
 }
@@ -225,9 +233,15 @@ export function completedUpload(row: UploadRow): CompletedUpload {
 
 export async function completeUpload(id: string): Promise<CompletedUpload> {
   const row = await getUpload(id);
-  if (row.status === "completed") return completedUpload(row);
   const config = getConfig();
+  assertUploadBucket(row, config);
+  if (row.status === "completed") return completedUpload(row);
   if (row.status === "failed") {
+    assertUploadActive(row);
+    // Claim before recovery so an abort cannot race a failed-upload recovery.
+    const [claimed] = await db.update(r2Uploads).set({ status: "completing" })
+      .where(and(eq(r2Uploads.id, id), eq(r2Uploads.status, "failed"))).returning();
+    if (!claimed) throw new ApiError(409, "Upload status changed; refresh before trying again");
     // A previous completion may have succeeded in R2 after a network timeout.
     // Recover only if the final object exists and its size matches exactly.
     try {
@@ -237,10 +251,11 @@ export async function completeUpload(id: string): Promise<CompletedUpload> {
         return completedUpload(recovered);
       }
     } catch { /* fall through */ }
+    await db.update(r2Uploads).set({ status: "failed" }).where(eq(r2Uploads.id, id));
     throw new ApiError(409, "Upload failed verification. Start a new upload.");
   }
   if (row.status !== "pending") throw new ApiError(409, `Upload is ${row.status}. Refresh before trying again.`);
-  if (row.bucket !== config.bucket) throw new ApiError(409, "This upload belongs to a different R2 bucket");
+  assertUploadActive(row);
   const s3 = client(config);
   const parts = await listParts(s3, row);
   const expectedCount = Math.ceil(row.sizeBytes / row.partSize);
@@ -272,13 +287,21 @@ export async function abortUpload(id: string): Promise<void> {
   const row = await getUpload(id);
   if (row.status === "completed") throw new ApiError(409, "Completed files are retained. Deleting a link does not delete its R2 object.");
   if (row.status === "aborted") return;
-  if (row.status === "completing") throw new ApiError(409, "Wait for completion to finish before cancelling");
+  if (row.status === "completing" || row.status === "aborting") throw new ApiError(409, "Wait for the current upload operation to finish before cancelling");
   const config = getConfig();
+  assertUploadBucket(row, config);
+  // Claim the row before touching R2 so a concurrent completion cannot race an abort.
+  const [claimed] = await db.update(r2Uploads).set({ status: "aborting" })
+    .where(and(eq(r2Uploads.id, id), inArray(r2Uploads.status, ["pending", "failed"]))).returning();
+  if (!claimed) throw new ApiError(409, "Upload status changed; refresh before trying again");
   try {
     await client(config).send(new AbortMultipartUploadCommand({ Bucket: row.bucket, Key: row.objectKey, UploadId: row.multipartUploadId }));
   } catch (error) {
     const details = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-    if (details.name !== "NoSuchUpload" && details.$metadata?.httpStatusCode !== 404) storageError(error);
+    if (details.name !== "NoSuchUpload" && details.$metadata?.httpStatusCode !== 404) {
+      await db.update(r2Uploads).set({ status: "failed" }).where(eq(r2Uploads.id, id));
+      storageError(error);
+    }
   }
   await db.update(r2Uploads).set({ status: "aborted" }).where(eq(r2Uploads.id, id));
 }
@@ -288,18 +311,22 @@ function contentDisposition(fileName: string, attachment: boolean): string {
   return `${attachment ? "attachment" : "inline"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 }
 
-export async function signedObjectUrl(row: Pick<UploadRow, "bucket" | "objectKey" | "fileName" | "contentType" | "kind">): Promise<string> {
+export async function signedObjectUrl(row: Pick<UploadRow, "bucket" | "objectKey" | "fileName" | "contentType" | "kind">, method: "GET" | "HEAD" = "GET"): Promise<string> {
   const config = getConfig();
   if (row.bucket !== config.bucket) throw new ApiError(404, "Object is not in the configured bucket");
-  return getSignedUrl(client(config), new GetObjectCommand({
+  const overrides = {
     Bucket: row.bucket, Key: row.objectKey,
     ResponseContentDisposition: contentDisposition(row.fileName, row.kind !== "image"),
     ResponseContentType: row.contentType,
-  }), { expiresIn: config.downloadTtl });
+  };
+  // SigV4 signs the HTTP method. A GET-signed URL is not valid for HEAD.
+  const command = method === "HEAD" ? new HeadObjectCommand(overrides) : new GetObjectCommand(overrides);
+  return getSignedUrl(client(config), command, { expiresIn: config.downloadTtl });
 }
 
 export function r2LinkValues(row: UploadRow, target: UploadTarget) {
   if (row.status !== "completed" || row.kind === "image") throw new ApiError(409, "Complete the video/archive upload before attaching it");
+  assertUploadBucket(row, getConfig());
   if (row.mediaId !== target.mediaId || row.seasonId !== target.seasonId || row.episodeId !== target.episodeId || row.quality !== target.quality) {
     throw new ApiError(400, "The uploaded file belongs to a different media item, episode, or quality");
   }

@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { chromium as playwright } from "playwright-core";
 import chromium from "@sparticuz/chromium";
 import pg from "pg";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const run = Date.now().toString(36);
 const base = process.env.E2E_BASE_URL || "http://127.0.0.1:3001";
@@ -9,10 +14,10 @@ const password = process.env.E2E_ADMIN_PASSWORD || "test-admin-password";
 const dbUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/postgres";
 let cookie = "";
 
-async function api(path, { method = "GET", body, auth = true, redirect = "manual" } = {}) {
+async function api(path, { method = "GET", body, auth = true, redirect = "manual", headers = {} } = {}) {
   const res = await fetch(base + path, {
     method, redirect,
-    headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(auth && cookie ? { Cookie: cookie } : {}) },
+    headers: { "x-e2e-client-ip": "198.51.100.1", ...(body ? { "Content-Type": "application/json" } : {}), ...(auth && cookie ? { Cookie: cookie } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
   const setCookie = res.headers.get("set-cookie");
@@ -42,6 +47,52 @@ ok(await api("/api/health"));
 assert.equal((await api("/api/uploads", { method: "POST", auth: false, body: {} })).res.status, 401);
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password: "wrong" } })).res.status, 401);
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
+ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
+
+// Login hardening: origin checks, JSON content type/size, and DB-backed limits.
+assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { Origin: "https://evil.example" } })).res.status, 403);
+assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "Sec-Fetch-Site": "cross-site" } })).res.status, 403);
+const wrongType = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "text/plain", "x-e2e-client-ip": "198.51.100.2" }, body: JSON.stringify({ password }) });
+assert.equal(wrongType.status, 415);
+const tooLarge = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json", "x-e2e-client-ip": "198.51.100.3" }, body: JSON.stringify({ password: "x".repeat(20000) }) });
+assert.equal(tooLarge.status, 413);
+const limitedIp = "198.51.100.10";
+for (let i = 0; i < 5; i++) {
+  const attempt = await api("/api/auth/login", { method: "POST", auth: false, body: { password: "wrong" }, headers: { "x-e2e-client-ip": limitedIp } });
+  assert.equal(attempt.res.status, 401);
+  assert.equal(attempt.res.headers.get("cache-control"), "no-store");
+}
+const blocked = await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "x-e2e-client-ip": limitedIp, "x-forwarded-for": "203.0.113.99" } });
+assert.equal(blocked.res.status, 429);
+assert.ok(Number(blocked.res.headers.get("retry-after")) >= 1);
+assert.equal(blocked.res.headers.get("cache-control"), "no-store");
+ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "x-e2e-client-ip": "198.51.100.11" } }));
+const concurrentIp = "198.51.100.12";
+const concurrent = await Promise.all(Array.from({ length: 8 }, () => api("/api/auth/login", { method: "POST", auth: false, body: { password: "wrong" }, headers: { "x-e2e-client-ip": concurrentIp } })));
+assert.equal(concurrent.filter((result) => result.res.status === 401).length, 5);
+assert.equal(concurrent.filter((result) => result.res.status === 429).length, 3);
+const malformedIp = "198.51.100.13";
+for (let i = 0; i < 5; i++) {
+  const malformed = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json", "x-e2e-client-ip": malformedIp }, body: "{" });
+  assert.equal(malformed.status, 400);
+}
+assert.equal((await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json", "x-e2e-client-ip": malformedIp }, body: JSON.stringify({ password }) })).status, 429);
+await new Promise((resolve) => setTimeout(resolve, Number(process.env.ADMIN_LOGIN_WINDOW_SECONDS || 5) * 1000 + 300));
+ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "x-e2e-client-ip": limitedIp } }));
+const storedKeys = await pool.query("SELECT key FROM auth_rate_limits");
+assert.ok(storedKeys.rows.every((row) => /^[0-9a-f]{64}$/.test(row.key) && !row.key.includes("198.51.100")));
+assert.ok(storedKeys.rows.every((row) => /^[0-9a-f]{64}$/.test(row.key) && !row.key.includes("198.51.100")));
+await pool.query("ALTER TABLE auth_rate_limits RENAME TO auth_rate_limits_outage");
+try {
+  assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "x-e2e-client-ip": "198.51.100.14" } })).res.status, 503);
+} finally {
+  await pool.query("ALTER TABLE auth_rate_limits_outage RENAME TO auth_rate_limits");
+}
+assert.equal((await api("/api/media", { method: "POST", body: { type: "movie", title: "CSRF" }, headers: { Origin: "https://evil.example" } })).res.status, 403);
+assert.equal((await api("/api/auth/logout", { method: "POST", headers: { "Sec-Fetch-Site": "cross-site" } })).res.status, 403);
+const securityHeaders = await fetch(`${base}/`);
+assert.equal(securityHeaders.headers.get("x-content-type-options"), "nosniff");
+assert.equal(securityHeaders.headers.get("x-frame-options"), "DENY");
 const legacyMovie = ok(await api("/api/media?slug=legacy-movie"));
 assert.equal(legacyMovie.posterUrl, "/uploads/images/legacy.jpg");
 assert.equal(legacyMovie.downloadLinks[0].url, "/uploads/videos/legacy.mp4");
@@ -70,6 +121,21 @@ assert.equal(signed.status, 302);
 const signedUrl = signed.headers.get("location"); assert.ok(signedUrl.includes("X-Amz-Signature"));
 const downloaded = await fetch(signedUrl); assert.equal(downloaded.status, 200);
 assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), videoBytes);
+const headRedirect = await fetch(`${base}/api/download?id=${r2Link.id}`, { method: "HEAD", redirect: "manual" });
+assert.equal(headRedirect.status, 302);
+const headSigned = headRedirect.headers.get("location");
+assert.equal((await fetch(headSigned, { method: "HEAD" })).status, 200);
+assert.equal((await fetch(signedUrl, { method: "HEAD" })).status, 403, "GET-signed URL must not authorize HEAD");
+const objectUrl = new URL(signedUrl);
+assert.equal((await fetch(`${objectUrl.origin}${objectUrl.pathname}`)).status, 403, "unsigned object access must fail");
+const tampered = new URL(signedUrl); tampered.searchParams.set("X-Amz-Signature", "0".repeat(64));
+assert.equal((await fetch(tampered)).status, 403);
+const shortLived = new S3Client({ region: "auto", endpoint: process.env.R2_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }, requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" });
+const expiringUrl = await getSignedUrl(shortLived, new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: video.objectKey }), { expiresIn: 1 });
+assert.equal((await fetch(expiringUrl)).status, 200);
+await new Promise((resolve) => setTimeout(resolve, 1200));
+assert.equal((await fetch(expiringUrl)).status, 403, "expired signed URL must fail");
+assert.equal((await api(`/api/image?upload=${video.id}`)).res.status, 404, "video must not be exposed through image endpoint");
 
 // Poster image through private R2
 const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082", "hex");
@@ -105,9 +171,59 @@ const cancelled = ok(await api("/api/uploads", { method: "POST", body: { kind: "
 ok(await api(`/api/uploads/${cancelled.id}`, { method: "DELETE" }));
 assert.equal((await api(`/api/uploads/${cancelled.id}/complete`, { method: "POST" })).res.status, 409);
 
+// Upload session expiry, bucket binding, and transition locks.
+const expired = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "expired.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET expires_at = now() - interval '1 second' WHERE id=$1", [expired.id]);
+assert.equal((await api(`/api/uploads/${expired.id}`)).res.status, 410);
+assert.equal((await api(`/api/uploads/${expired.id}/complete`, { method: "POST" })).res.status, 410);
+ok(await api(`/api/uploads/${expired.id}`, { method: "DELETE" }));
+const wrongBucket = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "wrong-bucket.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET bucket='other-bucket' WHERE id=$1", [wrongBucket.id]);
+assert.equal((await api(`/api/uploads/${wrongBucket.id}`)).res.status, 409);
+assert.equal((await api(`/api/uploads/${wrongBucket.id}/complete`, { method: "POST" })).res.status, 409);
+assert.equal((await api(`/api/uploads/${wrongBucket.id}`, { method: "DELETE" })).res.status, 409);
+await pool.query("UPDATE r2_uploads SET bucket=$1 WHERE id=$2", [process.env.R2_BUCKET_NAME, wrongBucket.id]);
+ok(await api(`/api/uploads/${wrongBucket.id}`, { method: "DELETE" }));
+const locked = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "locked.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET status='completing' WHERE id=$1", [locked.id]);
+assert.equal((await api(`/api/uploads/${locked.id}`, { method: "DELETE" })).res.status, 409);
+await pool.query("UPDATE r2_uploads SET status='aborting' WHERE id=$1", [locked.id]);
+assert.equal((await api(`/api/uploads/${locked.id}/complete`, { method: "POST" })).res.status, 409);
+await pool.query("UPDATE r2_uploads SET status='pending' WHERE id=$1", [locked.id]);
+ok(await api(`/api/uploads/${locked.id}`, { method: "DELETE" }));
+await pool.query("UPDATE r2_uploads SET bucket='other-bucket' WHERE id=$1", [video.id]);
+assert.equal((await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "1080p", r2UploadId: video.id } })).res.status, 409);
+assert.equal((await fetch(`${base}/api/download?id=${r2Link.id}`, { redirect: "manual" })).status, 404);
+await pool.query("UPDATE r2_uploads SET bucket=$1 WHERE id=$2", [process.env.R2_BUCKET_NAME, video.id]);
+
+// Direct download URLs must already be recorded; no open redirect.
+assert.equal((await fetch(`${base}/api/download?url=${encodeURIComponent("https://evil.example/phish")}`, { redirect: "manual" })).status, 404);
+const externalLink = ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, url: "https://example.com/recorded.mp4" } }), 201);
+const externalRedirect = await fetch(`${base}/api/download?id=${externalLink.id}`, { redirect: "manual" });
+assert.equal(externalRedirect.status, 302); assert.equal(externalRedirect.headers.get("location"), "https://example.com/recorded.mp4");
+assert.equal((await fetch(`${base}/api/download?id=${externalLink.id}&url=${encodeURIComponent("https://example.com/recorded.mp4")}`, { redirect: "manual" })).status, 400);
+
+// Poster/thumbnail and category input validation.
+assert.equal((await api("/api/media", { method: "POST", body: { type: "movie", title: "Unsafe poster", posterUrl: "javascript:alert(1)" } })).res.status, 400);
+assert.equal((await api("/api/media", { method: "POST", body: { type: "movie", title: "Private poster", posterUrl: "http://169.254.169.254/latest" } })).res.status, 400);
+assert.equal((await api(`/api/media/${movie.id}`, { method: "PATCH", body: { thumbnailUrl: "http://127.0.0.1/x" } })).res.status, 400);
+assert.equal((await api("/api/categories", { method: "POST", body: { name: { bad: true } } })).res.status, 400);
+assert.equal((await api("/api/categories/not-a-number", { method: "PATCH", body: { name: "Valid" } })).res.status, 400);
+assert.equal((await api("/api/uploads", { method: "POST", auth: false, body: {} })).res.status, 401);
+assert.equal((await api(`/api/uploads/${video.id}`, { auth: false })).res.status, 401);
+assert.equal((await api(`/api/uploads/${video.id}`, { method: "DELETE", auth: false })).res.status, 401);
+assert.equal((await api(`/api/uploads/${video.id}/complete`, { method: "POST", auth: false })).res.status, 401);
+
 // Browser admin flow: login, create anime season, batch episodes, external quality link.
+if (process.platform === "linux") {
+  const { inflate, setupLambdaEnvironment } = await import("@sparticuz/chromium");
+  const bin = fileURLToPath(new URL("../node_modules/@sparticuz/chromium/bin/al2023.tar.br", import.meta.url));
+  await inflate(bin);
+  setupLambdaEnvironment(path.join(os.tmpdir(), "al2023", "lib"));
+}
 const browser = await playwright.launch({ executablePath: await chromium.executablePath(), args: chromium.args, headless: true });
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { "x-e2e-client-ip": "198.51.100.1" } });
+const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 await page.goto(`${base}/admin`);
@@ -148,4 +264,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE url='/uploads/videos/legacy.mp4'");
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: auth, legacy files/ranges, Telegram, R2 multipart video/image/archive, signed downloads, seasons, batch episodes, quality links, browser admin, object retention.");
+console.log("E2E passed: auth/rate limits/CSRF, legacy files/ranges, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards, seasons, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");

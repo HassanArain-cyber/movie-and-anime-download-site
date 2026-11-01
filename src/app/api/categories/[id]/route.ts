@@ -4,40 +4,30 @@ import { categories } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { slugify } from "@/lib/utils";
+import { ApiError, errorResponse, positiveId, readJson, text } from "@/lib/validation";
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authCheck = await requireAdmin();
-  if (authCheck !== true) return authCheck;
-  const { id } = await params;
+type Context = { params: Promise<{ id: string }> };
+
+export async function PATCH(req: Request, { params }: Context) {
+  const auth = await requireAdmin(req);
+  if (auth !== true) return auth;
   try {
-    const { name } = await req.json();
-    const [updated] = await db
-      .update(categories)
-      .set({ name, slug: slugify(name) })
-      .where(eq(categories.id, Number(id)))
-      .returning();
+    const id = positiveId((await params).id);
+    const body = await readJson(req);
+    const name = text(body.name, "Name", 100, true)!;
+    const [updated] = await db.update(categories).set({ name, slug: slugify(name) }).where(eq(categories.id, id)).returning();
+    if (!updated) throw new ApiError(404, "Category not found");
     return NextResponse.json(updated);
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authCheck = await requireAdmin();
-  if (authCheck !== true) return authCheck;
-  const { id } = await params;
+export async function DELETE(req: Request, { params }: Context) {
+  const auth = await requireAdmin(req);
+  if (auth !== true) return auth;
   try {
-    await db.delete(categories).where(eq(categories.id, Number(id)));
+    const id = positiveId((await params).id);
+    const [deleted] = await db.delete(categories).where(eq(categories.id, id)).returning({ id: categories.id });
+    if (!deleted) throw new ApiError(404, "Category not found");
     return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }

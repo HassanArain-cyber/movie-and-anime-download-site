@@ -78,3 +78,14 @@ The E2E suite covered:
 - No live production database was migrated. The user chose to connect the correct database later.
 - Before production use: set `DATABASE_URL`, `ADMIN_PASSWORD`, and the `R2_*` variables; configure bucket CORS; run `npm run db:migrate`; then verify a small real upload/download in the admin panel.
 - Existing local files are preserved but are not automatically migrated to R2. If the current host has an ephemeral filesystem, keep a persistent copy or re-upload legacy files through the admin panel.
+
+
+## Follow-up security hardening (current PR)
+
+- Added PostgreSQL-backed admin login rate limiting with atomic counters, HMAC-only keys, trusted-proxy opt-in, `Retry-After`, and fail-closed database behavior.
+- Added browser origin checks to admin mutations/login/logout, streaming JSON size limits, and consistent `no-store` API error/auth headers.
+- Bound R2 upload sessions to expiry and bucket, added atomic abort/recovery transition locks, and fixed HEAD-signed downloads.
+- Restricted direct download redirects to recorded URLs and validated new poster/thumbnail URLs.
+- Restricted R2 endpoint overrides to HTTPS (HTTP loopback only for tests).
+- Added `docs/SECURITY_REVIEW.md`, security unit tests, expanded E2E assertions, a signature-checking R2 mock, and a disposable-service E2E runner.
+- GitHub Actions now runs both the validation job and the browser/API E2E job using disposable PostgreSQL 16 and loopback mock R2 only.

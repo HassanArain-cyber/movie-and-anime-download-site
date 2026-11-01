@@ -103,6 +103,16 @@ export const r2Uploads = pgTable("r2_uploads", {
   index("r2_uploads_status_expires_idx").on(table.status, table.expiresAt),
 ]);
 
+// Shared, atomic login-attempt counters. Keys are HMACs, never raw IP addresses.
+// The table contains no passwords, cookies, or R2 credentials.
+export const authRateLimits = pgTable("auth_rate_limits", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  attempts: integer("attempts").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  index("auth_rate_limits_expires_at_idx").on(table.expiresAt),
+]);
+
 export const mediaRelations = relations(media, ({ one, many }) => ({
   category: one(categories, { fields: [media.categoryId], references: [categories.id] }),
   seasons: many(seasons),

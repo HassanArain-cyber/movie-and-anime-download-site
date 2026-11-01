@@ -9,13 +9,13 @@ await pool.query(`INSERT INTO categories (name, slug) VALUES ('Legacy', 'legacy'
 const cat = await pool.query(`SELECT id FROM categories WHERE slug='legacy'`);
 await pool.query(`INSERT INTO media (type,title,slug,description,poster_url,year,category_id) VALUES ('movie','Legacy Movie','legacy-movie','Existing local record','/uploads/images/legacy.jpg',2000,$1) ON CONFLICT (slug) DO NOTHING`, [cat.rows[0].id]);
 const movie = await pool.query(`SELECT id FROM media WHERE slug='legacy-movie'`);
-await pool.query(`INSERT INTO download_links (media_id,label,url,file_size,is_uploaded) VALUES ($1,'720p','/uploads/videos/legacy.mp4','18 B',true)`, [movie.rows[0].id]);
+await pool.query(`INSERT INTO download_links (media_id,label,url,file_size,is_uploaded) SELECT $1,'720p','/uploads/videos/legacy.mp4','18 B',true WHERE NOT EXISTS (SELECT 1 FROM download_links WHERE url='/uploads/videos/legacy.mp4')`, [movie.rows[0].id]);
 await pool.query(`INSERT INTO media (type,title,slug,description,year) VALUES ('anime','Legacy Anime','legacy-anime','Existing anime record',2001) ON CONFLICT (slug) DO NOTHING`);
 const anime = await pool.query(`SELECT id FROM media WHERE slug='legacy-anime'`);
-await pool.query(`INSERT INTO seasons (media_id,season_number,name) VALUES ($1,1,'Legacy Season')`, [anime.rows[0].id]);
+await pool.query(`INSERT INTO seasons (media_id,season_number,name) SELECT $1,1,'Legacy Season' WHERE NOT EXISTS (SELECT 1 FROM seasons WHERE media_id=$1 AND season_number=1)`, [anime.rows[0].id]);
 const season = await pool.query(`SELECT id FROM seasons WHERE media_id=$1 AND season_number=1`, [anime.rows[0].id]);
-await pool.query(`INSERT INTO episodes (media_id,season_id,episode_number,title,duration) VALUES ($1,$2,1,'Legacy Episode','24m')`, [anime.rows[0].id, season.rows[0].id]);
+await pool.query(`INSERT INTO episodes (media_id,season_id,episode_number,title,duration) SELECT $1,$2,1,'Legacy Episode','24m' WHERE NOT EXISTS (SELECT 1 FROM episodes WHERE season_id=$2 AND episode_number=1)`, [anime.rows[0].id, season.rows[0].id]);
 const ep = await pool.query(`SELECT id FROM episodes WHERE season_id=$1 AND episode_number=1`, [season.rows[0].id]);
-await pool.query(`INSERT INTO download_links (media_id,episode_id,label,url) VALUES ($1,$2,'1080p','https://t.me/example/1')`, [anime.rows[0].id, ep.rows[0].id]);
+await pool.query(`INSERT INTO download_links (media_id,episode_id,label,url) SELECT $1,$2,'1080p','https://t.me/example/1' WHERE NOT EXISTS (SELECT 1 FROM download_links WHERE episode_id=$2 AND url='https://t.me/example/1')`, [anime.rows[0].id, ep.rows[0].id]);
 console.log("Seeded legacy movie/anime records and local files");
 await pool.end();

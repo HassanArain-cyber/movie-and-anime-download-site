@@ -12,7 +12,8 @@
     "db:studio": "drizzle-kit studio",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "node tests/e2e.mjs",
-    "r2:cleanup": "tsx scripts/r2-cleanup.ts"
+    "r2:cleanup": "tsx scripts/r2-cleanup.ts",
+    "test:e2e:ci": "node tests/run-e2e.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",
