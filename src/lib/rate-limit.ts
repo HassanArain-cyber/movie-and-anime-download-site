@@ -23,7 +23,7 @@ async function consume(scope: string, limit: number, windowSeconds: number): Pro
     INSERT INTO auth_rate_limits (key, attempts, expires_at)
     VALUES (${key}, 1, clock_timestamp() + (${windowSeconds} * interval '1 second'))
     ON CONFLICT (key) DO UPDATE SET
-      attempts = CASE WHEN auth_rate_limits.expires_at <= clock_timestamp() THEN 1 ELSE auth_rate_limits.attempts + 1 END,
+      attempts = CASE WHEN auth_rate_limits.expires_at <= clock_timestamp() THEN 1 ELSE LEAST(auth_rate_limits.attempts + 1, ${limit + 1}) END,
       expires_at = CASE WHEN auth_rate_limits.expires_at <= clock_timestamp()
         THEN clock_timestamp() + (${windowSeconds} * interval '1 second')
         ELSE auth_rate_limits.expires_at END

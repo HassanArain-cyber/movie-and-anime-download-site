@@ -105,7 +105,7 @@ function isPrivateHostname(hostname: string): boolean {
     return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
   }
   if (version === 6) {
-    return host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:") || host.startsWith("::ffff:");
+    return host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || /^fe[89ab][0-9a-f]:/i.test(host) || host.startsWith("::ffff:");
   }
   return false;
 }
@@ -114,7 +114,21 @@ function isPrivateHostname(hostname: string): boolean {
 export function imageUrl(value: unknown, name = "Image URL"): string | null {
   const result = text(value, name, 8192);
   if (!result) return null;
-  if (result.startsWith("/uploads/") && !result.includes("\\") && !result.includes("\0")) return result;
+  if (result.startsWith("/uploads/")) {
+    // Reject traversal at every decoding layer so %252e%252e cannot slip past
+    // a single decode and later be normalized by a static file server.
+    let decoded = result;
+    for (let i = 0; i < 8; i++) {
+      if (decoded.includes("\\") || decoded.includes("\0") || decoded.split("/").some((part) => part === "..")) {
+        throw new ApiError(400, `${name} has an invalid legacy path`);
+      }
+      let next: string;
+      try { next = decodeURIComponent(decoded); } catch { throw new ApiError(400, `${name} has an invalid legacy path`); }
+      if (next === decoded) return result;
+      decoded = next;
+    }
+    throw new ApiError(400, `${name} has an invalid legacy path`);
+  }
   if (result.startsWith("/api/image?")) {
     const params = new URL(result, "http://local").searchParams;
     const upload = params.get("upload");

@@ -45,7 +45,7 @@ Bucket → Settings → CORS Policy. Replace the origin with your deployed site 
 [
   {
     "AllowedOrigins": ["https://your-site.example"],
-    "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+    "AllowedMethods": ["PUT"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag", "Content-Length"],
     "MaxAgeSeconds": 3600
@@ -53,7 +53,7 @@ Bucket → Settings → CORS Policy. Replace the origin with your deployed site 
 ]
 ```
 
-The browser uploads parts with `PUT`. Downloads are ordinary navigations/redirects to signed R2 URLs, so they do not require CORS. Do not use `*` for a production admin origin unless you intentionally accept any site.
+The browser uploads parts with `PUT`; the browser does not need cross-origin `GET`, `POST`, or `DELETE` access for the current UI. Downloads are ordinary navigations/redirects to signed R2 URLs, so they do not require CORS. If you later add browser-side `fetch()` downloads, add only the methods you actually use. Do not use `*` for a production admin origin unless you intentionally accept any site. CORS is not an authorization control: anyone holding a valid presigned URL can use it from any client until it expires.
 
 ## 4. Environment variables
 
@@ -85,7 +85,9 @@ R2_DOWNLOAD_URL_TTL_SECONDS=3600
 R2_UPLOAD_URL_TTL_SECONDS=21600
 ```
 
-`R2_PART_SIZE_BYTES` must be at least 5 MiB. The app automatically increases part size for very large files so the 10,000-part limit is respected. Video/archive uploads default to a 10 GiB per-file limit; images default to 10 MiB.
+`R2_PART_SIZE_BYTES` must be between 5 MiB and 2047 MiB (the largest whole-MiB value that fits the PostgreSQL `part_size` integer column). The app automatically increases part size for very large files so the 10,000-part limit is respected. Video/archive uploads default to a 10 GiB per-file limit; images default to 10 MiB. The configured maximum video/archive size may be raised up to 5 TiB, but real R2 account/object limits and browser/network behavior must be verified before doing so.
+
+Upload sessions last 24 hours and slide forward when part URLs are refreshed. Presigned part URLs default to 6 hours. Completion/abort operations hold a 10-minute database lease; a crashed operation can be recovered or cleaned up after the lease expires. The browser uploads at most 3 parts concurrently and retries a failed part up to 3 times. Resume requires the same file size, kind, target, and quality; choose the same file again.
 
 ## 5. Migrate and deploy
 
@@ -96,7 +98,9 @@ npm run build
 npm start
 ```
 
-Back up the database before migrating. The migration is additive and does not rewrite existing URLs. The app does not auto-migrate on startup.
+Back up the database before migrating, for example with `pg_dump` against the correct database. The migrations are additive and do not rewrite existing URLs. The app does not auto-migrate on startup. `0003_upload_operation_lease` adds nullable operation-lease columns to `r2_uploads`.
+
+Migrations run in a transaction. Index/constraint creation can lock tables, so use a maintenance window for a large existing database. The upgrade path is covered by `node tests/migration-upgrade.mjs` against a disposable loopback database; it is not a substitute for a production backup and restore rehearsal.
 
 ## 6. Verify in the admin panel
 
@@ -117,7 +121,9 @@ Incomplete multipart uploads can consume storage. Configure an R2 lifecycle rule
 npm run r2:cleanup
 ```
 
-The cleanup script aborts only expired pending uploads recorded in `r2_uploads`. It never deletes completed objects. Deleting a download link, episode, season, or media row in the admin panel also does not delete R2 objects.
+The cleanup script is bucket-scoped and only touches rows in `R2_BUCKET_NAME`. It aborts expired `pending`/`failed` sessions and recovers or aborts stale `completing`/`aborting` sessions whose operation lease has expired. Before aborting it checks whether the final object already exists; a completed object is recovered, never deleted. Active leases are skipped. Run it periodically (for example daily) and configure an R2 lifecycle rule to abort incomplete multipart uploads after several days as a backstop.
+
+Deleting a download link, episode, season, or media row in the admin panel does not delete R2 objects. Completed objects are retained until you intentionally remove them in Cloudflare. This preserves data but means orphaned objects can accumulate; review the bucket periodically.
 
 ## Legacy local files
 
@@ -131,4 +137,20 @@ Existing `/uploads/...` links still work through `/api/download` if the files ex
 - External links are restricted to HTTP(S), Telegram (`tg:`), and magnet URLs. `javascript:`/`data:` links are not rendered as clickable downloads.
 - Local legacy downloads are path-contained and must correspond to a recorded database URL. Direct `/api/download?url=...` redirects also require a recorded URL.
 - Upload sessions expire and are bound to the configured bucket. HEAD downloads use HEAD-signed URLs.
-- New poster/thumbnail URLs reject unsafe schemes and private-network targets.
+- New poster/thumbnail URLs reject unsafe schemes and private-network IP literals. The image optimizer is restricted to local `/uploads/**`; external/R2 images are rendered unoptimized. Hostname validation is not a DNS rebinding defense, so do not re-enable arbitrary remote optimization without a separate egress control.
+- Legacy files under `public/uploads` are still served directly by the web server if present. They are not made private by this PR. Re-upload sensitive legacy media to R2 and remove the public copies through a separate, backed-up migration if needed.
+- Real Cloudflare IAM, CORS, lifecycle rules, and very-large-file behavior are not verified by the local mock. Before production use, test a small real upload/download, a denied unsigned request, a cross-origin browser upload from the deployed origin, and a representative large file.
+
+## Rollback considerations
+
+The schema changes are additive: nullable columns and new tables. An older application can still read/write the original columns after the migrations, so do **not** drop the new columns or tables as a first rollback step. Keep `ADMIN_PASSWORD` unchanged if you need existing admin sessions and rate-limit keys to remain valid.
+
+Rolling back application code does not make new R2 content understandable to the old code. Links stored as `r2:///...` and posters stored as `/api/image?upload=...` require the new download/image routes. If you roll back after creating R2 links, those new links will not work until you roll forward or manually replace them with legacy/external URLs. Legacy `/uploads/...`, Telegram, and external HTTP(S) links remain compatible.
+
+Recommended rollback order:
+
+1. Stop admin writes/uploads.
+2. Back up the current database and record the deployed commit.
+3. Redeploy the previous application commit without dropping schema.
+4. Verify legacy movies/anime/episodes/posters/downloads.
+5. If R2 links were already created, either roll forward again or replace those links deliberately. Do not delete R2 objects as part of rollback.

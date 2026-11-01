@@ -47,8 +47,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Apply additive migrations
-        run: npm run db:migrate
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit all dependencies for high/critical issues
+        run: npm audit --audit-level=high
+
+      - name: Upgrade from pre-PR schema with legacy rows
+        run: node tests/migration-upgrade.mjs
 
       - name: Verify migration idempotency
         run: npm run db:migrate

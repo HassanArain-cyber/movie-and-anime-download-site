@@ -7,6 +7,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync = promisify(execFile);
 
 const run = Date.now().toString(36);
 const base = process.env.E2E_BASE_URL || "http://127.0.0.1:3001";
@@ -81,7 +84,6 @@ await new Promise((resolve) => setTimeout(resolve, Number(process.env.ADMIN_LOGI
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "x-e2e-client-ip": limitedIp } }));
 const storedKeys = await pool.query("SELECT key FROM auth_rate_limits");
 assert.ok(storedKeys.rows.every((row) => /^[0-9a-f]{64}$/.test(row.key) && !row.key.includes("198.51.100")));
-assert.ok(storedKeys.rows.every((row) => /^[0-9a-f]{64}$/.test(row.key) && !row.key.includes("198.51.100")));
 await pool.query("ALTER TABLE auth_rate_limits RENAME TO auth_rate_limits_outage");
 try {
   assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "x-e2e-client-ip": "198.51.100.14" } })).res.status, 503);
@@ -95,13 +97,35 @@ assert.equal(securityHeaders.headers.get("x-content-type-options"), "nosniff");
 assert.equal(securityHeaders.headers.get("x-frame-options"), "DENY");
 const legacyMovie = ok(await api("/api/media?slug=legacy-movie"));
 assert.equal(legacyMovie.posterUrl, "/uploads/images/legacy.jpg");
-assert.equal(legacyMovie.downloadLinks[0].url, "/uploads/videos/legacy.mp4");
-const legacyDownload = await fetch(`${base}/api/download?id=${legacyMovie.downloadLinks[0].id}`, { redirect: "manual" });
+const primaryLegacy = legacyMovie.downloadLinks.find((link) => link.url === "/uploads/videos/legacy.mp4");
+assert.ok(primaryLegacy, "primary legacy link was seeded");
+assert.equal(primaryLegacy.url, "/uploads/videos/legacy.mp4");
+const legacyDownload = await fetch(`${base}/api/download?id=${primaryLegacy.id}`, { redirect: "manual" });
 assert.equal(legacyDownload.status, 200);
 assert.equal(await legacyDownload.text(), "legacy-video-bytes");
-const range = await fetch(`${base}/api/download?id=${legacyMovie.downloadLinks[0].id}`, { headers: { Range: "bytes=0-5" } });
+const range = await fetch(`${base}/api/download?id=${primaryLegacy.id}`, { headers: { Range: "bytes=0-5" } });
 assert.equal(range.status, 206); assert.equal(await range.text(), "legacy");
 assert.equal((await fetch(`${base}/api/download?url=/uploads/../../package.json`)).status, 404);
+assert.equal((await fetch(`${base}/api/download?url=/uploads/../../package.json`)).status, 404);
+const encodedLegacy = legacyMovie.downloadLinks.find((link) => link.url === "/uploads/videos/legacy%20space.mp4");
+assert.ok(encodedLegacy, "encoded legacy link was seeded");
+const encodedDownload = await fetch(`${base}/api/download?id=${encodedLegacy.id}`);
+assert.equal(encodedDownload.status, 200); assert.equal(await encodedDownload.text(), "encoded-legacy");
+const emptyLegacy = legacyMovie.downloadLinks.find((link) => link.url === "/uploads/videos/empty.mp4");
+const emptyDownload = await fetch(`${base}/api/download?id=${emptyLegacy.id}`);
+assert.equal(emptyDownload.status, 200); assert.equal((await emptyDownload.arrayBuffer()).byteLength, 0);
+const legacyHead = await fetch(`${base}/api/download?id=${primaryLegacy.id}`, { method: "HEAD" });
+assert.equal(legacyHead.status, 200); assert.equal(legacyHead.headers.get("content-length"), "18");
+const optimizedLegacy = await fetch(`${base}/_next/image?url=${encodeURIComponent("/uploads/images/legacy.jpg")}&w=64&q=75`);
+assert.equal(optimizedLegacy.status, 200, "legacy local poster optimization must keep working");
+const optimizedRemote = await fetch(`${base}/_next/image?url=${encodeURIComponent("https://example.com/poster.jpg")}&w=64&q=75`);
+assert.equal(optimizedRemote.status, 400, "server-side optimizer must not fetch arbitrary remote URLs");
+const optimizedPrivate = await fetch(`${base}/_next/image?url=${encodeURIComponent("http://169.254.169.254/latest/meta-data")}&w=64&q=75`);
+assert.equal(optimizedPrivate.status, 400);
+for (const path of ["/uploads/%2e%2e/package.json", "/uploads/%252e%252e/package.json"]) {
+  const traversal = await fetch(`${base}/_next/image?url=${encodeURIComponent(path)}&w=64&q=75`);
+  assert.ok(traversal.status === 400 || traversal.status === 404, `optimizer must not escape /uploads: ${path}`);
+}
 
 // Create movie with separate qualities and Telegram support
 const movie = ok(await api("/api/media", { method: "POST", body: { type: "movie", title: `E2E Movie ${run}`, year: 2026 } }), 201);
@@ -137,6 +161,12 @@ await new Promise((resolve) => setTimeout(resolve, 1200));
 assert.equal((await fetch(expiringUrl)).status, 403, "expired signed URL must fail");
 assert.equal((await api(`/api/image?upload=${video.id}`)).res.status, 404, "video must not be exposed through image endpoint");
 
+const resumeTarget = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "resume-target.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+assert.deepEqual(resumeTarget.target, { mediaId: movie.id, seasonId: null, episodeId: null, quality: "720p" });
+const refreshedTarget = ok(await api(`/api/uploads/${resumeTarget.id}`));
+assert.deepEqual(refreshedTarget.target, resumeTarget.target);
+ok(await api(`/api/uploads/${resumeTarget.id}`, { method: "DELETE" }));
+
 // Poster image through private R2
 const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082", "hex");
 const image = await uploadFile({ kind: "image", fileName: "poster.png", bytes: png, contentType: "image/png", target: { mediaId: movie.id } });
@@ -158,6 +188,7 @@ const ep1 = batch.episodes[0];
 const epVideo = await uploadFile({ kind: "video", fileName: "S01E01-720p.mp4", bytes: Buffer.alloc(1024, 3), contentType: "video/mp4", target: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p" } });
 ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p", r2UploadId: epVideo.id } }), 201);
 assert.equal((await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, seasonId: season.id, url: "https://example.com/x" } })).res.status, 400);
+assert.equal((await api(`/api/media/${anime.id}`, { method: "PATCH", body: { type: "movie" } })).res.status, 409, "anime with seasons must not be hidden by a type change");
 const full = ok(await api(`/api/media/${anime.id}`));
 assert.equal(full.seasons[0].downloadLinks.length, 1);
 assert.equal(full.seasons[0].episodes[0].downloadLinks[0].quality, "720p");
@@ -185,12 +216,44 @@ assert.equal((await api(`/api/uploads/${wrongBucket.id}`, { method: "DELETE" }))
 await pool.query("UPDATE r2_uploads SET bucket=$1 WHERE id=$2", [process.env.R2_BUCKET_NAME, wrongBucket.id]);
 ok(await api(`/api/uploads/${wrongBucket.id}`, { method: "DELETE" }));
 const locked = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "locked.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
-await pool.query("UPDATE r2_uploads SET status='completing' WHERE id=$1", [locked.id]);
+await pool.query("UPDATE r2_uploads SET status='completing', operation_expires_at=now() + interval '10 minutes' WHERE id=$1", [locked.id]);
 assert.equal((await api(`/api/uploads/${locked.id}`, { method: "DELETE" })).res.status, 409);
-await pool.query("UPDATE r2_uploads SET status='aborting' WHERE id=$1", [locked.id]);
+await pool.query("UPDATE r2_uploads SET status='aborting', operation_expires_at=now() + interval '10 minutes' WHERE id=$1", [locked.id]);
 assert.equal((await api(`/api/uploads/${locked.id}/complete`, { method: "POST" })).res.status, 409);
-await pool.query("UPDATE r2_uploads SET status='pending' WHERE id=$1", [locked.id]);
+await pool.query("UPDATE r2_uploads SET status='pending', operation_expires_at=NULL, operation_id=NULL WHERE id=$1", [locked.id]);
 ok(await api(`/api/uploads/${locked.id}`, { method: "DELETE" }));
+// Crashed transition leases are recoverable, and cleanup only touches the configured bucket.
+const staleCompleting = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "stale-completing.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET status='completing', operation_expires_at=now() - interval '1 minute' WHERE id=$1", [staleCompleting.id]);
+const staleComplete = await api(`/api/uploads/${staleCompleting.id}/complete`, { method: "POST" });
+assert.equal(staleComplete.res.status, 400, "stale completing with no parts must fail verification, not stay locked");
+assert.equal((await api(`/api/uploads/${staleCompleting.id}`, { method: "DELETE" })).res.status, 200);
+const cleanupPending = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "cleanup-pending.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET expires_at=now() - interval '1 second' WHERE id=$1", [cleanupPending.id]);
+const cleanupFailed = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "cleanup-failed.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET status='failed', expires_at=now() - interval '1 second' WHERE id=$1", [cleanupFailed.id]);
+const cleanupActiveLease = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "cleanup-active-lease.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET status='completing', operation_expires_at=now() + interval '10 minutes' WHERE id=$1", [cleanupActiveLease.id]);
+const cleanupRecovered = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "cleanup-recovered.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+for (const part of cleanupRecovered.parts) {
+  const res = await fetch(part.url, { method: "PUT", body: Buffer.alloc(part.partNumber === cleanupRecovered.parts.length ? cleanupRecovered.sizeBytes - (part.partNumber - 1) * cleanupRecovered.partSizeBytes : cleanupRecovered.partSizeBytes, 4) });
+  assert.ok(res.ok);
+}
+ok(await api(`/api/uploads/${cleanupRecovered.id}/complete`, { method: "POST" }));
+await pool.query("UPDATE r2_uploads SET status='completing', operation_expires_at=now() - interval '1 minute' WHERE id=$1", [cleanupRecovered.id]);
+const cleanupOtherBucket = ok(await api("/api/uploads", { method: "POST", body: { kind: "video", fileName: "cleanup-other.mp4", sizeBytes: 1024, contentType: "video/mp4", mediaId: movie.id, quality: "720p" } }), 201);
+await pool.query("UPDATE r2_uploads SET bucket='other-bucket', expires_at=now() - interval '1 second' WHERE id=$1", [cleanupOtherBucket.id]);
+const cleanupRun = await execFileAsync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/r2-cleanup.ts"], { env: process.env });
+assert.match(cleanupRun.stdout, /2 expired incomplete upload\(s\) aborted, 1 completed upload\(s\) recovered/);
+assert.equal((await pool.query("SELECT status FROM r2_uploads WHERE id=$1", [cleanupPending.id])).rows[0].status, "aborted");
+assert.equal((await pool.query("SELECT status FROM r2_uploads WHERE id=$1", [cleanupFailed.id])).rows[0].status, "aborted");
+assert.equal((await pool.query("SELECT status FROM r2_uploads WHERE id=$1", [cleanupActiveLease.id])).rows[0].status, "completing");
+await pool.query("UPDATE r2_uploads SET status='pending', operation_expires_at=NULL, operation_id=NULL WHERE id=$1", [cleanupActiveLease.id]);
+ok(await api(`/api/uploads/${cleanupActiveLease.id}`, { method: "DELETE" }));
+assert.equal((await pool.query("SELECT status FROM r2_uploads WHERE id=$1", [cleanupRecovered.id])).rows[0].status, "completed");
+assert.equal((await pool.query("SELECT status FROM r2_uploads WHERE id=$1", [cleanupOtherBucket.id])).rows[0].status, "pending");
+await pool.query("UPDATE r2_uploads SET bucket=$1 WHERE id=$2", [process.env.R2_BUCKET_NAME, cleanupOtherBucket.id]);
+ok(await api(`/api/uploads/${cleanupOtherBucket.id}`, { method: "DELETE" }));
 await pool.query("UPDATE r2_uploads SET bucket='other-bucket' WHERE id=$1", [video.id]);
 assert.equal((await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "1080p", r2UploadId: video.id } })).res.status, 409);
 assert.equal((await fetch(`${base}/api/download?id=${r2Link.id}`, { redirect: "manual" })).status, 404);
@@ -261,7 +324,7 @@ await browser.close();
 // Existing records are still present; migrations are additive.
 const after = await pool.query("SELECT (SELECT count(*) FROM media) AS media, (SELECT count(*) FROM download_links) AS links");
 assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
-const legacyStill = await pool.query("SELECT url FROM download_links WHERE url='/uploads/videos/legacy.mp4'");
+const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: auth/rate limits/CSRF, legacy files/ranges, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards, seasons, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");
+console.log("E2E passed: auth/rate limits/CSRF, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");

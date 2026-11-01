@@ -4,12 +4,13 @@ const nextConfig: NextConfig = {
   // The Arena live preview is served from an e2b.app subdomain in development.
   allowedDevOrigins: ["*.e2b.app", "127.0.0.1", "localhost"],
   images: {
-    // Existing external poster URLs remain supported. R2 posters are served
-    // through /api/image as short-lived signed redirects and are unoptimized.
-    remotePatterns: [
-      { protocol: "https", hostname: "**" },
-      { protocol: "http", hostname: "**" },
-    ],
+    // External and R2 posters are rendered unoptimized by the UI. Do not expose
+    // the server-side optimizer as an arbitrary URL fetcher (SSRF surface).
+    remotePatterns: [],
+    localPatterns: [{ pathname: "/uploads/**" }],
+    dangerouslyAllowSVG: false,
+    contentDispositionType: "inline",
+    maximumRedirects: 0,
   },
   async headers() {
     return [{

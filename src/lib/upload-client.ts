@@ -24,13 +24,15 @@ function putPart(part: InitializedUpload["parts"][number], blob: Blob, signal: A
     xhr.withCredentials = false;
     for (const [key, value] of Object.entries(part.headers)) xhr.setRequestHeader(key, value);
     xhr.upload.onprogress = (event) => onLoaded(event.lengthComputable ? event.loaded : 0);
-    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 part upload failed (${xhr.status}). Check bucket CORS and credentials.`));
-    xhr.onerror = () => reject(new Error("Network error during R2 upload. Check your connection and bucket CORS."));
-    xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
-    xhr.ontimeout = () => reject(new Error("R2 upload timed out"));
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    const onAbort = () => xhr.abort();
+    xhr.onload = () => { cleanup(); xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 part upload failed (${xhr.status}). Check bucket CORS and credentials.`)); };
+    xhr.onerror = () => { cleanup(); reject(new Error("Network error during R2 upload. Check your connection and bucket CORS.")); };
+    xhr.onabort = () => { cleanup(); reject(new DOMException("Upload cancelled", "AbortError")); };
+    xhr.ontimeout = () => { cleanup(); reject(new Error("R2 upload timed out")); };
     if (signal) {
       if (signal.aborted) { xhr.abort(); return; }
-      signal.addEventListener("abort", () => xhr.abort(), { once: true });
+      signal.addEventListener("abort", onAbort, { once: true });
     }
     xhr.send(blob);
   });
@@ -46,7 +48,11 @@ export async function uploadToR2(file: File, options: Options): Promise<Complete
     const data = await res.json();
     if (!data.parts) throw new UploadError("The previous upload cannot be resumed. Start a new upload.", resumeId);
     session = data as InitializedUpload;
-    if (session.sizeBytes !== file.size) throw new UploadError("Choose the same file to resume this upload", resumeId);
+    const expectedTarget = { mediaId: target.mediaId ?? null, seasonId: target.seasonId ?? null, episodeId: target.episodeId ?? null, quality: target.quality ?? null };
+    const sameTarget = session.target && session.target.mediaId === expectedTarget.mediaId && session.target.seasonId === expectedTarget.seasonId && session.target.episodeId === expectedTarget.episodeId && session.target.quality === expectedTarget.quality;
+    if (session.sizeBytes !== file.size || session.kind !== kind || !sameTarget) {
+      throw new UploadError("Choose the same file, target, and quality to resume this upload", resumeId);
+    }
   } else {
     const res = await fetch("/api/uploads", {
       method: "POST", headers: { "Content-Type": "application/json" }, signal,
@@ -56,18 +62,25 @@ export async function uploadToR2(file: File, options: Options): Promise<Complete
     session = await res.json() as InitializedUpload;
   }
   onSession?.(session.id);
+  const expectedPartSize = (partNumber: number) => Math.min(session.partSizeBytes, session.sizeBytes - (partNumber - 1) * session.partSizeBytes);
   const loaded = new Map<number, number>();
-  for (const part of session.uploadedParts) loaded.set(part.partNumber, part.sizeBytes);
+  for (const part of session.uploadedParts) {
+    if (part.sizeBytes === expectedPartSize(part.partNumber)) loaded.set(part.partNumber, part.sizeBytes);
+  }
   const report = () => {
     const bytes = Math.min(file.size, [...loaded.values()].reduce((sum, value) => sum + value, 0));
     onProgress?.(Math.min(100, Math.round(bytes / file.size * 100)), bytes);
   };
   report();
-  const pending = session.parts.filter((part) => !session.uploadedParts.some((done) => done.partNumber === part.partNumber));
+  // Only skip parts whose recorded size matches this session. A mismatched part
+  // is re-uploaded instead of being accepted and failing final verification.
+  const uploadedNumbers = new Set(session.uploadedParts.filter((done) => done.sizeBytes === expectedPartSize(done.partNumber)).map((done) => done.partNumber));
+  const pending = session.parts.filter((part) => !uploadedNumbers.has(part.partNumber));
   let cursor = 0;
   let failure: unknown = null;
   const worker = async () => {
-    while (cursor < pending.length && !failure && !signal?.aborted) {
+    try {
+      while (cursor < pending.length && !failure && !signal?.aborted) {
       const part = pending[cursor++];
       const start = (part.partNumber - 1) * session.partSizeBytes;
       const blob = file.slice(start, Math.min(start + session.partSizeBytes, file.size));
@@ -93,6 +106,10 @@ export async function uploadToR2(file: File, options: Options): Promise<Complete
           await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
         }
       }
+      }
+    } catch (error) {
+      if (!signal?.aborted) failure = error;
+      throw error;
     }
   };
   try {

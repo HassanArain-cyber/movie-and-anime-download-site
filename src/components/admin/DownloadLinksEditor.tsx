@@ -42,6 +42,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
   }, []);
 
   const reset = () => {
+    abortRef.current?.abort(); abortRef.current = null;
     setLabel(""); setUrl(""); setFileSize(""); setQuality("1080p"); setEditingId(null);
     setCompleted(null); setSelectedFile(null); setResumeId(undefined); setProgress(0); setErr("");
     if (fileRef.current) fileRef.current.value = "";
@@ -52,18 +53,22 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const isCurrent = () => abortRef.current === controller;
     setUploading(true); setErr(""); setCompleted(null); setSelectedFile(file); setProgress(0);
     try {
       const result = await uploadToR2(file, {
         kind, mediaId, seasonId, episodeId, quality, resumeId: resume, signal: controller.signal,
-        onProgress: (percent) => setProgress(percent), onSession: setResumeId,
+        onProgress: (percent) => { if (isCurrent()) setProgress(percent); },
+        onSession: (id) => { if (isCurrent()) setResumeId(id); },
       });
+      if (!isCurrent()) return;
       setCompleted(result); setFileSize(formatBytes(result.sizeBytes)); setResumeId(undefined);
       if (!label.trim()) setLabel(quality === "other" ? file.name : quality);
     } catch (error) {
+      if (!isCurrent()) return;
       if ((error as Error).name === "AbortError") { setResumeId(undefined); setErr("Upload cancelled. No file was saved."); }
       else { setErr(error instanceof Error ? error.message : "Upload failed"); if (error instanceof UploadError) setResumeId(error.uploadId); }
-    } finally { setUploading(false); }
+    } finally { if (isCurrent()) setUploading(false); }
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -95,7 +100,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
   };
 
   const startEdit = (link: DownloadLink) => {
-    abortRef.current?.abort(); setUploading(false);
+    abortRef.current?.abort(); abortRef.current = null; setUploading(false);
     setEditingId(link.id); setLabel(link.label || ""); setUrl(link.url); setFileSize(link.fileSize || "");
     setQuality(getQuality(link) || "other"); setCompleted(null); setSelectedFile(null); setResumeId(undefined); setErr("");
   };
@@ -132,7 +137,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
       <form onSubmit={submit} aria-label={`Download link form ${scope}`} className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
         <div className="grid gap-2 sm:grid-cols-3">
           <label className="space-y-1 text-xs text-neutral-400">Quality
-            <select value={quality} onChange={(event) => setQuality(event.target.value as VideoQuality)} disabled={uploading || !!completed} className={`${inputClass} mt-1 w-full`}>
+            <select value={quality} onChange={(event) => setQuality(event.target.value as VideoQuality)} disabled={uploading || !!completed || !!resumeId} className={`${inputClass} mt-1 w-full`}>
               {QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}
             </select>
           </label>

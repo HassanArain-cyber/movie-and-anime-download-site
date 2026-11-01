@@ -23,6 +23,9 @@ export function assertSameOrigin(req: Request): void {
   if (configured) {
     let expected: URL;
     try { expected = new URL(configured); } catch { throw new ApiError(503, "APP_ORIGIN is invalid"); }
+    if (!["http:", "https:"].includes(expected.protocol) || expected.username || expected.password || expected.pathname !== "/" || expected.search || expected.hash) {
+      throw new ApiError(503, "APP_ORIGIN must be an http(s) origin without credentials, path, query, or fragment");
+    }
     if (parsed.origin !== expected.origin) throw new ApiError(403, "Cross-site requests are not allowed");
     return;
   }
@@ -45,7 +48,14 @@ export function clientRateLimitKey(req: Request): ClientIpResult {
   const raw = req.headers.get(header)?.trim();
   if (!raw || raw.includes(",") || !isIP(raw)) return { key: "global", trusted: false };
   // Normalize IPv6 text so equivalent representations share one bucket.
-  const normalized = isIP(raw) === 6 ? raw.toLowerCase() : raw;
+  let normalized = raw;
+  if (isIP(raw) === 6) {
+    normalized = new URL(`http://[${raw}]`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    const dotted = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    const hex = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (dotted && isIP(dotted[1]) === 4) normalized = dotted[1];
+    else if (hex) normalized = `${parseInt(hex[1], 16) >> 8}.${parseInt(hex[1], 16) & 255}.${parseInt(hex[2], 16) >> 8}.${parseInt(hex[2], 16) & 255}`;
+  }
   return { key: `ip:${normalized}`, trusted: true };
 }
 

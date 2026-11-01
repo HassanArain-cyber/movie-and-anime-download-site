@@ -24,12 +24,11 @@ function redirect(url: string) {
   return NextResponse.redirect(url, { status: 302, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
 }
 
-async function legacyResponse(req: Request, url: string, alreadyDecoded = false) {
+async function legacyResponse(req: Request, url: string) {
   const root = await realpath(path.join(process.cwd(), "public", "uploads")).catch(() => null);
   if (!root) throw new ApiError(404, "Legacy upload directory is not available on this deployment");
   let decoded: string;
-  if (alreadyDecoded) decoded = url;
-  else { try { decoded = decodeURIComponent(url); } catch { throw new ApiError(400, "Invalid file path"); } }
+  try { decoded = decodeURIComponent(url); } catch { throw new ApiError(400, "Invalid file path"); }
   if (decoded.includes("\0") || decoded.includes("\\")) throw new ApiError(400, "Invalid file path");
   const candidate = path.resolve(process.cwd(), "public", `.${decoded}`);
   const filePath = await realpath(candidate).catch(() => null);
@@ -44,6 +43,10 @@ async function legacyResponse(req: Request, url: string, alreadyDecoded = false)
     "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff",
   });
+  if (info.size === 0) {
+    headers.set("Content-Length", "0");
+    return new Response(null, { status: 200, headers });
+  }
   let start = 0;
   let end = info.size - 1;
   let status = 200;
@@ -92,10 +95,12 @@ async function handle(req: Request) {
   if (!url) throw new ApiError(400, "Missing url or id");
   // Direct URL access is only allowed for a URL already recorded in the DB.
   // This prevents the endpoint from becoming an open redirect for arbitrary URLs.
-  const [known] = await db.select({ id: downloadLinks.id }).from(downloadLinks).where(eq(downloadLinks.url, url)).limit(1);
+  const [known] = await db.select({ id: downloadLinks.id, url: downloadLinks.url }).from(downloadLinks).where(eq(downloadLinks.url, url)).limit(1);
   if (!known) throw new ApiError(404, "File not available");
-  if (isLegacyUpload(url)) return legacyResponse(req, url, true);
-  const external = safeExternalUrl(url);
+  // Use the stored URL, not the request-decoded value, so encoded legacy paths
+  // and external query strings are preserved exactly as recorded.
+  if (isLegacyUpload(known.url)) return legacyResponse(req, known.url);
+  const external = safeExternalUrl(known.url);
   if (!external) throw new ApiError(400, "Unsupported download URL");
   return redirect(external);
 }

@@ -36,7 +36,16 @@ Migrations are explicit and additive. They do not run automatically during `dev`
 npm run db:migrate
 ```
 
-`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses.
+`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations.
+
+Back up the database before migrating. Migrations are additive and transactional, but index/constraint creation can lock tables; use a maintenance window for a large database. The disposable upgrade test creates the pre-PR schema, seeds legacy rows, migrates twice, and checks that categories/media/seasons/episodes/links are preserved:
+
+```bash
+# Against a fresh disposable loopback database, not production:
+node tests/migration-upgrade.mjs
+```
+
+Rollback: redeploy the previous application commit without dropping the new columns/tables. The old schema remains compatible, but links created as `r2:///...` and posters created as `/api/image?upload=...` require the new routes. See [docs/R2_SETUP.md](docs/R2_SETUP.md#rollback-considerations).
 
 ## Tests
 
@@ -63,7 +72,7 @@ See [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the authentication/R2
 
 ## Maintenance
 
-Abort expired incomplete multipart uploads (never deletes completed objects):
+Abort expired incomplete multipart uploads and recover stale transition leases (never deletes completed objects):
 
 ```bash
 npm run r2:cleanup

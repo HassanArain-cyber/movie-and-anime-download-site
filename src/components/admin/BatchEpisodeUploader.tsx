@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CompletedUpload, EpisodeWithLinks, VideoQuality } from "@/lib/types";
 import { QUALITIES, qualityDisplay } from "@/lib/media-links";
 import { uploadToR2 } from "@/lib/upload-client";
@@ -29,6 +29,8 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
   const addFiles = (files: FileList) => {
     const next = Array.from(files).map((file) => ({ id: crypto.randomUUID(), file, episodeNumber: guessEpisode(file.name), status: "pending" as const, progress: 0 }));
     setRows((current) => [...current, ...next]); setMessage("");
@@ -52,6 +54,7 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
           update(row.id, { status: "uploading", error: undefined });
           completed = await uploadToR2(row.file, {
             kind: "video", mediaId, seasonId, episodeId: episode.id, quality, signal: controller.signal,
+            resumeId: row.uploadId,
             onProgress: (progress) => update(row.id, { progress }), onSession: (uploadId) => update(row.id, { uploadId }),
           });
           update(row.id, { completed, progress: 100 });
@@ -76,7 +79,7 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
     <div className="space-y-3 rounded-md border border-neutral-800 bg-neutral-900/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-white">Batch upload episode files</h4>
-        <select value={quality} onChange={(event) => setQuality(event.target.value as VideoQuality)} disabled={busy || rows.some((row) => row.status !== "pending" && row.status !== "error")} className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-sm text-white">
+        <select value={quality} onChange={(event) => setQuality(event.target.value as VideoQuality)} disabled={busy || rows.some((row) => row.uploadId || row.completed || row.status === "done")} className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-sm text-white">
           {QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}
         </select>
       </div>
@@ -92,7 +95,7 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
         {rows.map((row) => <div key={row.id} className="flex flex-wrap items-center gap-2 rounded bg-neutral-950 p-2 text-xs">
           <span className="min-w-0 flex-1 truncate text-neutral-300" title={row.file.name}>{row.file.name}</span>
           <label className="flex items-center gap-1 text-neutral-500">Ep
-            <input type="number" min={1} value={row.episodeNumber} disabled={busy || row.status === "done"} onChange={(event) => update(row.id, { episodeNumber: event.target.value })} className="w-16 rounded border border-neutral-800 bg-neutral-900 px-1 py-0.5 text-white" />
+            <input type="number" min={1} value={row.episodeNumber} disabled={busy || row.status === "done" || !!row.uploadId || !!row.completed} onChange={(event) => update(row.id, { episodeNumber: event.target.value })} className="w-16 rounded border border-neutral-800 bg-neutral-900 px-1 py-0.5 text-white" />
           </label>
           <span className={row.status === "done" ? "text-green-400" : row.status === "error" ? "text-red-400" : "text-neutral-500"}>{row.status === "uploading" ? `${row.progress}%` : row.status}</span>
           {row.error && <span className="w-full text-red-400">{row.error}</span>}

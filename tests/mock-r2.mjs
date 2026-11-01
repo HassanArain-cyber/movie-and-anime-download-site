@@ -63,7 +63,6 @@ function verifyPresign(req, url) {
   const expected = hmac(signingKey, stringToSign).toString("hex");
   let valid = false;
   try { valid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected)); } catch { valid = false; }
-  if (!valid && process.env.MOCK_R2_DEBUG) console.error("Presign mismatch", JSON.stringify({ method: req.method, canonicalRequest, stringToSign, expected, signature }));
   return valid;
 }
 
@@ -85,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     // SigV4 method/expiry/tampering. SDK server-side operations use header auth;
     // the mock accepts the presence of that header but does not evaluate IAM.
     if (hasQuerySignature) {
-      if (!verifyPresign(req, url)) { if (process.env.MOCK_R2_DEBUG) console.error("Denied", req.method, req.url, JSON.stringify(req.headers)); return xml(res, 403, "<Error><Code>AccessDenied</Code></Error>"); }
+      if (!verifyPresign(req, url)) return xml(res, 403, "<Error><Code>AccessDenied</Code></Error>");
     } else if (!hasHeaderSignature) {
       return xml(res, 403, "<Error><Code>AccessDenied</Code></Error>");
     }

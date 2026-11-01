@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { media, categories } from "@/db/schema";
+import { media, categories, seasons } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
@@ -23,7 +23,13 @@ export async function PATCH(req: Request, { params }: Context) {
     const [existing] = await db.select().from(media).where(eq(media.id, id)).limit(1);
     if (!existing) throw new ApiError(404, "Media not found");
     const updates: Partial<typeof media.$inferInsert> = { updatedAt: new Date() };
-    if ("type" in body) updates.type = mediaType(body.type);
+    if ("type" in body) {
+      updates.type = mediaType(body.type);
+      if (updates.type === "movie" && existing.type !== "movie") {
+        const [season] = await db.select({ id: seasons.id }).from(seasons).where(eq(seasons.mediaId, id)).limit(1);
+        if (season) throw new ApiError(409, "Cannot change a title with seasons to a movie; the existing seasons and episodes would become inaccessible. Remove or reassign them first.");
+      }
+    }
     if ("title" in body) {
       updates.title = text(body.title, "Title", 255, true)!;
       if (updates.title !== existing.title) updates.slug = await uniqueSlug(updates.title, id);

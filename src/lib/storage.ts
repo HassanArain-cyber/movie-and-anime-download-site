@@ -11,7 +11,7 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, or, isNull, lt, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { r2Uploads } from "@/db/schema";
 import { ApiError } from "./validation";
@@ -22,6 +22,8 @@ import type { CompletedUpload, InitializedUpload, StorageStatus, UploadKind, Upl
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 const MAX_PARTS = 10000;
+const OPERATION_LEASE_MS = 10 * 60 * 1000;
+const SESSION_MS = 24 * 60 * 60 * 1000;
 const REQUIRED = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME"] as const;
 const TYPES: Record<UploadKind, Record<string, string[]>> = {
   image: {
@@ -58,7 +60,9 @@ export function getStorageStatus(): StorageStatus {
     missing: REQUIRED.filter((key) => !process.env[key]?.trim()),
     maxVideoBytes: boundedNumber("R2_MAX_VIDEO_BYTES", 10 * GIB, 1, 5 * 1024 * GIB),
     maxImageBytes: boundedNumber("R2_MAX_IMAGE_BYTES", 10 * MIB, 1, 100 * MIB),
-    partSizeBytes: boundedNumber("R2_PART_SIZE_BYTES", 16 * MIB, 5 * MIB, 5 * GIB),
+    // part_size is a PostgreSQL integer. 2047 MiB is the largest whole-MiB
+    // value that fits; automatic scaling still respects the 10,000-part limit.
+    partSizeBytes: boundedNumber("R2_PART_SIZE_BYTES", 16 * MIB, 5 * MIB, 2047 * MIB),
     privateDownloads: true,
   };
 }
@@ -185,7 +189,7 @@ export async function initializeUpload(input: { kind: unknown; fileName: unknown
     kind: file.kind, status: "pending", fileName: file.fileName, contentType: file.contentType,
     sizeBytes: file.sizeBytes, partSize: file.partSize,
     ...input.target,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    expiresAt: new Date(Date.now() + SESSION_MS),
   };
   try { await db.insert(r2Uploads).values(row); }
   catch (error) {
@@ -194,7 +198,7 @@ export async function initializeUpload(input: { kind: unknown; fileName: unknown
   }
   const saved = row as UploadRow;
   const signed = await presignParts(s3, config, saved);
-  return { id, kind: file.kind, fileName: file.fileName, sizeBytes: file.sizeBytes, partSizeBytes: file.partSize, ...signed };
+  return { id, kind: file.kind, fileName: file.fileName, sizeBytes: file.sizeBytes, partSizeBytes: file.partSize, target: input.target, ...signed };
 }
 
 export async function getUpload(id: string): Promise<UploadRow> {
@@ -217,8 +221,13 @@ export async function refreshUpload(id: string): Promise<InitializedUpload> {
   const config = getConfig();
   assertUploadBucket(row, config);
   assertUploadActive(row);
-  const signed = await presignParts(client(config), config, row);
-  return { id, kind: row.kind as UploadKind, fileName: row.fileName, sizeBytes: row.sizeBytes, partSizeBytes: row.partSize, ...signed };
+  // Sliding session expiry lets very large files resume across days while each
+  // presigned URL and the abandoned-session cleanup window remain bounded.
+  const [extended] = await db.update(r2Uploads).set({ expiresAt: new Date(Date.now() + SESSION_MS) })
+    .where(and(eq(r2Uploads.id, id), eq(r2Uploads.status, "pending"), gt(r2Uploads.expiresAt, new Date()))).returning();
+  if (!extended) throw new ApiError(409, "Upload status changed; refresh before trying again");
+  const signed = await presignParts(client(config), config, extended);
+  return { id, kind: extended.kind as UploadKind, fileName: extended.fileName, sizeBytes: extended.sizeBytes, partSizeBytes: extended.partSize, target: { mediaId: extended.mediaId, seasonId: extended.seasonId, episodeId: extended.episodeId, quality: extended.quality as VideoQuality | null }, ...signed };
 }
 
 export function completedUpload(row: UploadRow): CompletedUpload {
@@ -231,79 +240,159 @@ export function completedUpload(row: UploadRow): CompletedUpload {
   };
 }
 
-export async function completeUpload(id: string): Promise<CompletedUpload> {
-  const row = await getUpload(id);
-  const config = getConfig();
-  assertUploadBucket(row, config);
-  if (row.status === "completed") return completedUpload(row);
-  if (row.status === "failed") {
-    assertUploadActive(row);
-    // Claim before recovery so an abort cannot race a failed-upload recovery.
-    const [claimed] = await db.update(r2Uploads).set({ status: "completing" })
-      .where(and(eq(r2Uploads.id, id), eq(r2Uploads.status, "failed"))).returning();
-    if (!claimed) throw new ApiError(409, "Upload status changed; refresh before trying again");
-    // A previous completion may have succeeded in R2 after a network timeout.
-    // Recover only if the final object exists and its size matches exactly.
-    try {
-      const head = await client(config).send(new HeadObjectCommand({ Bucket: row.bucket, Key: row.objectKey }));
-      if (head.ContentLength === row.sizeBytes) {
-        const [recovered] = await db.update(r2Uploads).set({ status: "completed", completedAt: new Date() }).where(eq(r2Uploads.id, id)).returning();
-        return completedUpload(recovered);
-      }
-    } catch { /* fall through */ }
-    await db.update(r2Uploads).set({ status: "failed" }).where(eq(r2Uploads.id, id));
-    throw new ApiError(409, "Upload failed verification. Start a new upload.");
+async function claimOperation(id: string, from: string[], to: string, expiredOnly = false, activeOnly = false): Promise<UploadRow | null> {
+  const operationId = crypto.randomUUID();
+  const lease = expiredOnly ? or(isNull(r2Uploads.operationExpiresAt), lt(r2Uploads.operationExpiresAt, new Date())) : undefined;
+  const active = activeOnly ? gt(r2Uploads.expiresAt, new Date()) : undefined;
+  const [claimed] = await db.update(r2Uploads)
+    .set({ status: to, operationId, operationExpiresAt: new Date(Date.now() + OPERATION_LEASE_MS) })
+    .where(and(eq(r2Uploads.id, id), inArray(r2Uploads.status, from), lease, active)).returning();
+  return claimed ?? null;
+}
+
+async function setOperationStatus(row: UploadRow, status: string, completedAt?: Date) {
+  await db.update(r2Uploads).set({ status, ...(completedAt ? { completedAt } : {}), operationId: null, operationExpiresAt: null })
+    .where(and(eq(r2Uploads.id, row.id), eq(r2Uploads.status, row.status), eq(r2Uploads.operationId, row.operationId!)));
+}
+
+function leaseActive(row: UploadRow): boolean {
+  return !!row.operationExpiresAt && row.operationExpiresAt.getTime() > Date.now();
+}
+
+function isNotFound(error: unknown): boolean {
+  const details = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return details.name === "NoSuchKey" || details.name === "NoSuchUpload" || details.$metadata?.httpStatusCode === 404;
+}
+
+async function completedObjectExists(s3: S3Client, row: UploadRow): Promise<boolean> {
+  try {
+    const head = await s3.send(new HeadObjectCommand({ Bucket: row.bucket, Key: row.objectKey }));
+    return head.ContentLength === row.sizeBytes;
+  } catch (error) {
+    if (isNotFound(error)) return false;
+    throw error;
   }
-  if (row.status !== "pending") throw new ApiError(409, `Upload is ${row.status}. Refresh before trying again.`);
-  assertUploadActive(row);
-  const s3 = client(config);
+}
+
+async function verifyParts(s3: S3Client, row: UploadRow) {
   const parts = await listParts(s3, row);
   const expectedCount = Math.ceil(row.sizeBytes / row.partSize);
   const valid = parts.length === expectedCount && parts.every((part, index) =>
     part.partNumber === index + 1 && part.sizeBytes === (index === expectedCount - 1 ? row.sizeBytes - row.partSize * index : row.partSize)
   );
   if (!valid) throw new ApiError(400, "Upload is incomplete or its part sizes do not match. Resume the upload before saving.");
-  const [claimed] = await db.update(r2Uploads).set({ status: "completing" }).where(and(eq(r2Uploads.id, id), eq(r2Uploads.status, "pending"))).returning();
+  return parts;
+}
+
+async function performCompletion(row: UploadRow, config: R2Config, parts?: Awaited<ReturnType<typeof verifyParts>>): Promise<CompletedUpload> {
+  const s3 = client(config);
+  try {
+    const verified = parts ?? await verifyParts(s3, row);
+    await send(() => s3.send(new CompleteMultipartUploadCommand({ Bucket: row.bucket, Key: row.objectKey, UploadId: row.multipartUploadId, MultipartUpload: { Parts: verified.map(({ partNumber, etag }) => ({ PartNumber: partNumber, ETag: etag })) } })));
+    const head = await send(() => s3.send(new HeadObjectCommand({ Bucket: row.bucket, Key: row.objectKey })));
+    if (head.ContentLength !== row.sizeBytes) throw new ApiError(502, "R2 object size verification failed; the file was not attached");
+    await setOperationStatus(row, "completed", new Date());
+    const fresh = await getUpload(row.id);
+    if (fresh.status !== "completed") throw new ApiError(409, "Upload operation lease changed; refresh before trying again");
+    return completedUpload(fresh);
+  } catch (error) {
+    // A timeout can occur after R2 completed the object. Never delete it.
+    const fresh = await getUpload(row.id).catch(() => null);
+    if (fresh?.status === "completed") return completedUpload(fresh);
+    await setOperationStatus(row, "failed").catch(() => undefined);
+    throw error;
+  }
+}
+
+async function recoverCompletion(row: UploadRow, config: R2Config): Promise<CompletedUpload> {
+  const s3 = client(config);
+  try {
+    const head = await s3.send(new HeadObjectCommand({ Bucket: row.bucket, Key: row.objectKey }));
+    if (head.ContentLength === row.sizeBytes) {
+      await setOperationStatus(row, "completed", new Date());
+      const fresh = await getUpload(row.id);
+      if (fresh.status !== "completed") throw new ApiError(409, "Upload operation lease changed; refresh before trying again");
+      return completedUpload(fresh);
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    /* object not present yet; retry multipart completion below */
+  }
+  return performCompletion(row, config);
+}
+
+export async function completeUpload(id: string): Promise<CompletedUpload> {
+  const row = await getUpload(id);
+  const config = getConfig();
+  assertUploadBucket(row, config);
+  if (row.status === "completed") return completedUpload(row);
+  if (row.status === "aborted") throw new ApiError(409, "Upload was aborted");
+  if (row.status === "failed") {
+    assertUploadActive(row);
+    const claimed = await claimOperation(id, ["failed"], "completing", false, true);
+    if (!claimed) throw new ApiError(409, "Upload status changed; refresh before trying again");
+    return recoverCompletion(claimed, config);
+  }
+  if (row.status === "completing") {
+    if (leaseActive(row)) throw new ApiError(409, "Upload completion is already in progress");
+    const claimed = await claimOperation(id, ["completing"], "completing", true);
+    if (!claimed) throw new ApiError(409, "Upload completion is already in progress");
+    return recoverCompletion(claimed, config);
+  }
+  if (row.status === "aborting") throw new ApiError(409, "Upload cancellation is in progress; wait for cleanup before retrying");
+  if (row.status !== "pending") throw new ApiError(409, `Upload is ${row.status}. Refresh before trying again.`);
+  assertUploadActive(row);
+  const parts = await verifyParts(client(config), row);
+  const claimed = await claimOperation(id, ["pending"], "completing", false, true);
   if (!claimed) {
     const fresh = await getUpload(id);
     if (fresh.status === "completed") return completedUpload(fresh);
     throw new ApiError(409, "Upload completion is already in progress");
   }
-  try {
-    await send(() => s3.send(new CompleteMultipartUploadCommand({ Bucket: row.bucket, Key: row.objectKey, UploadId: row.multipartUploadId, MultipartUpload: { Parts: parts.map(({ partNumber, etag }) => ({ PartNumber: partNumber, ETag: etag })) } })));
-    const head = await send(() => s3.send(new HeadObjectCommand({ Bucket: row.bucket, Key: row.objectKey })));
-    if (head.ContentLength !== row.sizeBytes) throw new ApiError(502, "R2 object size verification failed; the file was not attached");
-    const [completed] = await db.update(r2Uploads).set({ status: "completed", completedAt: new Date() }).where(eq(r2Uploads.id, id)).returning();
-    return completedUpload(completed);
-  } catch (error) {
-    // A timeout can occur after R2 has completed the object. Never delete it.
-    const fresh = await getUpload(id).catch(() => row);
-    if (fresh.status !== "completed") await db.update(r2Uploads).set({ status: "failed" }).where(eq(r2Uploads.id, id));
-    throw error;
-  }
+  return performCompletion(claimed, config, parts);
 }
 
 export async function abortUpload(id: string): Promise<void> {
   const row = await getUpload(id);
   if (row.status === "completed") throw new ApiError(409, "Completed files are retained. Deleting a link does not delete its R2 object.");
   if (row.status === "aborted") return;
-  if (row.status === "completing" || row.status === "aborting") throw new ApiError(409, "Wait for the current upload operation to finish before cancelling");
+  if (leaseActive(row) && (row.status === "completing" || row.status === "aborting")) {
+    throw new ApiError(409, "Wait for the current upload operation to finish before cancelling");
+  }
   const config = getConfig();
   assertUploadBucket(row, config);
-  // Claim the row before touching R2 so a concurrent completion cannot race an abort.
-  const [claimed] = await db.update(r2Uploads).set({ status: "aborting" })
-    .where(and(eq(r2Uploads.id, id), inArray(r2Uploads.status, ["pending", "failed"]))).returning();
+  const from = row.status === "completing" || row.status === "aborting" ? [row.status] : ["pending", "failed"];
+  const claimed = await claimOperation(id, from, "aborting", row.status === "completing" || row.status === "aborting");
   if (!claimed) throw new ApiError(409, "Upload status changed; refresh before trying again");
+  const s3 = client(config);
   try {
-    await client(config).send(new AbortMultipartUploadCommand({ Bucket: row.bucket, Key: row.objectKey, UploadId: row.multipartUploadId }));
+    // If completion won the race before the lease expired, retain the object.
+    if (await completedObjectExists(s3, claimed)) {
+      await setOperationStatus(claimed, "completed", new Date());
+      throw new ApiError(409, "Upload completed while cancellation was starting; the R2 object was retained.");
+    }
+    await s3.send(new AbortMultipartUploadCommand({ Bucket: claimed.bucket, Key: claimed.objectKey, UploadId: claimed.multipartUploadId }));
   } catch (error) {
-    const details = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-    if (details.name !== "NoSuchUpload" && details.$metadata?.httpStatusCode !== 404) {
-      await db.update(r2Uploads).set({ status: "failed" }).where(eq(r2Uploads.id, id));
+    if (error instanceof ApiError) throw error;
+    if (isNotFound(error)) {
+      // Abort can return NoSuchUpload because completion won the race. Re-check
+      // the object before marking the row aborted so completed bytes are retained.
+      try {
+        if (await completedObjectExists(s3, claimed)) {
+          await setOperationStatus(claimed, "completed", new Date());
+          throw new ApiError(409, "Upload completed while cancellation was starting; the R2 object was retained.");
+        }
+      } catch (headError) {
+        if (headError instanceof ApiError) throw headError;
+        await setOperationStatus(claimed, "failed").catch(() => undefined);
+        storageError(headError);
+      }
+    } else {
+      await setOperationStatus(claimed, "failed").catch(() => undefined);
       storageError(error);
     }
   }
-  await db.update(r2Uploads).set({ status: "aborted" }).where(eq(r2Uploads.id, id));
+  await setOperationStatus(claimed, "aborted");
 }
 
 function contentDisposition(fileName: string, attachment: boolean): string {

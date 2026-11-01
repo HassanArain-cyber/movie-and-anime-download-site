@@ -31,6 +31,9 @@ test("same-origin checks reject cross-site browser mutations but allow non-brows
     assert.doesNotThrow(() => assertSameOrigin(request({ origin: "https://vault.example" })));
     assert.throws(() => assertSameOrigin(request({ origin: "http://127.0.0.1:3001" })), ApiError);
   });
+  for (const value of ["https://vault.example/admin", "https://user:pass@vault.example", "https://vault.example?q=1", "ftp://vault.example"]) {
+    withEnv({ APP_ORIGIN: value }, () => assert.throws(() => assertSameOrigin(request({ origin: "https://vault.example" })), ApiError));
+  }
 });
 
 test("forwarded IP headers are ignored unless an operator explicitly trusts one single-IP header", () => {
@@ -42,6 +45,8 @@ test("forwarded IP headers are ignored unless an operator explicitly trusts one 
     assert.deepEqual(clientRateLimitKey(request({ "x-real-ip": "198.51.100.7, 203.0.113.9" })), { key: "global", trusted: false });
     assert.deepEqual(clientRateLimitKey(request({ "x-real-ip": "not-an-ip" })), { key: "global", trusted: false });
     assert.deepEqual(clientRateLimitKey(request({ "x-forwarded-for": "203.0.113.9" })), { key: "global", trusted: false });
+    assert.deepEqual(clientRateLimitKey(request({ "x-real-ip": "2001:0db8:0000:0000:0000:0000:0000:0001" })), clientRateLimitKey(request({ "x-real-ip": "2001:db8::1" })));
+    assert.deepEqual(clientRateLimitKey(request({ "x-real-ip": "::ffff:192.0.2.1" })), { key: "ip:192.0.2.1", trusted: true });
   });
 });
 
@@ -81,7 +86,7 @@ test("poster URLs preserve legacy/R2/public images but block scripts and private
   assert.equal(imageUrl("/uploads/images/legacy.jpg"), "/uploads/images/legacy.jpg");
   assert.equal(imageUrl("/api/image?upload=123e4567-e89b-42d3-a456-426614174000"), "/api/image?upload=123e4567-e89b-42d3-a456-426614174000");
   assert.equal(imageUrl("https://images.example/poster.jpg"), "https://images.example/poster.jpg");
-  for (const value of ["javascript:alert(1)", "data:text/html,hi", "http://127.0.0.1/x", "http://169.254.169.254/latest", "http://10.0.0.1/x", "http://localhost/x", "http://[::1]/x", "https://user:pass@example.com/x"]) {
+  for (const value of ["javascript:alert(1)", "data:text/html,hi", "http://127.0.0.1/x", "http://169.254.169.254/latest", "http://10.0.0.1/x", "http://localhost/x", "http://[::1]/x", "http://[fe90::1]/x", "https://user:pass@example.com/x", "/uploads/../secret.jpg", "/uploads/%2e%2e/secret.jpg", "/uploads/%252e%252e/secret.jpg"]) {
     assert.throws(() => imageUrl(value), ApiError);
   }
 });

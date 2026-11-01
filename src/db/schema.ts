@@ -99,6 +99,9 @@ export const r2Uploads = pgTable("r2_uploads", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  // Lease for completing/aborting so a crashed worker cannot lock a row forever.
+  operationExpiresAt: timestamp("operation_expires_at", { withTimezone: true }),
+  operationId: varchar("operation_id", { length: 36 }),
 }, (table) => [
   index("r2_uploads_status_expires_idx").on(table.status, table.expiresAt),
 ]);

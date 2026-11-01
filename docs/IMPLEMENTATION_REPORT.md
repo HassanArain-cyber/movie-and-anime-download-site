@@ -89,3 +89,9 @@ The E2E suite covered:
 - Restricted R2 endpoint overrides to HTTPS (HTTP loopback only for tests).
 - Added `docs/SECURITY_REVIEW.md`, security unit tests, expanded E2E assertions, a signature-checking R2 mock, and a disposable-service E2E runner.
 - GitHub Actions now runs both the validation job and the browser/API E2E job using disposable PostgreSQL 16 and loopback mock R2 only.
+
+## Final pre-merge review addendum
+
+A second full-diff review was performed before merging PR #1. It added upload operation leases and fenced status writes, bucket-scoped cleanup with completed-object recovery, expired failed-session cleanup, stricter origin/IP/image-path validation, canonical legacy download handling, resume target checks, UI race fixes, a media-type conversion guard, dependency upgrades, a pre-PR schema upgrade test, and broader E2E coverage. The stale unused `drizzle.config.json` was removed in favor of the environment-driven TypeScript config.
+
+Verification remains local/disposable/mock-only. No production database, real Cloudflare R2 bucket, or unrelated Supabase project was contacted. See `docs/SECURITY_REVIEW.md` for findings and residual deployment risks, and `docs/R2_SETUP.md` for CORS, lifecycle, large-file, and rollback guidance.

@@ -97,6 +97,7 @@ export interface InitializedUpload {
   fileName: string;
   sizeBytes: number;
   partSizeBytes: number;
+  target: Required<UploadTarget>;
   urlExpiresAt: string;
   parts: UploadPart[];
   uploadedParts: { partNumber: number; sizeBytes: number }[];
