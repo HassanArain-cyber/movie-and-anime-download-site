@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, downloadLinks, episodes, media, seasons } from "@/db/schema";
-import { ApiError, optionalId } from "./validation";
+import { ApiError, optionalId, quality as parseQuality } from "./validation";
 import type { DownloadLink, EpisodeWithLinks, MediaWithRelations, SeasonWithEpisodes, StorageProvider, VideoQuality } from "./types";
 import type { UploadTarget } from "./storage";
 
@@ -10,8 +10,7 @@ export async function resolveTarget(body: Record<string, unknown>, allowImageWit
   let mediaId = optionalId(body.mediaId, "mediaId");
   let seasonId = optionalId(body.seasonId, "seasonId");
   const episodeId = optionalId(body.episodeId, "episodeId");
-  const quality = body.quality === undefined || body.quality === null || body.quality === "" ? null : body.quality;
-  if (quality !== null && quality !== "720p" && quality !== "1080p" && quality !== "other") throw new ApiError(400, "Invalid quality");
+  const selectedQuality = parseQuality(body.quality);
 
   if (episodeId !== null) {
     const [episode] = await db.select().from(episodes).where(eq(episodes.id, episodeId)).limit(1);
@@ -35,8 +34,8 @@ export async function resolveTarget(body: Record<string, unknown>, allowImageWit
   if (!item) throw new ApiError(404, "Media not found");
   if (item.type === "movie" && (seasonId !== null || episodeId !== null)) throw new ApiError(400, "Movies cannot contain seasons or episodes");
   if (item.type !== "movie" && seasonId === null && !allowImageWithoutTarget && !allowTitleLevel) throw new ApiError(400, "Choose a season or episode for this anime/series");
-  if (allowImageWithoutTarget && (seasonId !== null || episodeId !== null || quality !== null)) throw new ApiError(400, "Poster uploads attach to a media item, not an episode or quality");
-  return { mediaId, seasonId, episodeId, quality: quality as VideoQuality | null };
+  if (allowImageWithoutTarget && (seasonId !== null || episodeId !== null || selectedQuality !== null)) throw new ApiError(400, "Poster uploads attach to a media item, not an episode or quality");
+  return { mediaId, seasonId, episodeId, quality: selectedQuality };
 }
 
 function normalizeLink(row: typeof downloadLinks.$inferSelect): DownloadLink {

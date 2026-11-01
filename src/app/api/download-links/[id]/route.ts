@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getQuality, isLegacyUpload, isR2Url } from "@/lib/media-links";
 import { getUpload, r2LinkValues } from "@/lib/storage";
 import { ApiError, errorResponse, externalUrl, positiveId, quality, readJson, text, uuid } from "@/lib/validation";
+import type { VideoQuality } from "@/lib/types";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -22,11 +23,11 @@ export async function PATCH(req: Request, { params }: Context) {
     if ("fileSize" in body) updates.fileSize = text(body.fileSize, "File size", 30);
     if ("quality" in body) updates.quality = quality(body.quality);
     const label = updates.label ?? existing.label;
-    if (!("quality" in body)) updates.quality = getQuality({ quality: existing.quality as "720p" | "1080p" | "other" | null, label });
+    if (!("quality" in body)) updates.quality = getQuality({ quality: existing.quality as VideoQuality | null, label });
 
     if (body.r2UploadId) {
       const upload = await getUpload(uuid(body.r2UploadId, "r2UploadId"));
-      Object.assign(updates, r2LinkValues(upload, { mediaId: existing.mediaId, seasonId: existing.seasonId, episodeId: existing.episodeId, quality: updates.quality as "720p" | "1080p" | "other" | null }));
+      Object.assign(updates, r2LinkValues(upload, { mediaId: existing.mediaId, seasonId: existing.seasonId, episodeId: existing.episodeId, quality: (updates.quality ?? null) as VideoQuality | null }));
       updates.label = label;
     } else if ("url" in body && body.url !== existing.url) {
       if (isR2Url(existing.url) || isLegacyUpload(existing.url) || existing.storageProvider === "r2") {

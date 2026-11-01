@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isIP } from "node:net";
-import { safeExternalUrl } from "./media-links";
+import { normalizeQuality, safeExternalUrl } from "./media-links";
 import type { MediaType, VideoQuality } from "./types";
 
 export class ApiError extends Error {
@@ -70,10 +70,9 @@ export function text(value: unknown, name: string, max: number, required = false
 
 export function quality(value: unknown): VideoQuality | null {
   if (value === undefined || value === null || value === "") return null;
-  if (value !== "720p" && value !== "1080p" && value !== "other") {
-    throw new ApiError(400, "Quality must be 720p, 1080p, or other");
-  }
-  return value;
+  const normalized = normalizeQuality(value);
+  if (!normalized) throw new ApiError(400, "Choose a supported video quality (360p, 480p, 720p, 1080p, 2K, 4K, 8K, or Other)");
+  return normalized;
 }
 
 export function mediaType(value: unknown): MediaType {

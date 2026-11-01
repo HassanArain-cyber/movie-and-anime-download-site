@@ -1,6 +1,24 @@
 import type { DownloadLink, StorageProvider, VideoQuality } from "./types";
 
-export const QUALITIES: VideoQuality[] = ["720p", "1080p", "other"];
+// `quality` is already stored as varchar(10), so these additional presets do
+// not require a schema change. Keep the order high-to-low for public choices.
+export const QUALITIES: VideoQuality[] = ["4320p", "2160p", "1440p", "1080p", "720p", "480p", "360p", "other"];
+export const QUALITY_ORDER: VideoQuality[] = [...QUALITIES];
+
+export type BulkQualityChoice = "best" | VideoQuality | "unspecified";
+
+const QUALITY_ALIASES: Record<string, VideoQuality> = {
+  "360p": "360p", "480p": "480p", "720p": "720p", "1080p": "1080p",
+  "1440p": "1440p", "2k": "1440p", "2160p": "2160p", "4k": "2160p",
+  "4320p": "4320p", "8k": "4320p", other: "other",
+};
+
+/** Normalize common user-facing aliases into the canonical pixel-height value. */
+export function normalizeQuality(value: unknown): VideoQuality | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return Object.hasOwn(QUALITY_ALIASES, normalized) ? QUALITY_ALIASES[normalized] : null;
+}
 
 export function isR2Url(url: string): boolean {
   return url.startsWith("r2:///");
@@ -45,15 +63,55 @@ export function getLinkHref(link: Pick<DownloadLink, "id" | "url" | "storageProv
 }
 
 export function getQuality(link: Pick<DownloadLink, "quality" | "label">): VideoQuality | null {
-  if (link.quality && QUALITIES.includes(link.quality)) return link.quality;
+  const stored = normalizeQuality(link.quality);
+  if (stored) return stored;
   const label = link.label || "";
-  if (/\b1080p?\b/i.test(label)) return "1080p";
-  if (/\b720p?\b/i.test(label)) return "720p";
+  const patterns: [VideoQuality, RegExp][] = [
+    ["4320p", /\b(?:4320p|8k)\b/i],
+    ["2160p", /\b(?:2160p|4k)\b/i],
+    ["1440p", /\b(?:1440p|2k)\b/i],
+    ["1080p", /\b1080p?\b/i],
+    ["720p", /\b720p?\b/i],
+    ["480p", /\b480p?\b/i],
+    ["360p", /\b360p?\b/i],
+  ];
+  for (const [quality, pattern] of patterns) if (pattern.test(label)) return quality;
   return null;
 }
 
 export function qualityDisplay(quality: VideoQuality | null): string {
-  return quality === "other" ? "Other quality" : quality || "Unspecified quality";
+  if (quality === "other") return "Other quality";
+  if (quality === "1440p") return "2K (1440p)";
+  if (quality === "2160p") return "4K (2160p)";
+  if (quality === "4320p") return "8K (4320p)";
+  return quality || "Unspecified quality";
+}
+
+function providerRank(link: DownloadLink): number {
+  const provider = getLinkProvider(link);
+  return provider === "r2" || provider === "local" ? 0 : 1;
+}
+
+/** Pick one safe link for each episode in a bulk action. Stored private/local
+ * files win ties over external links so the queue uses the site's download flow.
+ */
+export function selectBulkDownload(links: DownloadLink[], choice: BulkQualityChoice): DownloadLink | null {
+  const available = links.filter((link) => getLinkHref(link) !== null);
+  if (choice !== "best") {
+    const matches = available.filter((link) => {
+      const quality = getQuality(link);
+      return choice === "unspecified" ? quality === null : quality === choice;
+    });
+    return matches.sort((a, b) => providerRank(a) - providerRank(b) || a.id - b.id)[0] || null;
+  }
+
+  return available.sort((a, b) => {
+    const aQuality = getQuality(a);
+    const bQuality = getQuality(b);
+    const aRank = aQuality ? QUALITY_ORDER.indexOf(aQuality) : QUALITY_ORDER.length;
+    const bRank = bQuality ? QUALITY_ORDER.indexOf(bQuality) : QUALITY_ORDER.length;
+    return aRank - bRank || providerRank(a) - providerRank(b) || a.id - b.id;
+  })[0] || null;
 }
 
 export function formatBytes(bytes: number): string {

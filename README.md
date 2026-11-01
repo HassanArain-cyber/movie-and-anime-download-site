@@ -4,8 +4,9 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 
 ## What is supported
 
-- Movies with separate 720p / 1080p / other-quality downloads.
+- Movies and episodes with multiple independent download versions (360p through 8K, plus custom/other), each with its own label, file size, and URL or private R2 object.
 - Anime and TV series with multiple seasons, batch-created episodes, and per-episode quality links.
+- Public episode lists keep individual download buttons and add checkboxes, Select All/Clear Selection, per-quality bulk selection, and an individual-file download queue that reports started, skipped, and failed handoffs. The browser manages the actual transfer progress; complete-season archives remain available as before.
 - Complete-season archives (ZIP/RAR/7z) attached to a season.
 - Private Cloudflare R2 uploads for videos, archives, and posters. Files upload directly from the browser to R2 with multipart presigned URLs; Next.js never stores the video bytes on local disk.
 - Telegram links (`https://t.me/...`, `tg://...`) and other external HTTP(S)/magnet links alongside R2 files.
