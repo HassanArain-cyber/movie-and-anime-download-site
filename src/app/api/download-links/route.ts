@@ -6,6 +6,7 @@ import { resolveTarget } from "@/lib/library";
 import { getQuality } from "@/lib/media-links";
 import { getUpload, r2LinkValues } from "@/lib/storage";
 import { errorResponse, externalUrl, quality, readJson, text, uuid } from "@/lib/validation";
+import type { VideoQuality } from "@/lib/types";
 
 export async function POST(req: Request) {
   const auth = await requireAdmin(req);
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     if (body.r2UploadId !== undefined && body.r2UploadId !== null && body.r2UploadId !== "") {
       const upload = await getUpload(uuid(body.r2UploadId, "r2UploadId"));
       const explicitSize = text(body.fileSize, "File size", 30);
-      const uploadTarget = { ...target, quality: selectedQuality ?? upload.quality as "720p" | "1080p" | "other" | null };
+      const uploadTarget = { ...target, quality: selectedQuality ?? upload.quality as VideoQuality | null };
       values = { ...r2LinkValues(upload, uploadTarget), label, ...(explicitSize ? { fileSize: explicitSize } : {}) };
     } else {
       const url = externalUrl(body.url);

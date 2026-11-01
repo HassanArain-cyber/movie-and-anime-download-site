@@ -131,7 +131,17 @@ for (const path of ["/uploads/%2e%2e/package.json", "/uploads/%252e%252e/package
 const movie = ok(await api("/api/media", { method: "POST", body: { type: "movie", title: `E2E Movie ${run}`, year: 2026 } }), 201);
 const telegram = ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "720p", label: "Telegram 720p", url: "https://t.me/example/720" } }), 201);
 assert.equal(telegram.storageProvider, "telegram");
-ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "1080p", label: "External 1080p", url: "https://example.com/1080.mp4" } }), 201);
+const lowQuality = ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "480p", label: "480p compact", fileSize: "400 MB", url: "https://example.com/480.mp4" } }), 201);
+assert.equal(lowQuality.quality, "480p"); assert.equal(lowQuality.fileSize, "400 MB");
+const fullHD = ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "1080p", label: "External 1080p", url: "https://example.com/1080.mp4" } }), 201);
+assert.equal(fullHD.quality, "1080p");
+const fourK = ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "4K", label: "4K WEB-DL", fileSize: "2 GB", url: "https://example.com/4k.mp4" } }), 201);
+assert.equal(fourK.quality, "2160p"); assert.equal(fourK.label, "4K WEB-DL");
+const fourKVideo = await uploadFile({ kind: "video", fileName: "e2e-4k.mp4", bytes: Buffer.alloc(1024, 8), contentType: "video/mp4", target: { mediaId: movie.id, quality: "4K" } });
+const fourKR2Link = ok(await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, quality: "4K", label: "Private 4K", r2UploadId: fourKVideo.id } }), 201);
+assert.equal(fourKR2Link.quality, "2160p"); assert.equal(fourKR2Link.storageProvider, "r2");
+const movieDetails = ok(await api(`/api/media/${movie.id}`));
+assert.deepEqual(new Set(movieDetails.downloadLinks.map((link) => link.quality)), new Set(["480p", "720p", "1080p", "2160p"]));
 assert.equal((await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, url: "javascript:alert(1)" } })).res.status, 400);
 
 // Multipart R2 video (two parts with the test part size)
@@ -186,12 +196,14 @@ const archiveLink = ok(await api("/api/download-links", { method: "POST", body: 
 assert.equal(archiveLink.seasonId, season.id); assert.equal(archiveLink.episodeId, null);
 const ep1 = batch.episodes[0];
 const epVideo = await uploadFile({ kind: "video", fileName: "S01E01-720p.mp4", bytes: Buffer.alloc(1024, 3), contentType: "video/mp4", target: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p" } });
-ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p", r2UploadId: epVideo.id } }), 201);
+const ep720 = ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p", r2UploadId: epVideo.id } }), 201);
+const ep1080 = ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "1080p", label: "External 1080p", url: "https://example.com/episode-1080.mp4" } }), 201);
+assert.equal(ep720.quality, "720p"); assert.equal(ep1080.quality, "1080p");
 assert.equal((await api("/api/download-links", { method: "POST", body: { mediaId: movie.id, seasonId: season.id, url: "https://example.com/x" } })).res.status, 400);
 assert.equal((await api(`/api/media/${anime.id}`, { method: "PATCH", body: { type: "movie" } })).res.status, 409, "anime with seasons must not be hidden by a type change");
 const full = ok(await api(`/api/media/${anime.id}`));
 assert.equal(full.seasons[0].downloadLinks.length, 1);
-assert.equal(full.seasons[0].episodes[0].downloadLinks[0].quality, "720p");
+assert.deepEqual(new Set(full.seasons[0].episodes[0].downloadLinks.map((link) => link.quality)), new Set(["720p", "1080p"]));
 
 // Deleting a link must not delete the R2 object.
 ok(await api(`/api/download-links/${r2Link.id}`, { method: "DELETE" }));
@@ -318,6 +330,19 @@ await page.goto(`${base}/anime/browser-anime-${run}`);
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
 await page.getByText("Episode 1", { exact: true }).click();
 await page.locator('a[title="Cloudflare R2"]').waitFor();
+const episodeOneCheckbox = page.getByRole("checkbox", { name: "Select episode 1 for bulk download" });
+await episodeOneCheckbox.check();
+await page.getByRole("button", { name: "Select All" }).click();
+await page.getByText("2 selected", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Clear Selection" }).click();
+await page.getByText("0 selected", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Select All" }).click();
+await page.getByLabel("Bulk download quality").selectOption("1080p");
+await page.getByRole("button", { name: "Download Selected (2)" }).click();
+await page.getByText("Download queue: 1 started, 1 skipped, 0 failed · 1080p", { exact: true }).waitFor();
+await page.setViewportSize({ width: 390, height: 844 });
+assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection remains available on mobile");
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 assert.deepEqual(errors, []);
 await browser.close();
 

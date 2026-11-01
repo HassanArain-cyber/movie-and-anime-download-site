@@ -4,7 +4,7 @@ import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { media } from "@/db/schema";
-import DownloadButton from "@/components/DownloadButton";
+import DownloadOptions from "@/components/DownloadOptions";
 import EpisodeList from "@/components/EpisodeList";
 import { getMediaDetails } from "@/lib/library";
 import { needsUnoptimizedImage, placeholderPoster } from "@/lib/utils";
@@ -41,8 +41,8 @@ export default async function DetailPage({ params }: PageProps) {
           </div>
           {item.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-400">{item.description}</p>}
           {(item.downloadLinks?.length || 0) > 0 && <div className="space-y-3 pt-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{item.type === "movie" ? "Downloads" : "Additional links"}</h2>
-            <div className="flex flex-wrap gap-2">{item.downloadLinks!.map((link) => <DownloadButton key={link.id} link={link} />)}</div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{item.type === "movie" ? "Available downloads · choose a quality" : "Additional links"}</h2>
+            <DownloadOptions links={item.downloadLinks!} />
           </div>}
           {item.type === "movie" && !item.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links available yet.</p>}
         </div>
@@ -52,9 +52,9 @@ export default async function DetailPage({ params }: PageProps) {
         {!item.seasons?.length && <div className="rounded-lg border border-dashed border-neutral-800 p-8 text-center text-neutral-500">No seasons or episodes added yet.</div>}
         {item.seasons?.map((season) => <div key={season.id} className="space-y-3">
           <h2 className="text-lg font-semibold text-white">Season {season.seasonNumber}{season.name ? ` — ${season.name}` : ""}</h2>
-          {season.downloadLinks.length > 0 && <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/40 p-4">
+          {season.downloadLinks.length > 0 && <div className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Complete season downloads</h3>
-            <div className="flex flex-wrap gap-2">{season.downloadLinks.map((link) => <DownloadButton key={link.id} link={link} />)}</div>
+            <DownloadOptions links={season.downloadLinks} />
           </div>}
           <EpisodeList episodes={season.episodes} />
         </div>)}

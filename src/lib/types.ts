@@ -1,5 +1,7 @@
 export type MediaType = "movie" | "anime" | "series";
-export type VideoQuality = "720p" | "1080p" | "other";
+// Stored in the existing download_links/r2_uploads varchar(10) columns.
+// The 2K/4K/8K aliases are displayed alongside their common pixel heights.
+export type VideoQuality = "360p" | "480p" | "720p" | "1080p" | "1440p" | "2160p" | "4320p" | "other";
 export type UploadKind = "image" | "video" | "archive";
 export type StorageProvider = "r2" | "local" | "external" | "telegram";
 

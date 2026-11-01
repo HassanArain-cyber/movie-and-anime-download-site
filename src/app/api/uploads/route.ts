@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       // Posters may be uploaded before the new media record is created.
       target.mediaId = null;
     }
-    if (!isImage && body.quality === undefined) throw new ApiError(400, "Choose 720p, 1080p, or Other quality before uploading");
+    if (!isImage && body.quality === undefined) throw new ApiError(400, "Choose a video quality before uploading");
     const upload = await initializeUpload({ kind: body.kind, fileName: body.fileName, sizeBytes: body.sizeBytes, contentType: body.contentType, target });
     return NextResponse.json(upload, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }

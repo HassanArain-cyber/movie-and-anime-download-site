@@ -115,6 +115,8 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
         <span className="text-xs text-neutral-500">Private R2 files + Telegram/external links</span>
       </div>
 
+      <p className="text-xs text-neutral-500">Each saved link is a separate download version. Add one per quality; its label, file size, and URL or private R2 object are kept independently.</p>
+
       <div className="space-y-2">
         {links.length === 0 && <p className="rounded-md bg-neutral-900 p-3 text-sm text-neutral-500 ring-1 ring-neutral-800">No links added yet.</p>}
         {links.map((link) => {
