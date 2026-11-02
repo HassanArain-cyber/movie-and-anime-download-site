@@ -48,13 +48,13 @@ export default function RequestContact() {
       });
       const data = await response.json().catch(() => ({})) as { success?: boolean; error?: string };
       if (!response.ok || data.success !== true) {
-        throw new Error(data.error || "We couldn’t send your request. Please try again.");
+        throw new Error(data.error || "We couldn’t save your request. Please try again.");
       }
       setSent(true);
       setDraft({ name: "", type: "Movie", message: "" });
       setCompany("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "We couldn’t send your request. Please try again.");
+      setError(reason instanceof Error ? reason.message : "We couldn’t save your request. Please try again.");
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -106,11 +106,11 @@ export default function RequestContact() {
                 </label>
               </div>
               <button type="submit" disabled={submitting} className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-wait disabled:opacity-60">
-                {submitting ? "Sending…" : "Submit"}
+                {submitting ? "Submitting…" : "Submit"}
               </button>
             </form>
             {error && <p role="alert" className="mt-4 text-sm text-red-400">{error}</p>}
-            {sent && <p role="status" className="mt-4 text-sm text-emerald-300">Your request was sent to the site admin. Thank you!</p>}
+            {sent && <p role="status" className="mt-4 text-sm text-emerald-300">Your request has been saved. Thank you!</p>}
           </section>
         </div>,
         document.body,

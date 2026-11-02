@@ -72,7 +72,7 @@ test("bulk queue preserves all three selected episodes and reports missing quali
   assert.equal(queue[2].link?.id, 3);
 });
 
-test("contact requests are validated and sanitized before server-side email", () => {
+test("contact requests are validated and sanitized before database storage", () => {
   const request = validateContactRequest({
     name: "  Ari\r\nSmith\u0000 ", type: "Anime", message: "  Please add season 2\r\nThanks\u0000  ",
   });

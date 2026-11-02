@@ -124,6 +124,17 @@ export const siteSettings = pgTable("site_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Publicly submitted requests are retained for admin review in PostgreSQL.
+export const contactRequests = pgTable("contact_requests", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  requestType: varchar("request_type", { length: 16 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("contact_requests_created_at_idx").on(table.createdAt),
+]);
+
 export const mediaRelations = relations(media, ({ one, many }) => ({
   category: one(categories, { fields: [media.categoryId], references: [categories.id] }),
   seasons: many(seasons),

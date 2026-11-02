@@ -4,8 +4,9 @@ import { useState } from "react";
 import MediaManager from "./MediaManager";
 import CategoryManager from "./CategoryManager";
 import AppearanceSettings from "./AppearanceSettings";
+import ContactRequestsManager from "./ContactRequestsManager";
 
-type Tab = "media" | "categories" | "appearance";
+type Tab = "media" | "categories" | "appearance" | "requests";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("media");
@@ -31,7 +32,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 border-b border-neutral-800">
-        {(["media", "categories", "appearance"] as Tab[]).map((t) => (
+        {(["media", "categories", "appearance", "requests"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -46,7 +47,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </div>
 
-      {tab === "media" ? <MediaManager /> : tab === "categories" ? <CategoryManager /> : <AppearanceSettings />}
+      {tab === "media" ? <MediaManager /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : <ContactRequestsManager />}
     </div>
   );
 }

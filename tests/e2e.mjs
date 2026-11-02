@@ -45,34 +45,37 @@ async function uploadFile({ kind, fileName, bytes, contentType, target }) {
 const pool = new pg.Pool({ connectionString: dbUrl, max: 1 });
 const before = await pool.query("SELECT (SELECT count(*) FROM media) AS media, (SELECT count(*) FROM download_links) AS links");
 
-// Auth and legacy preservation
+// Contact requests are saved directly to PostgreSQL; all management routes are admin-only.
 ok(await api("/api/health"));
-assert.equal((await fetch(`${base}/api/contact/config`)).status, 404, "the admin recipient must not be exposed by a public config endpoint");
+assert.equal((await api("/api/contact/requests", { auth: false })).res.status, 401);
+assert.equal((await api("/api/contact/requests/1", { method: "DELETE", auth: false })).res.status, 401);
 const contactIp = `198.51.100.${(Date.now() % 180) + 20}`;
 const contactPayload = { name: "  Ari\r\nSmith  ", type: "Anime", message: "Please add season 2\r\nThanks" };
 const sentContact = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { "x-e2e-client-ip": contactIp } });
-assert.equal(sentContact.res.status, 200, JSON.stringify(sentContact.data));
-assert.deepEqual(sentContact.data, { success: true });
-assert.equal(JSON.stringify(sentContact.data).includes("test-resend-key"), false, "provider credentials must not be returned to the browser");
-const mockResendPort = Number(process.env.MOCK_RESEND_PORT || 9001);
-const sentEmail = await (await fetch(`http://127.0.0.1:${mockResendPort}/last`)).json();
-assert.deepEqual(sentEmail.to, ["vault-test@example.com"]);
-assert.equal(sentEmail.from, "Vault Test <requests@example.com>");
-assert.match(sentEmail.text, /Name: Ari Smith/);
-assert.match(sentEmail.text, /Please add season 2\nThanks/);
+assert.equal(sentContact.res.status, 201, JSON.stringify(sentContact.data));
+assert.deepEqual(sentContact.data, { success: true, id: sentContact.data.id });
+const savedContact = await pool.query("SELECT name, request_type, message, created_at FROM contact_requests WHERE id=$1", [sentContact.data.id]);
+assert.equal(savedContact.rowCount, 1);
+assert.deepEqual({ name: savedContact.rows[0].name, requestType: savedContact.rows[0].request_type, message: savedContact.rows[0].message }, {
+  name: "Ari Smith", requestType: "Anime", message: "Please add season 2\nThanks",
+});
+assert.ok(savedContact.rows[0].created_at instanceof Date, "submission timestamp is created by PostgreSQL");
 const badContactType = await api("/api/contact", { method: "POST", auth: false, body: { name: "Ari", type: "<script>", message: "Hello" }, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.2` } });
 assert.equal(badContactType.res.status, 400);
 const honeypotContact = await api("/api/contact", { method: "POST", auth: false, body: { name: "Bot", type: "Other", message: "spam", company: "bot.example" }, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.3` } });
 assert.equal(honeypotContact.res.status, 400);
 const crossSiteContact = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { Origin: "https://evil.example", "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.4` } });
 assert.equal(crossSiteContact.res.status, 403);
-const failedContact = await api("/api/contact", { method: "POST", auth: false, body: { name: "Ari", type: "Movie", message: "[MOCK_FAIL]" }, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.5` } });
-assert.equal(failedContact.res.status, 502);
-assert.match(failedContact.data.error, /couldn’t send your request/i);
+const backedUpTable = "contact_requests_test_backup";
+await pool.query(`ALTER TABLE contact_requests RENAME TO ${backedUpTable}`);
+const failedSave = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.5` } });
+assert.equal(failedSave.res.status, 503);
+assert.match(failedSave.data.error, /couldn’t save your request/i);
+await pool.query(`ALTER TABLE ${backedUpTable} RENAME TO contact_requests`);
 const limitedContactIp = `${contactIp.split(".").slice(0, 3).join(".")}.6`;
 for (let attempt = 0; attempt < 5; attempt++) {
   const accepted = await api("/api/contact", { method: "POST", auth: false, body: { name: "Ari", type: "Other", message: `Rate test ${attempt}` }, headers: { "x-e2e-client-ip": limitedContactIp } });
-  assert.equal(accepted.res.status, 200);
+  assert.equal(accepted.res.status, 201);
 }
 const rateLimitedContact = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { "x-e2e-client-ip": limitedContactIp } });
 assert.equal(rateLimitedContact.res.status, 429);
@@ -367,20 +370,30 @@ await page.getByLabel("Request Type").selectOption("Episode");
 await page.getByLabel("Message").fill("Please add episode 4");
 const requestPopups = [];
 page.on("popup", (popup) => requestPopups.push(popup));
-const failContactUi = (route) => route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "We couldn’t send your request right now. Please try again later." }) });
+const failContactUi = (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "We couldn’t save your request right now. Please try again later." }) });
 await page.route("**/api/contact", failContactUi);
 await page.getByRole("button", { name: "Submit" }).click();
-await page.getByRole("alert").getByText(/couldn’t send your request/i).waitFor();
+await page.getByRole("alert").getByText(/couldn’t save your request/i).waitFor();
 assert.equal(await page.getByRole("status").count(), 0, "a failed send must not show success");
 await page.unroute("**/api/contact", failContactUi);
 await page.getByRole("button", { name: "Submit" }).click();
-await page.getByText("Your request was sent to the site admin. Thank you!").waitFor();
+await page.getByText("Your request has been saved. Thank you!").waitFor();
 assert.equal(requestPopups.length, 0, "submitting must not open Gmail, Telegram, or another app");
 assert.equal(await page.getByRole("link", { name: /Continue in (Telegram|Gmail)/ }).count(), 0);
 await page.getByRole("button", { name: "Close request form" }).click();
 await page.getByPlaceholder("Password").fill(password);
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.getByRole("heading", { name: "Admin Dashboard" }).waitFor();
+await page.getByRole("button", { name: "requests", exact: true }).click();
+await page.getByRole("heading", { name: "Submitted requests" }).waitFor();
+await page.getByText("Ari Smith", { exact: true }).waitFor();
+await page.getByText("E2E request sender", { exact: true }).waitFor();
+page.on("dialog", (dialog) => void dialog.accept());
+await page.getByRole("button", { name: "Delete request from E2E request sender" }).click();
+await page.getByRole("status").getByText("Request deleted.").waitFor();
+await page.getByText("E2E request sender", { exact: true }).waitFor({ state: "detached" });
+const remainingRequests = ok(await api("/api/contact/requests"));
+assert.ok(remainingRequests.some((request) => request.id === sentContact.data.id), "deleting one request must preserve other submitted requests");
 // A settings endpoint failure must not hide a working image gallery or falsely
 // report that R2 is unconfigured.
 const failWallpaperRead = async (route) => {
@@ -495,4 +508,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: auth/contact rate limits/CSRF, Resend request validation and delivery, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");
+console.log("E2E passed: auth/contact rate limits/CSRF, PostgreSQL request storage/admin listing/deletion, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");

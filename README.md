@@ -13,25 +13,25 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 - Legacy `/uploads/...` database records and local files remain readable. New local uploads are disabled.
 - Signed, short-lived R2 download URLs. The bucket can stay private.
 - Admin-managed site wallpaper: upload to private R2 or select an existing media poster/thumbnail, preview, apply/replace, and remove. Public rendering uses the existing signed image route with a readability overlay; clearing the setting does not delete the R2 object.
-- A mobile-friendly Request form sends submissions to the admin email through the server-side Resend integration. The browser never receives email-provider credentials or redirects to an external app.
+- A mobile-friendly Request form stores submissions in PostgreSQL. Admins can review and delete requests in the Requests section; submitting never opens an external app.
 
 ## Quick start
 
 ```bash
 npm ci
 cp .env.example .env
-# Edit .env: DATABASE_URL, ADMIN_PASSWORD, R2_*, and Resend email settings.
+# Edit .env: DATABASE_URL, ADMIN_PASSWORD, and R2_* values.
 npm run db:migrate
 npm run dev
 ```
 
 Open `/admin` and sign in with `ADMIN_PASSWORD`. There is no default password.
 
-## Request email
+## Contact requests
 
-Public Request submissions are sent server-to-server through [Resend](https://resend.com/). Configure `ADMIN_EMAIL` as the recipient, `RESEND_API_KEY` as a server-only secret, and `RESEND_FROM_EMAIL` as a sender address/domain verified with Resend. Never expose the key with a `NEXT_PUBLIC_` variable. The form reports success only after Resend accepts the email; provider errors are shown as a retryable failure and do not trigger external-app redirects.
+Public Request submissions are validated and normalized on the server, protected by same-origin checks and a hidden honeypot, then saved directly to the `contact_requests` PostgreSQL table. The success message is shown only after the database confirms the insert. Admins can view and delete submissions in the Admin Panel’s **Requests** section; both management endpoints require admin authentication. No email provider, API key, Gmail, Telegram, or external app is involved.
 
-Contact requests are validated and normalized on the server, use a hidden honeypot, and are rate-limited with PostgreSQL-backed counters. Defaults are five submissions per trusted client IP and 100 submissions globally per 15 minutes. Per-IP limits apply only if `ADMIN_LOGIN_TRUSTED_IP_HEADER` names a header that the trusted proxy overwrites with one client IP; otherwise the global limit still applies. Optional `CONTACT_RATE_LIMIT_*` variables tune these limits, and `CONTACT_RATE_LIMIT_SECRET` can provide a separate HMAC secret for the contact counters.
+Requests are rate-limited using PostgreSQL-backed counters. Defaults are five submissions per trusted client IP and 100 submissions globally per 15 minutes. Per-IP limits apply only if `ADMIN_LOGIN_TRUSTED_IP_HEADER` names a header that the trusted proxy overwrites with one client IP; otherwise the global limit still applies. Optional `CONTACT_RATE_LIMIT_*` variables tune these limits, and `CONTACT_RATE_LIMIT_SECRET` can provide a separate HMAC secret for the contact counters.
 
 ## Cloudflare R2
 
@@ -45,7 +45,7 @@ Migrations are explicit and additive. They do not run automatically during `dev`
 npm run db:migrate
 ```
 
-`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations. `0004_site_wallpaper` adds the additive `site_settings` table; existing media, seasons, episodes, and download links are retained.
+`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations. `0004_site_wallpaper` adds the additive `site_settings` table; existing media, seasons, episodes, and download links are retained. `0005_contact_requests` adds a `contact_requests` table for form submissions without modifying existing records.
 
 Back up the database before migrating. Migrations are additive and transactional, but index/constraint creation can lock tables; use a maintenance window for a large database. The disposable upgrade test creates the pre-PR schema, seeds legacy rows, migrates twice, and checks that categories/media/seasons/episodes/links are preserved:
 
@@ -65,7 +65,7 @@ npm test
 npm run build
 ```
 
-End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub. They do **not** contact Cloudflare or Resend. The CI runner starts/stops both mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
+End-to-end tests use a disposable PostgreSQL-compatible test database and a local S3-compatible mock. They do **not** contact Cloudflare or any email provider. The CI runner starts/stops the storage mock and app, seeds legacy fixtures, and refuses non-loopback database/app/storage targets:
 
 ```bash
 # Terminal 1: disposable test database

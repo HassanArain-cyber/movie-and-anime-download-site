@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { contactRequests } from "@/db/schema";
 import { consumeContactAttempt } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-security";
 import { validateContactRequest } from "@/lib/contact-request";
-import { sendContactEmail } from "@/lib/contact-email";
 import { ApiError, errorResponse, readJson } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -26,14 +27,22 @@ export async function POST(req: Request) {
 
     const body = await readJson(req, 8 * 1024);
     // Honeypot: bots that fill the visually hidden field are rejected without
-    // sending mail. A successful response is reserved for provider acceptance.
+    // creating a database record. Success is reserved for a committed insert.
     if (typeof body.company === "string" && body.company.trim()) {
       throw new ApiError(400, "Unable to submit this request.");
     }
 
     const request = validateContactRequest(body);
-    await sendContactEmail(request);
-    return NextResponse.json({ success: true }, { headers: HEADERS });
+    let saved: { id: number } | undefined;
+    try {
+      [saved] = await db.insert(contactRequests).values({ name: request.name, requestType: request.type, message: request.message }).returning({ id: contactRequests.id });
+    } catch (error) {
+      console.error("Contact request save failed:", (error as { code?: string })?.code ?? "unknown");
+      throw new ApiError(503, "We couldn’t save your request right now. Please try again later.");
+    }
+    if (!saved) throw new ApiError(503, "We couldn’t confirm that your request was saved. Please try again.");
+
+    return NextResponse.json({ success: true, id: saved.id }, { status: 201, headers: HEADERS });
   } catch (error) {
     return errorResponse(error);
   }
