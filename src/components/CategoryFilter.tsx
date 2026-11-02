@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { Category } from "@/lib/types";
 
 interface Props {
@@ -10,12 +9,9 @@ interface Props {
   baseQuery: { q?: string; type?: string };
 }
 
-export default function CategoryFilter({
-  categories,
-  activeSlug,
-  baseQuery,
-}: Props) {
+export default function CategoryFilter({ categories, activeSlug, baseQuery }: Props) {
   const pathname = usePathname() || "/";
+  const router = useRouter();
 
   const buildHref = (catSlug?: string) => {
     const params = new URLSearchParams();
@@ -27,33 +23,30 @@ export default function CategoryFilter({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <Link
-        href={buildHref()}
-        className={`rounded-md px-3 py-1.5 text-sm ${
-          !activeSlug
-            ? "bg-neutral-800 text-white"
-            : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
-        }`}
+    <label className="relative inline-flex items-center">
+      <span className="sr-only">Filter by tag</span>
+      <select
+        aria-label="Filter by tag"
+        value={activeSlug ?? ""}
+        onChange={(event) => router.push(buildHref(event.target.value || undefined))}
+        className="min-w-36 appearance-none rounded-md border border-neutral-800 bg-neutral-900 py-1.5 pl-3 pr-9 text-sm text-neutral-200 outline-none transition hover:bg-neutral-800 focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700"
       >
-        All Categories
-      </Link>
-      {categories.map((cat) => {
-        const active = cat.slug === activeSlug;
-        return (
-          <Link
-            key={cat.id}
-            href={buildHref(cat.slug)}
-            className={`rounded-md px-3 py-1.5 text-sm ${
-              active
-                ? "bg-neutral-800 text-white"
-                : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
-            }`}
-          >
-            {cat.name}
-          </Link>
-        );
-      })}
-    </div>
+        <option value="">All Tags</option>
+        {categories.map((category) => (
+          <option key={category.id} value={category.slug}>
+            {category.name}
+          </option>
+        ))}
+      </select>
+      <svg
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 h-3.5 w-3.5 text-neutral-500"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+      </svg>
+    </label>
   );
 }

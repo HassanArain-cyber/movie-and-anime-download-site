@@ -45,6 +45,19 @@ async function uploadFile({ kind, fileName, bytes, contentType, target }) {
 const pool = new pg.Pool({ connectionString: dbUrl, max: 1 });
 const before = await pool.query("SELECT (SELECT count(*) FROM media) AS media, (SELECT count(*) FROM download_links) AS links");
 
+// Title suggestions are case-insensitive, title-only, and include every media type.
+const jujuFixtures = [
+  { type: "movie", title: `Juju Movie ${run}`, slug: `juju-movie-${run}` },
+  { type: "anime", title: `Jujutsu Kaisen ${run}`, slug: `jujutsu-kaisen-${run}` },
+  { type: "series", title: `Juju Series ${run}`, slug: `juju-series-${run}` },
+];
+for (const fixture of jujuFixtures) {
+  await pool.query("INSERT INTO media (type, title, slug) VALUES ($1, $2, $3)", [fixture.type, fixture.title, fixture.slug]);
+}
+const jujuSuggestions = ok(await api("/api/media?suggestions=1&q=JUJU"));
+assert.deepEqual(new Set(jujuSuggestions.filter((item) => item.title.endsWith(run)).map((item) => item.type)), new Set(["movie", "anime", "series"]));
+assert.deepEqual(ok(await api("/api/media?suggestions=1&q=Existing")), [], "suggestions must match titles rather than descriptions");
+
 // Contact requests are saved directly to PostgreSQL; all management routes are admin-only.
 ok(await api("/api/health"));
 assert.equal((await api("/api/contact/requests", { auth: false })).res.status, 401);
@@ -337,6 +350,35 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 900 
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
+await page.goto(`${base}/`);
+assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
+const tagDropdown = page.getByRole("combobox", { name: "Filter by tag" });
+await tagDropdown.selectOption("legacy");
+await page.waitForURL((url) => url.searchParams.get("category") === "legacy");
+await page.locator(".grid").getByText("Legacy Movie", { exact: true }).waitFor();
+assert.equal(await page.locator(".grid").getByText("Legacy Anime", { exact: true }).count(), 0, "selected tag should filter out uncategorized titles");
+await tagDropdown.selectOption("");
+await page.waitForURL((url) => !url.searchParams.has("category"));
+await page.locator(".grid").getByText("Legacy Anime", { exact: true }).waitFor();
+
+const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
+const suggestions = page.locator("#search-suggestions");
+await searchBox.fill("NoSuchVaultTitle");
+await suggestions.getByText(/No matching titles found/).waitFor();
+await searchBox.fill("");
+await searchBox.pressSequentially("Juju", { delay: 35 });
+await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
+await suggestions.getByText(`Jujutsu Kaisen ${run}`, { exact: true }).waitFor();
+await suggestions.getByText(`Juju Series ${run}`, { exact: true }).waitFor();
+assert.equal(new URL(page.url()).searchParams.has("q"), false, "suggestions should appear before submitting the search");
+await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) }).click();
+await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
+await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
+
+await searchBox.fill("Legacy");
+await searchBox.press("Enter");
+await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy");
+await page.getByRole("heading", { name: /Search results for/ }).waitFor();
 await page.goto(`${base}/admin`);
 await page.getByRole("button", { name: "Request" }).click();
 await page.getByRole("dialog", { name: "Send a request" }).waitFor();

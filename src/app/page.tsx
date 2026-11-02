@@ -3,7 +3,7 @@ import MediaGrid from "@/components/MediaGrid";
 import CategoryFilter from "@/components/CategoryFilter";
 import { db } from "@/db";
 import { media, categories } from "@/db/schema";
-import { eq, like, or, and, desc, sql } from "drizzle-orm";
+import { eq, ilike, or, and, desc, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +27,9 @@ export default async function Home({ searchParams }: HomeProps) {
   // Build conditions for featured / latest
   const conditions: any[] = [];
   if (q) {
-    const search = `%${q}%`;
+    const search = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
     conditions.push(
-      or(like(media.title, search), like(media.description ?? "", search))
+      or(ilike(media.title, search), ilike(media.description ?? "", search))
     );
   }
   if (typeFilter && ["movie", "anime", "series"].includes(typeFilter)) {
