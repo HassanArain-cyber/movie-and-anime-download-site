@@ -6,12 +6,14 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 
 - Movies and episodes with multiple independent download versions (360p through 8K, plus custom/other), each with its own label, file size, and URL or private R2 object.
 - Anime and TV series with multiple seasons, batch-created episodes, and per-episode quality links.
-- Public episode lists keep individual download buttons and add checkboxes, Select All/Clear Selection, per-quality bulk selection, and an individual-file download queue that reports started, skipped, and failed handoffs. The browser manages the actual transfer progress; complete-season archives remain available as before.
+- Public episode lists keep individual download buttons and add checkboxes, Select All/Clear Selection, per-quality bulk selection, and an individual-file download queue that reports completed handoffs, waiting, skipped, and failed items (the browser owns transfer progress). The browser manages the actual transfer progress; complete-season archives remain available as before.
 - Complete-season archives (ZIP/RAR/7z) attached to a season.
 - Private Cloudflare R2 uploads for videos, archives, and posters. Files upload directly from the browser to R2 with multipart presigned URLs; Next.js never stores the video bytes on local disk.
 - Telegram links (`https://t.me/...`, `tg://...`) and other external HTTP(S)/magnet links alongside R2 files.
 - Legacy `/uploads/...` database records and local files remain readable. New local uploads are disabled.
 - Signed, short-lived R2 download URLs. The bucket can stay private.
+- Admin-managed site wallpaper: upload to private R2 or select an existing media poster/thumbnail, preview, apply/replace, and remove. Public rendering uses the existing signed image route with a readability overlay; clearing the setting does not delete the R2 object.
+- A mobile-friendly Request form prepares Telegram and Gmail drafts. Set `ADMIN_EMAIL` to enable the Gmail destination; neither channel reports a request as sent until the user submits it there.
 
 ## Quick start
 
@@ -37,7 +39,7 @@ Migrations are explicit and additive. They do not run automatically during `dev`
 npm run db:migrate
 ```
 
-`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations.
+`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations. `0004_site_wallpaper` adds the additive `site_settings` table; existing media, seasons, episodes, and download links are retained.
 
 Back up the database before migrating. Migrations are additive and transactional, but index/constraint creation can lock tables; use a maintenance window for a large database. The disposable upgrade test creates the pre-PR schema, seeds legacy rows, migrates twice, and checks that categories/media/seasons/episodes/links are preserved:
 

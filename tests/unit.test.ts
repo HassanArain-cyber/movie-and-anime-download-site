@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createBulkDownloadQueue,
   formatBytes,
   getLinkHref,
   getLinkProvider,
@@ -10,6 +11,7 @@ import {
   selectBulkDownload,
 } from "../src/lib/media-links";
 import { positiveId, quality, ApiError } from "../src/lib/validation";
+import { buildRequestLinks } from "../src/lib/request-links";
 import type { DownloadLink } from "../src/lib/types";
 
 test("external URL safety preserves Telegram and magnet links but blocks scripts", () => {
@@ -52,6 +54,36 @@ test("bulk selection picks the chosen quality, highest available, and legacy uns
   assert.equal(selectBulkDownload(links, "720p")?.id, 1);
   assert.equal(selectBulkDownload(links, "unspecified")?.id, 3);
   assert.equal(selectBulkDownload(links, "480p"), null);
+});
+
+test("bulk queue preserves all three selected episodes and reports missing qualities", () => {
+  const base: Omit<DownloadLink, "id" | "url" | "quality" | "label" | "storageProvider"> = {
+    mediaId: 5, seasonId: 2, episodeId: null, fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null,
+  };
+  const episodes = [1, 2, 3].map((number) => ({
+    id: number, episodeNumber: number, title: null,
+    downloadLinks: number === 2 ? [] : [{ ...base, id: number, episodeId: number, url: `https://example.com/${number}.mp4`, quality: "1080p" as const, label: "1080p", storageProvider: "external" as const }],
+  }));
+  const queue = createBulkDownloadQueue(episodes, "1080p");
+  assert.deepEqual(queue.map((item) => item.episodeNumber), [1, 2, 3]);
+  assert.deepEqual(queue.map((item) => item.status), ["pending", "skipped", "pending"]);
+  assert.equal(queue[0].link?.id, 1);
+  assert.match(queue[1].message, /No safe, usable/);
+  assert.equal(queue[2].link?.id, 3);
+});
+
+test("request links prefill Telegram and configurable Gmail drafts without claiming delivery", () => {
+  const request = { name: "Ari", type: "Anime" as const, message: "Please add season 2" };
+  const links = buildRequestLinks(request, "vault@example.com");
+  const telegram = new URL(links.telegram);
+  assert.equal(telegram.origin + telegram.pathname, "https://t.me/Gojo_Saturo_6");
+  assert.match(telegram.searchParams.get("text") || "", /Ari[\s\S]*Anime[\s\S]*Please add season 2/);
+  assert.ok(links.gmail);
+  const gmail = new URL(links.gmail!);
+  assert.equal(gmail.searchParams.get("to"), "vault@example.com");
+  assert.equal(gmail.searchParams.get("su"), "Vault Anime request");
+  assert.match(gmail.searchParams.get("body") || "", /Please add season 2/);
+  assert.equal(buildRequestLinks(request, "").gmail, null);
 });
 
 test("ids and byte formatting are validated", () => {

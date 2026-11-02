@@ -26,6 +26,7 @@ const env = {
   E2E_BASE_URL: base,
   E2E_ADMIN_PASSWORD: password,
   ADMIN_PASSWORD: password,
+  ADMIN_EMAIL: "vault-test@example.com",
   APP_ORIGIN: base,
   NEXT_TELEMETRY_DISABLED: "1",
   ADMIN_LOGIN_TRUSTED_IP_HEADER: "x-e2e-client-ip",

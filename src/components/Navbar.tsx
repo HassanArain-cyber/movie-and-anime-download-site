@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import RequestContact from "@/components/RequestContact";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -95,6 +96,8 @@ export default function Navbar() {
             </svg>
           </div>
         </form>
+
+        <RequestContact />
 
         <Link
           href="/admin"

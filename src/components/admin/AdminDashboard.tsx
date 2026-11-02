@@ -3,8 +3,9 @@
 import { useState } from "react";
 import MediaManager from "./MediaManager";
 import CategoryManager from "./CategoryManager";
+import AppearanceSettings from "./AppearanceSettings";
 
-type Tab = "media" | "categories";
+type Tab = "media" | "categories" | "appearance";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("media");
@@ -30,7 +31,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 border-b border-neutral-800">
-        {(["media", "categories"] as Tab[]).map((t) => (
+        {(["media", "categories", "appearance"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -45,7 +46,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </div>
 
-      {tab === "media" ? <MediaManager /> : <CategoryManager />}
+      {tab === "media" ? <MediaManager /> : tab === "categories" ? <CategoryManager /> : <AppearanceSettings />}
     </div>
   );
 }

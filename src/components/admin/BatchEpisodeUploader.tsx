@@ -9,6 +9,7 @@ type Row = {
   id: string;
   file: File;
   episodeNumber: string;
+  quality: VideoQuality;
   status: "pending" | "uploading" | "attaching" | "done" | "error";
   progress: number;
   error?: string;
@@ -32,16 +33,18 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
   useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const addFiles = (files: FileList) => {
-    const next = Array.from(files).map((file) => ({ id: crypto.randomUUID(), file, episodeNumber: guessEpisode(file.name), status: "pending" as const, progress: 0 }));
+    const next = Array.from(files).map((file) => ({ id: crypto.randomUUID(), file, episodeNumber: guessEpisode(file.name), quality, status: "pending" as const, progress: 0 }));
     setRows((current) => [...current, ...next]); setMessage("");
   };
   const update = (id: string, patch: Partial<Row>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
 
   const run = async () => {
     setMessage("");
-    const numbers = rows.filter((row) => row.status !== "done").map((row) => Number(row.episodeNumber));
+    const pendingRows = rows.filter((row) => row.status !== "done");
+    const numbers = pendingRows.map((row) => Number(row.episodeNumber));
     if (numbers.some((number) => !Number.isInteger(number) || number < 1)) { setMessage("Assign a valid episode number to every file."); return; }
-    if (new Set(numbers).size !== numbers.length) { setMessage("Each file must map to a different episode number."); return; }
+    const episodeQualities = pendingRows.map((row) => `${Number(row.episodeNumber)}:${row.quality}`);
+    if (new Set(episodeQualities).size !== episodeQualities.length) { setMessage("Each episode can have one file per quality in a batch. Remove duplicate episode and quality pairs."); return; }
     if (numbers.some((number) => !episodes.some((episode) => episode.episodeNumber === number))) { setMessage("Create the matching episode rows first, then upload the batch."); return; }
     const controller = new AbortController(); abortRef.current = controller; setBusy(true);
     let done = 0;
@@ -53,7 +56,7 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
         if (!completed) {
           update(row.id, { status: "uploading", error: undefined });
           completed = await uploadToR2(row.file, {
-            kind: "video", mediaId, seasonId, episodeId: episode.id, quality, signal: controller.signal,
+            kind: "video", mediaId, seasonId, episodeId: episode.id, quality: row.quality, signal: controller.signal,
             resumeId: row.uploadId,
             onProgress: (progress) => update(row.id, { progress }), onSession: (uploadId) => update(row.id, { uploadId }),
           });
@@ -62,7 +65,7 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
         update(row.id, { status: "attaching" });
         const res = await fetch("/api/download-links", {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-          body: JSON.stringify({ mediaId, seasonId, episodeId: episode.id, quality, label: quality, r2UploadId: completed.id }),
+          body: JSON.stringify({ mediaId, seasonId, episodeId: episode.id, quality: row.quality, label: row.quality, r2UploadId: completed.id }),
         });
         if (!res.ok) { const data = await res.json(); throw new Error(data.error || "Failed to attach link"); }
         update(row.id, { status: "done", progress: 100 }); done += 1;
@@ -79,11 +82,12 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
     <div className="space-y-3 rounded-md border border-neutral-800 bg-neutral-900/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-white">Batch upload episode files</h4>
-        <select value={quality} onChange={(event) => setQuality(event.target.value as VideoQuality)} disabled={busy || rows.some((row) => row.uploadId || row.completed || row.status === "done")} className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-sm text-white">
+        <label className="flex items-center gap-2 text-xs text-neutral-500">Default quality for new files
+        <select value={quality} onChange={(event) => setQuality(event.target.value as VideoQuality)} disabled={busy} className="rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1 text-sm text-white">
           {QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}
-        </select>
+        </select></label>
       </div>
-      <p className="text-xs text-neutral-500">Choose multiple files. Episode numbers are guessed from names like S01E03 or 03.mp4; correct them below before uploading. Each file is stored privately in R2 and attached to the selected quality.</p>
+      <p className="text-xs text-neutral-500">Choose multiple files. Episode numbers are guessed from names like S01E03 or 03.mp4; correct the episode and quality on each row. The same episode can be uploaded at multiple qualities in one batch.</p>
       <input ref={fileRef} type="file" multiple accept=".mp4,.webm,.mkv,.mov,.avi,.m4v" hidden onChange={(event) => { if (event.target.files?.length) addFiles(event.target.files); event.target.value = ""; }} />
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200">Choose files</button>
@@ -96,6 +100,11 @@ export default function BatchEpisodeUploader({ mediaId, seasonId, episodes, onCh
           <span className="min-w-0 flex-1 truncate text-neutral-300" title={row.file.name}>{row.file.name}</span>
           <label className="flex items-center gap-1 text-neutral-500">Ep
             <input type="number" min={1} value={row.episodeNumber} disabled={busy || row.status === "done" || !!row.uploadId || !!row.completed} onChange={(event) => update(row.id, { episodeNumber: event.target.value })} className="w-16 rounded border border-neutral-800 bg-neutral-900 px-1 py-0.5 text-white" />
+          </label>
+          <label className="flex items-center gap-1 text-neutral-500">Quality
+            <select value={row.quality} disabled={busy || row.status === "done" || !!row.uploadId || !!row.completed} onChange={(event) => update(row.id, { quality: event.target.value as VideoQuality })} className="rounded border border-neutral-800 bg-neutral-900 px-1 py-0.5 text-white">
+              {QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}
+            </select>
           </label>
           <span className={row.status === "done" ? "text-green-400" : row.status === "error" ? "text-red-400" : "text-neutral-500"}>{row.status === "uploading" ? `${row.progress}%` : row.status}</span>
           {row.error && <span className="w-full text-red-400">{row.error}</span>}

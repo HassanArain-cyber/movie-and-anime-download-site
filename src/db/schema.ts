@@ -116,6 +116,14 @@ export const authRateLimits = pgTable("auth_rate_limits", {
   index("auth_rate_limits_expires_at_idx").on(table.expiresAt),
 ]);
 
+// Site-wide customization is additive and stores only a validated image URL.
+// R2 image URLs resolve through the existing private-image signing endpoint.
+export const siteSettings = pgTable("site_settings", {
+  key: varchar("setting_key", { length: 100 }).primaryKey(),
+  value: text("setting_value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const mediaRelations = relations(media, ({ one, many }) => ({
   category: one(categories, { fields: [media.categoryId], references: [categories.id] }),
   seasons: many(seasons),
