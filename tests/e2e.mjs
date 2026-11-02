@@ -310,6 +310,32 @@ const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 await page.goto(`${base}/admin`);
 await page.getByRole("button", { name: "Request" }).click();
+await page.getByRole("dialog", { name: "Send a request" }).waitFor();
+const desktopModalLayout = await page.getByRole("dialog").evaluate((dialog) => {
+  const rect = dialog.getBoundingClientRect();
+  const backdrop = dialog.parentElement;
+  const backdropRect = backdrop.getBoundingClientRect();
+  return { centerX: rect.left + rect.width / 2, viewportCenter: window.innerWidth / 2, backdropTop: backdropRect.top, backdropHeight: backdropRect.height, zIndex: getComputedStyle(backdrop).zIndex, portaledToBody: backdrop.parentElement === document.body };
+});
+assert.ok(Math.abs(desktopModalLayout.centerX - desktopModalLayout.viewportCenter) < 1, "desktop modal should be centered");
+assert.equal(desktopModalLayout.backdropTop, 0);
+assert.equal(desktopModalLayout.backdropHeight, 900);
+assert.equal(desktopModalLayout.zIndex, "1000");
+assert.equal(desktopModalLayout.portaledToBody, true, "modal must escape the sticky/backdrop-filter navbar stacking context");
+await page.setViewportSize({ width: 390, height: 430 });
+const mobileModalLayout = await page.getByRole("dialog").evaluate((dialog) => {
+  const rect = dialog.getBoundingClientRect();
+  return { x: rect.left, right: rect.right, centerX: rect.left + rect.width / 2, viewportCenter: window.innerWidth / 2, scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight, bodyOverflow: document.body.style.overflow };
+});
+assert.ok(mobileModalLayout.x >= 0 && mobileModalLayout.right <= 390, "mobile dialog should fit viewport width");
+assert.ok(Math.abs(mobileModalLayout.centerX - mobileModalLayout.viewportCenter) < 1, "mobile modal should be centered");
+assert.ok(mobileModalLayout.scrollHeight > mobileModalLayout.clientHeight, "tall mobile dialog should remain internally scrollable");
+assert.equal(mobileModalLayout.bodyOverflow, "hidden", "background page scrolling should be locked while the modal is open");
+await page.keyboard.press("Escape");
+await page.getByRole("dialog").waitFor({ state: "detached" });
+assert.equal(await page.evaluate(() => document.body.style.overflow), "", "background scroll should restore after closing");
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.getByRole("button", { name: "Request" }).click();
 await page.getByRole("textbox", { name: "Name" }).fill("E2E request sender");
 await page.getByLabel("Request Type").selectOption("Episode");
 await page.getByLabel("Message").fill("Please add episode 4");
@@ -325,6 +351,19 @@ await page.getByRole("button", { name: "Close request form" }).click();
 await page.getByPlaceholder("Password").fill(password);
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.getByRole("heading", { name: "Admin Dashboard" }).waitFor();
+// A settings endpoint failure must not hide a working image gallery or falsely
+// report that R2 is unconfigured.
+const failWallpaperRead = async (route) => {
+  if (route.request().method() === "GET") await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Server error. Please try again." }) });
+  else await route.continue();
+};
+await page.route("**/api/site-settings", failWallpaperRead);
+await page.getByRole("button", { name: "Appearance" }).click();
+await page.getByText(/Could not load the saved wallpaper/).waitFor();
+await page.getByText("Legacy Movie · poster", { exact: true }).waitFor();
+assert.equal(await page.getByText(/Required R2 environment variables are missing/).count(), 0, "a settings failure must not be mislabeled as missing R2 configuration");
+await page.unroute("**/api/site-settings", failWallpaperRead);
+await page.getByRole("button", { name: "media", exact: true }).click();
 // Wallpaper uploads use the existing private-R2 image flow; the saved setting
 // persists, supports the media gallery, and can be removed without deleting R2.
 await page.getByRole("button", { name: "Appearance" }).click();

@@ -27,7 +27,11 @@ function putPart(part: InitializedUpload["parts"][number], blob: Blob, signal: A
     const cleanup = () => signal?.removeEventListener("abort", onAbort);
     const onAbort = () => xhr.abort();
     xhr.onload = () => { cleanup(); xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 part upload failed (${xhr.status}). Check bucket CORS and credentials.`)); };
-    xhr.onerror = () => { cleanup(); reject(new Error("Network error during R2 upload. Check your connection and bucket CORS.")); };
+    xhr.onerror = () => {
+      cleanup();
+      const origin = typeof window === "undefined" ? "this site" : window.location.origin;
+      reject(new Error(`The browser could not reach R2 from ${origin}. This is commonly caused by the bucket CORS policy missing this exact origin for PUT requests; also check the network and storage endpoint.`));
+    };
     xhr.onabort = () => { cleanup(); reject(new DOMException("Upload cancelled", "AbortError")); };
     xhr.ontimeout = () => { cleanup(); reject(new Error("R2 upload timed out")); };
     if (signal) {

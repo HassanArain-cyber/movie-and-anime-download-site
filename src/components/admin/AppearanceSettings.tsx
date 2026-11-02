@@ -23,14 +23,14 @@ function galleryImages(items: Media[]): GalleryImage[] {
   return images;
 }
 
-function ImagePreview({ url, label }: { url: string | null; label: string }) {
+function ImagePreview({ url, label, emptyLabel = "No wallpaper selected" }: { url: string | null; label: string; emptyLabel?: string }) {
   return (
     <div className="relative aspect-video overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
       {url ? <>
         <Image src={url} alt="" fill sizes="(max-width: 640px) 100vw, 50vw" unoptimized className="object-cover" />
         <div className="absolute inset-0 bg-black/60" />
         <p className="absolute inset-x-3 bottom-3 text-sm font-medium text-white">{label}</p>
-      </> : <div className="flex h-full items-center justify-center text-sm text-neutral-600">No wallpaper selected</div>}
+      </> : <div className="flex h-full items-center justify-center px-4 text-center text-sm text-neutral-600">{emptyLabel}</div>}
     </div>
   );
 }
@@ -43,6 +43,9 @@ export default function AppearanceSettings() {
   const [candidateName, setCandidateName] = useState("");
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState("");
+  const [galleryError, setGalleryError] = useState("");
+  const [storageError, setStorageError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -53,32 +56,49 @@ export default function AppearanceSettings() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      fetch("/api/site-settings", { cache: "no-store" }).then(async (response) => {
-        if (!response.ok) throw new Error("Could not load the saved wallpaper");
-        return response.json() as Promise<{ wallpaperUrl: string | null }>;
-      }),
-      fetch("/api/media").then(async (response) => {
-        if (!response.ok) throw new Error("Could not load the image gallery");
-        return response.json() as Promise<Media[]>;
-      }),
-      fetch("/api/storage/status").then((response) => response.ok ? response.json() as Promise<StorageStatus> : null),
-    ]).then(([settings, items, storageStatus]) => {
+    const loadJson = async <T,>(url: string, message: string, cache?: RequestCache): Promise<T> => {
+      const response = await fetch(url, cache ? { cache } : undefined);
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const body = await response.json() as { error?: unknown };
+          if (typeof body.error === "string") detail = `: ${body.error}`;
+        } catch { /* Keep the endpoint-specific fallback below. */ }
+        throw new Error(`${message}${detail}`);
+      }
+      return response.json() as Promise<T>;
+    };
+    void Promise.allSettled([
+      loadJson<{ wallpaperUrl: string | null }>("/api/site-settings", "Could not load the saved wallpaper. Check that the database is reachable and the site_settings migration has been applied", "no-store"),
+      loadJson<Media[]>("/api/media", "Could not load the image gallery"),
+      loadJson<StorageStatus>("/api/storage/status", "Could not check R2 configuration. Verify the admin session and storage status endpoint", "no-store"),
+    ]).then(([settingsResult, mediaResult, storageResult]) => {
       if (!active) return;
-      setCurrent(settings.wallpaperUrl);
-      setCandidate(settings.wallpaperUrl);
-      setCandidateName(settings.wallpaperUrl ? "Current wallpaper" : "");
-      setMedia(Array.isArray(items) ? items : []);
-      setStorage(storageStatus);
-      setError("");
-    }).catch((reason) => {
-      if (active) setError(reason instanceof Error ? reason.message : "Could not load appearance settings");
+      if (settingsResult.status === "fulfilled") {
+        const wallpaperUrl = settingsResult.value.wallpaperUrl;
+        setCurrent(wallpaperUrl);
+        setCandidate(wallpaperUrl);
+        setCandidateName(wallpaperUrl ? "Current wallpaper" : "");
+      } else {
+        setSettingsError(settingsResult.reason instanceof Error ? settingsResult.reason.message : "Could not load the saved wallpaper");
+      }
+      if (mediaResult.status === "fulfilled") {
+        setMedia(Array.isArray(mediaResult.value) ? mediaResult.value : []);
+      } else {
+        setGalleryError(mediaResult.reason instanceof Error ? mediaResult.reason.message : "Could not load the image gallery");
+      }
+      if (storageResult.status === "fulfilled") {
+        setStorage(storageResult.value);
+      } else {
+        setStorageError(storageResult.reason instanceof Error ? storageResult.reason.message : "Could not check R2 configuration");
+      }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; abortRef.current?.abort(); };
   }, []);
 
   const handleUpload = async (file: File) => {
-    if (!storage?.configured) { setError("Cloudflare R2 is not configured. Choose an existing gallery image instead."); return; }
+    if (!storage) { setError(storageError || "R2 configuration could not be checked. Refresh the page and try again."); return; }
+    if (!storage.configured) { setError(`Required R2 environment variables are missing: ${storage.missing.join(", ")}. Choose an existing gallery image instead.`); return; }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -147,7 +167,7 @@ export default function AppearanceSettings() {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Currently applied</h3>
-          <ImagePreview url={current} label="Live site wallpaper" />
+          <ImagePreview url={current} label="Live site wallpaper" emptyLabel={settingsError ? "Saved wallpaper could not be checked" : "No wallpaper selected"} />
         </div>
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Preview selection</h3>
@@ -167,14 +187,16 @@ export default function AppearanceSettings() {
         <button type="button" onClick={() => void remove()} disabled={!current || saving || uploading} className="rounded-md border border-red-900/60 px-3 py-2 text-sm text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-50">Remove wallpaper</button>
       </div>
       {uploading && <div className="h-2 overflow-hidden rounded bg-neutral-800" role="progressbar" aria-label="Wallpaper upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div className="h-full bg-red-500 transition-all" style={{ width: `${progress}%` }} /></div>}
-      {!storage?.configured && <p className="text-xs text-amber-300">R2 is not configured, so new uploads are unavailable. Existing gallery images can still be applied.</p>}
+      {storage?.configured === false && <p role="status" className="text-xs text-amber-300">Required R2 environment variables are missing: {storage.missing.join(", ")}. New uploads are unavailable; existing gallery images can still be applied.</p>}
+      {storageError && <p role="alert" className="text-sm text-amber-300">{storageError}. Upload availability is unknown; this is not proof that R2 is unconfigured.</p>}
+      {settingsError && <p role="alert" className="text-sm text-amber-300">{settingsError}.</p>}
 
       <div className="space-y-2">
         <div>
           <h3 className="text-sm font-semibold text-white">Choose from the website image gallery</h3>
           <p className="text-xs text-neutral-500">Gallery options are existing media posters and thumbnails.</p>
         </div>
-        {images.length === 0 ? <p className="rounded-md border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">No media gallery images are available yet. Upload a wallpaper above.</p> : (
+        {galleryError ? <p role="alert" className="rounded-md border border-amber-900/50 p-4 text-sm text-amber-300">{galleryError}.</p> : images.length === 0 ? <p className="rounded-md border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">No media gallery images are available yet. Upload a wallpaper above.</p> : (
           <div className="grid max-h-80 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
             {images.map((image) => <button key={image.url} type="button" aria-pressed={candidate === image.url} onClick={() => selectGalleryImage(image)} className={`overflow-hidden rounded-lg border text-left transition ${candidate === image.url ? "border-red-500 ring-1 ring-red-500" : "border-neutral-800 hover:border-neutral-600"}`}>
               <div className="relative aspect-video bg-neutral-900"><Image src={image.url} alt="" fill sizes="(max-width: 640px) 50vw, 25vw" unoptimized className="object-cover" /></div>
