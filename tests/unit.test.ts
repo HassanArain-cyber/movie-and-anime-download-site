@@ -11,7 +11,7 @@ import {
   selectBulkDownload,
 } from "../src/lib/media-links";
 import { positiveId, quality, ApiError } from "../src/lib/validation";
-import { buildRequestLinks } from "../src/lib/request-links";
+import { validateContactRequest } from "../src/lib/contact-request";
 import type { DownloadLink } from "../src/lib/types";
 
 test("external URL safety preserves Telegram and magnet links but blocks scripts", () => {
@@ -72,18 +72,14 @@ test("bulk queue preserves all three selected episodes and reports missing quali
   assert.equal(queue[2].link?.id, 3);
 });
 
-test("request links prefill Telegram and configurable Gmail drafts without claiming delivery", () => {
-  const request = { name: "Ari", type: "Anime" as const, message: "Please add season 2" };
-  const links = buildRequestLinks(request, "vault@example.com");
-  const telegram = new URL(links.telegram);
-  assert.equal(telegram.origin + telegram.pathname, "https://t.me/Gojo_Saturo_6");
-  assert.match(telegram.searchParams.get("text") || "", /Ari[\s\S]*Anime[\s\S]*Please add season 2/);
-  assert.ok(links.gmail);
-  const gmail = new URL(links.gmail!);
-  assert.equal(gmail.searchParams.get("to"), "vault@example.com");
-  assert.equal(gmail.searchParams.get("su"), "Vault Anime request");
-  assert.match(gmail.searchParams.get("body") || "", /Please add season 2/);
-  assert.equal(buildRequestLinks(request, "").gmail, null);
+test("contact requests are validated and sanitized before server-side email", () => {
+  const request = validateContactRequest({
+    name: "  Ari\r\nSmith\u0000 ", type: "Anime", message: "  Please add season 2\r\nThanks\u0000  ",
+  });
+  assert.deepEqual(request, { name: "Ari Smith", type: "Anime", message: "Please add season 2\nThanks" });
+  assert.throws(() => validateContactRequest({ name: "Ari", type: "<script>", message: "hello" }), ApiError);
+  assert.throws(() => validateContactRequest({ name: "  ", type: "Movie", message: "hello" }), ApiError);
+  assert.throws(() => validateContactRequest({ name: "Ari", type: "Movie", message: "x".repeat(2001) }), ApiError);
 });
 
 test("ids and byte formatting are validated", () => {

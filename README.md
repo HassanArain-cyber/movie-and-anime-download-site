@@ -13,19 +13,25 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 - Legacy `/uploads/...` database records and local files remain readable. New local uploads are disabled.
 - Signed, short-lived R2 download URLs. The bucket can stay private.
 - Admin-managed site wallpaper: upload to private R2 or select an existing media poster/thumbnail, preview, apply/replace, and remove. Public rendering uses the existing signed image route with a readability overlay; clearing the setting does not delete the R2 object.
-- A mobile-friendly Request form prepares Telegram and Gmail drafts. Set `ADMIN_EMAIL` to enable the Gmail destination; neither channel reports a request as sent until the user submits it there.
+- A mobile-friendly Request form sends submissions to the admin email through the server-side Resend integration. The browser never receives email-provider credentials or redirects to an external app.
 
 ## Quick start
 
 ```bash
 npm ci
 cp .env.example .env
-# Edit .env: DATABASE_URL, ADMIN_PASSWORD, and R2_* values.
+# Edit .env: DATABASE_URL, ADMIN_PASSWORD, R2_*, and Resend email settings.
 npm run db:migrate
 npm run dev
 ```
 
 Open `/admin` and sign in with `ADMIN_PASSWORD`. There is no default password.
+
+## Request email
+
+Public Request submissions are sent server-to-server through [Resend](https://resend.com/). Configure `ADMIN_EMAIL` as the recipient, `RESEND_API_KEY` as a server-only secret, and `RESEND_FROM_EMAIL` as a sender address/domain verified with Resend. Never expose the key with a `NEXT_PUBLIC_` variable. The form reports success only after Resend accepts the email; provider errors are shown as a retryable failure and do not trigger external-app redirects.
+
+Contact requests are validated and normalized on the server, use a hidden honeypot, and are rate-limited with PostgreSQL-backed counters. Defaults are five submissions per trusted client IP and 100 submissions globally per 15 minutes. Per-IP limits apply only if `ADMIN_LOGIN_TRUSTED_IP_HEADER` names a header that the trusted proxy overwrites with one client IP; otherwise the global limit still applies. Optional `CONTACT_RATE_LIMIT_*` variables tune these limits, and `CONTACT_RATE_LIMIT_SECRET` can provide a separate HMAC secret for the contact counters.
 
 ## Cloudflare R2
 
@@ -59,7 +65,7 @@ npm test
 npm run build
 ```
 
-End-to-end tests use a disposable PostgreSQL-compatible test database and a local S3-compatible mock. They do **not** contact Cloudflare. The CI runner starts/stops the mock and app, seeds legacy fixtures, and refuses non-loopback database/app/R2 targets:
+End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub. They do **not** contact Cloudflare or Resend. The CI runner starts/stops both mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
 
 ```bash
 # Terminal 1: disposable test database

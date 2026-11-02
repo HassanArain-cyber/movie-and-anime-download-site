@@ -7,15 +7,17 @@ import { clientRateLimitKey, rateLimitSettings } from "./request-security";
 
 export type RateLimitDecision = { allowed: true } | { allowed: false; retryAfter: number };
 
-function bucketKey(scope: string): string {
-  const secret = process.env.ADMIN_PASSWORD;
-  if (!secret) throw new ApiError(503, "Admin login is not configured");
-  // Domain-separated from the session-signing key. Raw IPs are never stored.
-  return crypto.createHmac("sha256", `auth-rate-limit:${secret}`).update(scope).digest("hex");
+function bucketKey(scope: string, purpose: "auth" | "contact" = "auth"): string {
+  const secret = purpose === "contact"
+    ? process.env.CONTACT_RATE_LIMIT_SECRET || process.env.ADMIN_PASSWORD
+    : process.env.ADMIN_PASSWORD;
+  if (!secret) throw new ApiError(503, "Request rate limiting is not configured");
+  // Domain-separated from session keys and other counters. Raw IPs are never stored.
+  return crypto.createHmac("sha256", `${purpose}-rate-limit:${secret}`).update(scope).digest("hex");
 }
 
-async function consume(scope: string, limit: number, windowSeconds: number): Promise<RateLimitDecision> {
-  const key = bucketKey(scope);
+async function consume(scope: string, limit: number, windowSeconds: number, purpose: "auth" | "contact" = "auth"): Promise<RateLimitDecision> {
+  const key = bucketKey(scope, purpose);
   // One atomic UPSERT is the concurrency boundary: parallel requests across
   // processes/instances cannot each read-then-write a stale counter. Database
   // clock_timestamp() keeps the window consistent across app instances.
@@ -53,4 +55,33 @@ export async function consumeLoginAttempt(req: Request): Promise<RateLimitDecisi
     console.error("Login rate limiter unavailable:", (error as { code?: string })?.code ?? "unknown");
     throw new ApiError(503, "Login is temporarily unavailable. Please try again later.");
   }
+}
+
+/** Public contact submissions use separate, shared PostgreSQL counters. */
+export async function consumeContactAttempt(req: Request): Promise<RateLimitDecision> {
+  const windowSeconds = boundedSetting("CONTACT_RATE_LIMIT_WINDOW_SECONDS", 900, 1, 86400);
+  const clientLimit = boundedSetting("CONTACT_RATE_LIMIT_MAX_ATTEMPTS", 5, 1, 100);
+  const globalLimit = boundedSetting("CONTACT_RATE_LIMIT_GLOBAL_MAX_ATTEMPTS", 100, 1, 10000);
+  const client = clientRateLimitKey(req);
+  try {
+    if (client.trusted) {
+      const perClient = await consume(`contact:${client.key}`, clientLimit, windowSeconds, "contact");
+      if (!perClient.allowed) return perClient;
+    }
+    return await consume("contact:global", globalLimit, windowSeconds, "contact");
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    console.error("Contact rate limiter unavailable:", (error as { code?: string })?.code ?? "unknown");
+    throw new ApiError(503, "Request submission is temporarily unavailable. Please try again later.");
+  }
+}
+
+function boundedSetting(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new ApiError(503, `${name} is outside its supported range`);
+  }
+  return value;
 }
