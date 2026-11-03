@@ -2,6 +2,7 @@
 // It refuses non-loopback database/app/provider targets so it cannot
 // accidentally mutate production data or contact real providers.
 import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -111,6 +112,32 @@ try {
   failure = error;
 } finally {
   await cleanup();
+  if (!failure) {
+    try {
+      const app = children.find(({ name }) => name === "next-app");
+      const logs = app ? Buffer.concat(app.chunks).toString("utf8") : "";
+      for (const expected of [
+        '"httpStatus":422',
+        '"providerStatusCode":422',
+        '"code":"domain_not_verified"',
+        '"type":"invalid_from_address"',
+        '"name":"validation_error"',
+        '"message":',
+      ]) assert.ok(logs.includes(expected), `safe Resend diagnostics missing ${expected}`);
+      for (const forbidden of [
+        "vault-test@example.com",
+        "requests@example.com",
+        "Saved First",
+        "[MOCK_FAIL]",
+        "re_test-secret-token",
+        "test-resend-key",
+        "+1 555-123-4567",
+        "https://example.com/private",
+      ]) assert.equal(logs.includes(forbidden), false, `server logs leaked ${forbidden}`);
+    } catch (error) {
+      failure = error;
+    }
+  }
   if (failure) {
     for (const { name, log } of children) console.error(`\n--- ${name} log: ${log} ---`);
     console.error(failure);

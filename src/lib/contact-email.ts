@@ -1,6 +1,7 @@
 import "server-only";
 import { ApiError } from "./validation";
 import type { ContactRequest } from "./contact-request-types";
+import { makeResendErrorDiagnostics } from "./resend-error-diagnostics";
 
 const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 
@@ -73,8 +74,21 @@ export async function sendContactEmail(request: ContactRequest): Promise<void> {
   }
 
   if (!response.ok) {
-    // Do not log or return provider response bodies; they can contain user data.
-    console.error("Contact email provider rejected a request:", response.status);
+    // Temporary diagnostic: whitelist Resend's documented error fields and scrub
+    // request data, addresses, credentials, and other common PII before logging.
+    let responseBody: unknown;
+    try { responseBody = await response.json(); } catch { responseBody = null; }
+    const diagnostics = makeResendErrorDiagnostics(response.status, responseBody, [
+      apiKey,
+      recipient,
+      senderRaw ?? "",
+      sender,
+      request.name,
+      request.message,
+      ...request.name.split(/\s+/),
+      ...request.message.split(/\s+/),
+    ]);
+    console.error("Contact email provider rejected a request:", JSON.stringify(diagnostics));
     throw new ApiError(502, "Email notification could not be sent.");
   }
 }

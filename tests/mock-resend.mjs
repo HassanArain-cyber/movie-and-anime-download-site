@@ -28,7 +28,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (typeof body.text === "string" && body.text.includes("[MOCK_FAIL]")) {
-    res.writeHead(422).end(JSON.stringify({ error: "simulated provider rejection" }));
+    res.writeHead(422).end(JSON.stringify({
+      statusCode: 422,
+      code: "domain_not_verified",
+      type: "invalid_from_address",
+      name: "validation_error",
+      message: "Sender requests@example.com rejected for vault-test@example.com; request Saved First: [MOCK_FAIL]; key re_test-secret-token; Authorization: Bearer test-resend-key; phone +1 555-123-4567; URL https://example.com/private?key=secret",
+    }));
     return;
   }
   if (typeof body.from !== "string" || !Array.isArray(body.to) || typeof body.subject !== "string" || typeof body.text !== "string") {
