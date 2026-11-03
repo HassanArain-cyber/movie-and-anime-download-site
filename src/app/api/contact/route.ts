@@ -4,6 +4,7 @@ import { contactRequests } from "@/db/schema";
 import { consumeContactAttempt } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-security";
 import { validateContactRequest } from "@/lib/contact-request";
+import { sendContactEmail } from "@/lib/contact-email";
 import { ApiError, errorResponse, readJson } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -42,7 +43,17 @@ export async function POST(req: Request) {
     }
     if (!saved) throw new ApiError(503, "We couldn’t confirm that your request was saved. Please try again.");
 
-    return NextResponse.json({ success: true, id: saved.id }, { status: 201, headers: HEADERS });
+    // Persist first. Email is only a notification: provider failures must never
+    // make an already-saved request appear unsaved or invite duplicate retries.
+    let notificationSent = true;
+    try {
+      await sendContactEmail(request);
+    } catch (error) {
+      notificationSent = false;
+      console.error("Contact request was saved, but email notification failed:", error instanceof Error ? error.name : "unknown");
+    }
+
+    return NextResponse.json({ success: true, id: saved.id, notificationSent }, { status: 201, headers: HEADERS });
   } catch (error) {
     return errorResponse(error);
   }

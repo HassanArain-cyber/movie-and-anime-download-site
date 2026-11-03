@@ -10,6 +10,7 @@ export default function RequestContact() {
   const [company, setCompany] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+  const [notificationFailed, setNotificationFailed] = useState(false);
   const [error, setError] = useState("");
   const submittingRef = useRef(false);
 
@@ -30,6 +31,7 @@ export default function RequestContact() {
   const update = (patch: Partial<ContactRequest>) => {
     setDraft((current) => ({ ...current, ...patch }));
     setSent(false);
+    setNotificationFailed(false);
     setError("");
   };
 
@@ -39,6 +41,7 @@ export default function RequestContact() {
     submittingRef.current = true;
     setSubmitting(true);
     setSent(false);
+    setNotificationFailed(false);
     setError("");
     try {
       const response = await fetch("/api/contact", {
@@ -46,11 +49,12 @@ export default function RequestContact() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...draft, company }),
       });
-      const data = await response.json().catch(() => ({})) as { success?: boolean; error?: string };
+      const data = await response.json().catch(() => ({})) as { success?: boolean; error?: string; notificationSent?: boolean };
       if (!response.ok || data.success !== true) {
         throw new Error(data.error || "We couldn’t save your request. Please try again.");
       }
       setSent(true);
+      setNotificationFailed(data.notificationSent === false);
       setDraft({ name: "", type: "Movie", message: "" });
       setCompany("");
     } catch (reason) {
@@ -110,7 +114,13 @@ export default function RequestContact() {
               </button>
             </form>
             {error && <p role="alert" className="mt-4 text-sm text-red-400">{error}</p>}
-            {sent && <p role="status" className="mt-4 text-sm text-emerald-300">Your request has been saved. Thank you!</p>}
+            {sent && (
+              <p role="status" className={`mt-4 text-sm ${notificationFailed ? "text-amber-300" : "text-emerald-300"}`}>
+                {notificationFailed
+                  ? "Your request was saved, but the email notification could not be sent. The site admin can still review it."
+                  : "Your request has been saved and the site admin has been notified. Thank you!"}
+              </p>
+            )}
           </section>
         </div>,
         document.body,

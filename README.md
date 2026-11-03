@@ -20,7 +20,8 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 ```bash
 npm ci
 cp .env.example .env
-# Edit .env: DATABASE_URL, ADMIN_PASSWORD, and R2_* values.
+# Edit .env: DATABASE_URL, ADMIN_PASSWORD, ADMIN_EMAIL, RESEND_API_KEY,
+# RESEND_FROM_EMAIL, and R2_* values.
 npm run db:migrate
 npm run dev
 ```
@@ -29,7 +30,9 @@ Open `/admin` and sign in with `ADMIN_PASSWORD`. There is no default password.
 
 ## Contact requests
 
-Public Request submissions are validated and normalized on the server, protected by same-origin checks and a hidden honeypot, then saved directly to the `contact_requests` PostgreSQL table. The success message is shown only after the database confirms the insert. Admins can view and delete submissions in the Admin Panel’s **Requests** section; both management endpoints require admin authentication. No email provider, API key, Gmail, Telegram, or external app is involved.
+Public Request submissions are validated and normalized on the server, protected by same-origin checks and a hidden honeypot, then saved to the `contact_requests` PostgreSQL table before a notification is sent server-to-server through Resend. The database is the source of truth: a failed email never removes a saved request, and the form confirms that the request was saved while noting if the admin email notification could not be sent. Admins can view and delete submissions in the Admin Panel’s **Requests** section; both management endpoints require admin authentication. Submitting never opens Gmail, Telegram, or another external app.
+
+Configure `ADMIN_EMAIL` as the notification recipient, `RESEND_API_KEY` as a server-only Resend secret, and `RESEND_FROM_EMAIL` as a sender address/domain verified with Resend. Never expose these values with `NEXT_PUBLIC_` variables. The browser receives only whether the request was saved and whether the notification was sent—not the provider credentials.
 
 Requests are rate-limited using PostgreSQL-backed counters. Defaults are five submissions per trusted client IP and 100 submissions globally per 15 minutes. Per-IP limits apply only if `ADMIN_LOGIN_TRUSTED_IP_HEADER` names a header that the trusted proxy overwrites with one client IP; otherwise the global limit still applies. Optional `CONTACT_RATE_LIMIT_*` variables tune these limits, and `CONTACT_RATE_LIMIT_SECRET` can provide a separate HMAC secret for the contact counters.
 
@@ -65,7 +68,7 @@ npm test
 npm run build
 ```
 
-End-to-end tests use a disposable PostgreSQL-compatible test database and a local S3-compatible mock. They do **not** contact Cloudflare or any email provider. The CI runner starts/stops the storage mock and app, seeds legacy fixtures, and refuses non-loopback database/app/storage targets:
+End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub. They do **not** contact Cloudflare or Resend. The CI runner starts/stops both mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
 
 ```bash
 # Terminal 1: disposable test database
