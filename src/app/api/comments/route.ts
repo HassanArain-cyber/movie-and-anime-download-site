@@ -1,10 +1,17 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { commentLikes, comments } from "@/db/schema";
+import { comments } from "@/db/schema";
 import { getCommentSession, setCommentSessionCookie } from "@/lib/comment-session";
 import { enforceCommentRateLimit } from "@/lib/comment-rate-limit";
-import { parseCommentBody, parseSpoiler, requireCommentsEnabled, resolveCommentTarget } from "@/lib/comments";
+import {
+  isCommentPubliclyVisible,
+  listPublicComments,
+  parseCommentBody,
+  parseSpoiler,
+  requireCommentsEnabled,
+  resolveCommentTarget,
+} from "@/lib/comments";
 import { assertSameOrigin } from "@/lib/request-security";
 import { ApiError, errorResponse, positiveId, readJson } from "@/lib/validation";
 
@@ -18,29 +25,10 @@ export async function GET(req: Request) {
     const episodeId = params.has("episodeId") ? positiveId(params.get("episodeId"), "episodeId") : null;
     const target = await resolveCommentTarget(mediaId, episodeId);
     const session = getCommentSession(req);
-    const scope = [
-      eq(comments.mediaId, mediaId),
-      eq(comments.isHidden, false),
-      episodeId === null ? isNull(comments.episodeId) : eq(comments.episodeId, episodeId),
-      or(isNull(comments.parentId), sql`EXISTS (SELECT 1 FROM comments AS parent WHERE parent.id = ${comments.parentId} AND parent.is_hidden = false)`),
-    ];
-    const [rows, totals] = await Promise.all([
-      db.select({
-        id: comments.id,
-        mediaId: comments.mediaId,
-        episodeId: comments.episodeId,
-        parentId: comments.parentId,
-        body: comments.body,
-        isSpoiler: comments.isSpoiler,
-        createdAt: comments.createdAt,
-        likeCount: sql<number>`(select count(*)::int from comment_likes where comment_id = ${comments.id})`,
-        likedByMe: sql<boolean>`exists(select 1 from comment_likes where comment_id = ${comments.id} and session_hash = ${session.hash})`,
-      }).from(comments).where(and(...scope)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(120),
-      db.select({ count: sql<number>`count(*)::int` }).from(comments).where(and(...scope)),
-    ]);
+    const { comments: rows, count } = await listPublicComments(mediaId, episodeId, session.hash);
     const response = NextResponse.json({
       comments: rows,
-      count: Number(totals[0]?.count ?? 0),
+      count,
       enabled: target.enabled,
       rules: "Keep discussion respectful and on-topic. No harassment, spam, illegal links, or personal information. Use spoiler labels and report concerns.",
     }, { headers: NO_STORE });
@@ -67,10 +55,13 @@ export async function POST(req: Request) {
     const isSpoiler = parseSpoiler(body.isSpoiler);
     const parentId = body.parentId === undefined || body.parentId === null || body.parentId === "" ? null : positiveId(body.parentId, "parentId");
     if (parentId !== null) {
-      const [parent] = await db.select({ id: comments.id, mediaId: comments.mediaId, episodeId: comments.episodeId, parentId: comments.parentId, isHidden: comments.isHidden })
+      const [parent] = await db.select({ id: comments.id, mediaId: comments.mediaId, episodeId: comments.episodeId })
         .from(comments).where(eq(comments.id, parentId)).limit(1);
-      if (!parent || parent.isHidden || parent.mediaId !== mediaId || parent.episodeId !== episodeId) throw new ApiError(400, "Reply target is not part of this discussion");
-      if (parent.parentId !== null) throw new ApiError(400, "Reply to the original comment thread, not another reply");
+      // Replies may target any comment or reply in this discussion at any depth.
+      // Reject hidden parents AND hidden ancestors so hidden threads stay hidden.
+      if (!parent || parent.mediaId !== mediaId || parent.episodeId !== episodeId || !(await isCommentPubliclyVisible(parentId))) {
+        throw new ApiError(400, "Reply target is not part of this discussion");
+      }
     }
     const duplicateConditions = [eq(comments.authorHash, session.hash), eq(comments.body, text), eq(comments.mediaId, mediaId), episodeId === null ? isNull(comments.episodeId) : eq(comments.episodeId, episodeId), sql`${comments.createdAt} > clock_timestamp() - interval '2 minutes'`];
     const [duplicate] = await db.select({ id: comments.id }).from(comments).where(and(...duplicateConditions)).limit(1);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { buildCommentTree, MAX_INDENT_DEPTH, type ThreadedComment } from "@/lib/comment-thread";
 
 type PublicComment = {
   id: number;
@@ -18,6 +19,27 @@ type Props = {
   mediaId: number;
   episodeId?: number;
   enabled: boolean;
+};
+
+type ApiRequest = (path: string, init: RequestInit) => Promise<Record<string, unknown>>;
+
+type ThreadActions = {
+  enabled: boolean;
+  mediaId: number;
+  episodeId?: number;
+  replyingTo: number | null;
+  reportingId: number | null;
+  reportReason: string;
+  setReportReason: (value: string) => void;
+  reportDetails: string;
+  setReportDetails: (value: string) => void;
+  onLike: (comment: PublicComment) => void;
+  onReplyToggle: (id: number) => void;
+  onReplyCancel: () => void;
+  onReplyPosted: () => void;
+  onReportToggle: (id: number) => void;
+  onReportSubmit: (id: number) => void;
+  apiRequest: ApiRequest;
 };
 
 const controlClass = "w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700";
@@ -42,6 +64,7 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
   const [reportReason, setReportReason] = useState("spam");
   const [reportDetails, setReportDetails] = useState("");
 
+  const composerId = `comment-body-${mediaId}-${episodeId ?? "title"}`;
   const url = useMemo(() => {
     const params = new URLSearchParams({ mediaId: String(mediaId) });
     if (episodeId !== undefined) params.set("episodeId", String(episodeId));
@@ -86,11 +109,11 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
     return () => { active = false; controller.abort(); };
   }, [url]);
 
-  const apiRequest = async (path: string, init: RequestInit) => {
+  const apiRequest: ApiRequest = async (path, init) => {
     const response = await fetch(path, { ...init, credentials: "same-origin", headers: { ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers } });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Request could not be completed.");
-    return data;
+    const data: unknown = await response.json();
+    if (!response.ok) throw new Error((data as { error?: string } | null)?.error || "Request could not be completed.");
+    return (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   };
 
   const submitComment = async (event: React.FormEvent) => {
@@ -101,10 +124,11 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
     try {
       await apiRequest("/api/comments", {
         method: "POST",
-        body: JSON.stringify({ mediaId, ...(episodeId !== undefined ? { episodeId } : {}), ...(replyingTo ? { parentId: replyingTo } : {}), body: draft, isSpoiler, website: honeypot }),
+        body: JSON.stringify({ mediaId, ...(episodeId !== undefined ? { episodeId } : {}), body: draft, isSpoiler, website: honeypot }),
       });
       setDraft("");
       setIsSpoiler(false);
+      setHoneypot("");
       setReplyingTo(null);
       setNotice("Comment posted.");
       await load();
@@ -138,16 +162,28 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
     }
   };
 
-  const visibleIds = new Set(items.map((item) => item.id));
-  const roots = items.filter((item) => item.parentId === null || !visibleIds.has(item.parentId));
-  const replies = new Map<number, PublicComment[]>();
-  for (const item of items) {
-    if (item.parentId === null || !visibleIds.has(item.parentId)) continue;
-    replies.set(item.parentId, [...(replies.get(item.parentId) ?? []), item]);
-  }
+  const tree = useMemo(() => buildCommentTree(items), [items]);
+  const actions: ThreadActions = {
+    enabled,
+    mediaId,
+    episodeId,
+    replyingTo,
+    reportingId,
+    reportReason,
+    setReportReason,
+    reportDetails,
+    setReportDetails,
+    onLike: (comment) => { void toggleLike(comment); },
+    onReplyToggle: (id) => { setReplyingTo((current) => current === id ? null : id); setError(""); setNotice(""); },
+    onReplyCancel: () => setReplyingTo(null),
+    onReplyPosted: () => { setReplyingTo(null); setNotice("Reply posted."); void load(); },
+    onReportToggle: (id) => { setReportingId((current) => current === id ? null : id); setReportDetails(""); setError(""); },
+    onReportSubmit: (id) => { void submitReport(id); },
+    apiRequest,
+  };
 
   return (
-    <section className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-950/70 p-4 sm:p-6" aria-label={episodeId === undefined ? "Title comments" : "Episode comments"}>
+    <section className="min-w-0 space-y-4 rounded-xl border border-neutral-800 bg-neutral-950/70 p-4 sm:p-6" aria-label={episodeId === undefined ? "Title comments" : "Episode comments"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-white">
@@ -159,7 +195,7 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
       </div>
 
       <p className="rounded-md bg-neutral-900/70 px-3 py-2 text-xs leading-relaxed text-neutral-500">
-        Keep discussion respectful and on-topic. No harassment, spam, illegal links, or personal information. Mark spoilers and report concerns.
+        Keep discussion respectful and on-topic. No harassment, spam, illegal links, or personal information. Mark spoilers and report concerns. You can reply to any comment or reply.
       </p>
 
       {error && <p role="alert" className="rounded-md border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-300">{error}</p>}
@@ -170,85 +206,23 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
       ) : items.length === 0 ? (
         <p className="rounded-md border border-dashed border-neutral-800 p-5 text-center text-sm text-neutral-500">No comments yet. Start a respectful discussion.</p>
       ) : (
-        <div className="space-y-3">
-          {roots.map((comment) => (
-            <article key={comment.id} className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 sm:p-4">
-              <CommentBody comment={comment} />
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-neutral-500">Community member · {formatDate(comment.createdAt)}</span>
-                <button type="button" onClick={() => void toggleLike(comment)} aria-pressed={comment.likedByMe} className="min-h-9 rounded-md border border-neutral-800 px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 aria-pressed:border-red-900/60 aria-pressed:text-red-300">
-                  {comment.likedByMe ? "Liked" : "Like"} · {comment.likeCount}
-                </button>
-                <button type="button" onClick={() => { setReplyingTo(comment.id); setError(""); }} className="min-h-9 rounded-md px-3 py-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-white">Reply</button>
-                <button type="button" onClick={() => { setReportingId(reportingId === comment.id ? null : comment.id); setError(""); }} className="min-h-9 rounded-md px-3 py-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200">Report</button>
-              </div>
-              {reportingId === comment.id && (
-                <div className="mt-3 space-y-2 rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                  <label className="block text-xs text-neutral-400">Report reason
-                    <select value={reportReason} onChange={(event) => setReportReason(event.target.value)} className={`${controlClass} mt-1`}>
-                      <option value="spam">Spam or unwanted promotion</option>
-                      <option value="harassment">Harassment or abuse</option>
-                      <option value="spoiler">Unmarked spoiler</option>
-                      <option value="other">Other concern</option>
-                    </select>
-                  </label>
-                  <textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} maxLength={500} rows={2} placeholder="Optional details (max 500 characters)" className={controlClass} />
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => void submitReport(comment.id)} className="min-h-10 rounded-md border border-red-900/50 px-3 py-2 text-xs text-red-300 hover:bg-red-950/40">Send report</button>
-                    <button type="button" onClick={() => setReportingId(null)} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
-                  </div>
-                </div>
-              )}
-              {!!replies.get(comment.id)?.length && (
-                <div className="mt-4 space-y-3 border-l-2 border-neutral-800 pl-3 sm:pl-5" aria-label="Replies">
-                  {replies.get(comment.id)!.map((reply) => (
-                    <article key={reply.id} className="rounded-md bg-neutral-950/70 p-3">
-                      <CommentBody comment={reply} />
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-                        <span>Community member · {formatDate(reply.createdAt)}</span>
-                        <button type="button" onClick={() => void toggleLike(reply)} aria-pressed={reply.likedByMe} className="min-h-9 rounded-md border border-neutral-800 px-3 py-1.5 text-neutral-300 hover:bg-neutral-800">
-                          {reply.likedByMe ? "Liked" : "Like"} · {reply.likeCount}
-                        </button>
-                        <button type="button" onClick={() => { setReportingId(reportingId === reply.id ? null : reply.id); setError(""); }} className="min-h-9 rounded-md px-3 py-1.5 hover:bg-neutral-800 hover:text-neutral-200">Report</button>
-                      </div>
-                      {reportingId === reply.id && (
-                        <div className="mt-3 space-y-2 rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                          <label className="block text-xs text-neutral-400">Report reason
-                            <select value={reportReason} onChange={(event) => setReportReason(event.target.value)} className={`${controlClass} mt-1`}>
-                              <option value="spam">Spam or unwanted promotion</option><option value="harassment">Harassment or abuse</option><option value="spoiler">Unmarked spoiler</option><option value="other">Other concern</option>
-                            </select>
-                          </label>
-                          <textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} maxLength={500} rows={2} placeholder="Optional details (max 500 characters)" className={controlClass} />
-                          <div className="flex gap-2"><button type="button" onClick={() => void submitReport(reply.id)} className="min-h-10 rounded-md border border-red-900/50 px-3 py-2 text-xs text-red-300">Send report</button><button type="button" onClick={() => setReportingId(null)} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400">Cancel</button></div>
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </article>
-          ))}
+        <div className="min-w-0 space-y-3">
+          {tree.map((node) => <CommentNode key={node.id} node={node} actions={actions} />)}
         </div>
       )}
 
       {enabled ? (
         <form onSubmit={submitComment} className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 sm:p-4">
-          {replyingTo !== null && (
-            <div className="flex items-center justify-between gap-2 text-xs text-neutral-400">
-              <span>Replying in this thread</span>
-              <button type="button" onClick={() => setReplyingTo(null)} className="rounded px-2 py-1 text-neutral-300 hover:bg-neutral-800">Cancel reply</button>
-            </div>
-          )}
-          <label htmlFor={`comment-body-${mediaId}-${episodeId ?? "title"}`} className="sr-only">Write a comment</label>
+          <label htmlFor={composerId} className="sr-only">Write a comment</label>
           <textarea
-            id={`comment-body-${mediaId}-${episodeId ?? "title"}`}
+            id={composerId}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             maxLength={2000}
             minLength={2}
             rows={3}
             required
-            placeholder={replyingTo === null ? "Share a respectful comment…" : "Write your reply…"}
+            placeholder="Share a respectful comment…"
             className={controlClass}
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -260,7 +234,7 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-11 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
-              {submitting ? "Posting…" : replyingTo === null ? "Post comment" : "Post reply"}
+              {submitting ? "Posting…" : "Post comment"}
             </button>
             <span className="text-xs text-neutral-600">Comments are anonymous; no name or email is collected.</span>
           </div>
@@ -270,6 +244,132 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
         <p className="rounded-md border border-neutral-800 bg-neutral-900/50 p-3 text-sm text-neutral-500">New comments are disabled for this content. Existing comments remain visible.</p>
       )}
     </section>
+  );
+}
+
+function CommentNode({ node, actions }: { node: ThreadedComment<PublicComment>; actions: ThreadActions }) {
+  // Horizontal padding lives on the content wrapper, not the article itself.
+  // Otherwise every extra nesting level would compound padding on both sides
+  // and eventually squeeze deep replies off a mobile screen. The replies
+  // container adds one bounded indent per level until MAX_INDENT_DEPTH.
+  const indentClass = node.depth < MAX_INDENT_DEPTH
+    ? "ml-3 sm:ml-4 border-l-2 border-neutral-800 pl-2 sm:pl-4"
+    : "ml-0 border-l-0 pl-0";
+  return (
+    <article
+      data-testid="comment-node"
+      data-comment-id={node.id}
+      data-parent-id={node.parentId ?? ""}
+      data-depth={node.depth}
+      className={`min-w-0 ${node.depth === 0 ? "rounded-lg border border-neutral-800 bg-neutral-900/60" : "rounded-md bg-neutral-950/70"}`}
+    >
+      <div className={`min-w-0 px-3 py-3 ${node.depth === 0 ? "sm:px-4" : ""}`}>
+        {node.depth > MAX_INDENT_DEPTH && <p className="mb-2 text-[11px] text-neutral-500">Reply · level {node.depth}</p>}
+        <CommentBody comment={node} />
+        <div data-actions-for={node.id} className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="min-w-0 text-neutral-500">Community member · {formatDate(node.createdAt)}</span>
+          <button type="button" onClick={() => actions.onLike(node)} aria-pressed={node.likedByMe} className="min-h-9 rounded-md border border-neutral-800 px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 aria-pressed:border-red-900/60 aria-pressed:text-red-300">
+            {node.likedByMe ? "Liked" : "Like"} · {node.likeCount}
+          </button>
+          {actions.enabled && (
+            <button type="button" onClick={() => actions.onReplyToggle(node.id)} className="min-h-9 rounded-md px-3 py-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-white">Reply</button>
+          )}
+          <button type="button" onClick={() => actions.onReportToggle(node.id)} className="min-h-9 rounded-md px-3 py-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200">Report</button>
+        </div>
+        {actions.reportingId === node.id && <ReportForm commentId={node.id} actions={actions} />}
+        {actions.enabled && actions.replyingTo === node.id && <ReplyComposer parentId={node.id} depth={node.depth} inputId={`reply-body-${actions.mediaId}-${actions.episodeId ?? "title"}-${node.id}`} actions={actions} />}
+      </div>
+      {node.replies.length > 0 && (
+        <div className={`mt-3 min-w-0 space-y-3 ${indentClass}`} aria-label="Replies">
+          {node.replies.map((reply) => <CommentNode key={reply.id} node={reply} actions={actions} />)}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ReportForm({ commentId, actions }: { commentId: number; actions: ThreadActions }) {
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-neutral-800 bg-neutral-950 p-3">
+      <label className="block text-xs text-neutral-400">Report reason
+        <select value={actions.reportReason} onChange={(event) => actions.setReportReason(event.target.value)} className={`${controlClass} mt-1`}>
+          <option value="spam">Spam or unwanted promotion</option>
+          <option value="harassment">Harassment or abuse</option>
+          <option value="spoiler">Unmarked spoiler</option>
+          <option value="other">Other concern</option>
+        </select>
+      </label>
+      <textarea value={actions.reportDetails} onChange={(event) => actions.setReportDetails(event.target.value)} maxLength={500} rows={2} placeholder="Optional details (max 500 characters)" className={controlClass} />
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => actions.onReportSubmit(commentId)} className="min-h-10 rounded-md border border-red-900/50 px-3 py-2 text-xs text-red-300 hover:bg-red-950/40">Send report</button>
+        <button type="button" onClick={() => actions.onReportToggle(commentId)} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function ReplyComposer({ parentId, depth, inputId, actions }: { parentId: number; depth: number; inputId: string; actions: ThreadActions }) {
+  const [draft, setDraft] = useState("");
+  const [isSpoiler, setIsSpoiler] = useState(false);
+  const [honeypot, setHoneypot] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [replyError, setReplyError] = useState("");
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setReplyError("");
+    setSubmitting(true);
+    try {
+      await actions.apiRequest("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          mediaId: actions.mediaId,
+          ...(actions.episodeId !== undefined ? { episodeId: actions.episodeId } : {}),
+          parentId,
+          body: draft,
+          isSpoiler,
+          website: honeypot,
+        }),
+      });
+      actions.onReplyPosted();
+    } catch (reason) {
+      setReplyError(reason instanceof Error ? reason.message : "Could not post reply.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-3 space-y-2 rounded-md border border-neutral-700 bg-neutral-950 p-3">
+      <p className="text-xs text-neutral-400">Replying to this comment · new reply at level {depth + 1}</p>
+      <label htmlFor={inputId} className="sr-only">Write a reply to comment {parentId}</label>
+      <textarea
+        id={inputId}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        maxLength={2000}
+        minLength={2}
+        rows={2}
+        required
+        placeholder="Write your reply…"
+        className={controlClass}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex min-h-9 items-center gap-2 text-xs text-neutral-400">
+          <input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} className="h-4 w-4 accent-red-500" />
+          Contains spoilers
+        </label>
+        <span className="text-xs text-neutral-600">{draft.length}/2000</span>
+      </div>
+      {replyError && <p role="alert" className="text-xs text-red-300">{replyError}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-10 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
+          {submitting ? "Posting…" : "Post reply"}
+        </button>
+        <button type="button" onClick={actions.onReplyCancel} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
+      </div>
+      <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Website<input name="website" value={honeypot} onChange={(event) => setHoneypot(event.target.value)} autoComplete="off" tabIndex={-1} /></label>
+    </form>
   );
 }
 
@@ -284,7 +384,7 @@ function CommentBody({ comment }: { comment: PublicComment }) {
     );
   }
   return (
-    <div>
+    <div className="min-w-0">
       {comment.isSpoiler && <span className="mb-2 inline-block rounded bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">Spoiler shown</span>}
       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-200">{comment.body}</p>
     </div>

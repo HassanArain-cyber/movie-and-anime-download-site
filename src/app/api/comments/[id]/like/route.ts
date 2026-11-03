@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, isNull, or, sql } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { commentLikes, comments } from "@/db/schema";
+import { commentLikes } from "@/db/schema";
 import { getCommentSession, setCommentSessionCookie } from "@/lib/comment-session";
 import { enforceCommentRateLimit } from "@/lib/comment-rate-limit";
+import { isCommentPubliclyVisible } from "@/lib/comments";
 import { assertSameOrigin } from "@/lib/request-security";
 import { ApiError, errorResponse, positiveId } from "@/lib/validation";
 
@@ -17,9 +18,7 @@ async function updateLike(req: Request, { params }: Context, liked: boolean) {
     const commentId = positiveId((await params).id, "Comment ID");
     session = getCommentSession(req);
     await enforceCommentRateLimit(req, session.hash);
-    const [comment] = await db.select({ id: comments.id }).from(comments)
-      .where(and(eq(comments.id, commentId), eq(comments.isHidden, false), or(isNull(comments.parentId), sql`EXISTS (SELECT 1 FROM comments AS parent WHERE parent.id = ${comments.parentId} AND parent.is_hidden = false)`))).limit(1);
-    if (!comment) throw new ApiError(404, "Comment not found");
+    if (!(await isCommentPubliclyVisible(commentId))) throw new ApiError(404, "Comment not found");
     if (liked) {
       await db.insert(commentLikes).values({ commentId, sessionHash: session.hash }).onConflictDoNothing();
     } else {
