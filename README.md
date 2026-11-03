@@ -13,13 +13,20 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 - Legacy `/uploads/...` database records and local files remain readable. New local uploads are disabled.
 - Signed, short-lived R2 download URLs. The bucket can stay private.
 - Admin-managed site wallpaper: upload to private R2 or select an existing media poster/thumbnail, preview, apply/replace, and remove. Public rendering uses the existing signed image route with a readability overlay; clearing the setting does not delete the R2 object.
-- Smart live search supports title aliases/acronyms, typo-tolerant matches, episode-title hits, ranking, deduplication, and strict Movies/Anime/Series filters.
+- Smart live search supports title aliases/acronyms, typo-tolerant matches, episode-title hits, ranking, deduplication, and strict Movies/Anime/Series filters, with separate responsive title/episode cards and direct episode anchors.
+- Anonymous community discussions for movies, anime, series, and individual episodes: threaded replies, session-unique likes/reports, spoiler reveal controls, server-side moderation, and per-title/episode comment settings.
 - Installable PWA with Android/desktop standalone metadata, app icons, an offline fallback, and a service worker that caches only hashed static assets/icons—not pages, API responses, authentication, or admin data.
 - A mobile-friendly Request form stores submissions in PostgreSQL. Admins can review and delete requests in the Requests section; submitting never opens an external app.
 
 ## Smart search
 
 The Navbar suggestion endpoint and submitted search results share the same bounded matcher. It normalizes text, expands the editable alias map in `src/lib/search.ts` (for example JJK, DBZ, SAO, AOT, and MHA), ranks exact matches ahead of aliases and fuzzy matches, and searches anime/series episode titles while returning the matching parent title and episode context. The selected content type and tag filter are applied on both suggestions and result pages. No search index or database migration is required.
+
+## Community comments
+
+Each movie/anime/series page has a title-level discussion, and each episode has a separate discussion beneath its episode downloads. Anonymous commenters can reply one level deep, like once per signed HttpOnly session, mark spoilers (hidden until “Show Spoiler”), and report a comment once per session. Only plain text is accepted; HTML-like tags and control/bidi characters are rejected or normalized. The public API never returns author/session hashes or personal contact fields. PostgreSQL-backed session/client rate limits, duplicate-post checks, a honeypot, body limits, and same-origin checks reduce spam and cross-site submissions.
+
+Admins can review pending/reviewed/resolved reports under **Comment moderation**, hide/restore content, and permanently delete comments (with confirmation; replies and reports cascade). In **Media**, title settings enable/disable the full item's discussions and an individual episode checkbox controls that episode's discussion. Disabling new comments leaves existing discussions readable. The rules shown to commenters prohibit harassment, spam, illegal links, and personal information. Anonymous session cookies use `COMMENT_SESSION_SECRET` when configured, otherwise `ADMIN_PASSWORD`; the limiter uses `COMMENT_RATE_LIMIT_SECRET`, then `CONTACT_RATE_LIMIT_SECRET`, then `ADMIN_PASSWORD`. Optional `COMMENT_RATE_LIMIT_WINDOW_SECONDS` (default 600), `COMMENT_RATE_LIMIT_MAX_ATTEMPTS` (10/session/window), and `COMMENT_RATE_LIMIT_CLIENT_MAX_ATTEMPTS` (40/trusted client/window) tune limits.
 
 ## Installable PWA
 
@@ -73,7 +80,7 @@ Migrations are explicit and additive. They do not run automatically during `dev`
 npm run db:migrate
 ```
 
-`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations. `0004_site_wallpaper` adds the additive `site_settings` table; existing media, seasons, episodes, and download links are retained. `0005_contact_requests` adds a `contact_requests` table for form submissions without modifying existing records.
+`0000_existing_schema` is idempotent for the original Vault tables. `0001_r2_storage` adds R2 upload metadata, season-level links, quality, and storage-provider columns without deleting or rewriting existing records. `0002_auth_rate_limits` adds shared login-attempt counters keyed by HMAC, not raw IP addresses. `0003_upload_operation_lease` adds nullable lease columns used to recover crashed upload completion/abort operations. `0004_site_wallpaper` adds the additive `site_settings` table; existing media, seasons, episodes, and download links are retained. `0005_contact_requests` adds a `contact_requests` table for form submissions without modifying existing records. `0006_comments` adds comment enable flags to media/episodes and anonymous comments, likes, and report tables; existing content is retained.
 
 Back up the database before migrating. Migrations are additive and transactional, but index/constraint creation can lock tables; use a maintenance window for a large database. The disposable upgrade test creates the pre-PR schema, seeds legacy rows, migrates twice, and checks that categories/media/seasons/episodes/links are preserved:
 

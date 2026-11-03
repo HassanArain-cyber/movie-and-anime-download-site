@@ -13,6 +13,7 @@ import {
   type BulkQualityChoice,
 } from "@/lib/media-links";
 import DownloadButton from "./DownloadButton";
+import CommentSection from "./CommentSection";
 
 interface BulkDownloadItem {
   episodeId: number;
@@ -35,7 +36,7 @@ function choiceLabel(choice: BulkQualityChoice): string {
   return qualityDisplay(choice);
 }
 
-export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[] }) {
+export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWithLinks[]; mediaId: number }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [bulkQuality, setBulkQuality] = useState<BulkQualityChoice>("best");
@@ -236,6 +237,7 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
               {open && <div className="space-y-3 border-t border-neutral-800 bg-neutral-950 px-3 py-3 sm:px-4">
                 {!ep.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links for this episode.</p>}
                 {!!ep.downloadLinks?.length && <DownloadOptions links={ep.downloadLinks} />}
+                <CommentSection mediaId={mediaId} episodeId={ep.id} enabled={ep.commentsEnabled !== false} />
               </div>}
             </div>
           );

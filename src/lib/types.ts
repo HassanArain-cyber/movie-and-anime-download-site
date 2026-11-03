@@ -16,6 +16,7 @@ export interface Media {
   year: number | null;
   categoryId: number | null;
   categoryName?: string | null;
+  commentsEnabled?: boolean;
   createdAt: Date | string | null;
   updatedAt?: Date | string | null;
 }
@@ -34,6 +35,7 @@ export interface Episode {
   episodeNumber: number;
   title: string | null;
   duration: string | null;
+  commentsEnabled?: boolean;
 }
 
 export interface DownloadLink {

@@ -149,7 +149,7 @@ export default function Navbar() {
           : "border-transparent bg-black/40"
       }`}
     >
-      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:flex-nowrap sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-pink-600 font-bold text-white">
             V
@@ -181,7 +181,7 @@ export default function Navbar() {
           })}
         </nav>
 
-        <form ref={searchRef} onSubmit={handleSearch} role="search" className="ml-auto w-full max-w-xs flex-1">
+        <form ref={searchRef} onSubmit={handleSearch} role="search" className="relative order-1 ml-0 w-full max-w-none flex-none basis-full sm:order-none sm:ml-auto sm:max-w-xs sm:flex-1 sm:basis-auto">
           <div className="relative">
             <input
               type="search"
@@ -215,7 +215,7 @@ export default function Navbar() {
             {searchOpen && query.trim() && (
               <div
                 id="search-suggestions"
-                className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950 shadow-xl shadow-black/40"
+                className="absolute left-1/2 top-full z-50 mt-2 w-[min(42rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50"
               >
                 {searchLoading ? (
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">Searching titles…</p>
@@ -224,36 +224,38 @@ export default function Navbar() {
                 ) : query.trim().length < 2 ? (
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">Type at least 2 characters to search.</p>
                 ) : suggestions.length ? (
-                  <ul aria-label="Matching titles" className="max-h-80 overflow-y-auto py-1">
+                  <ul aria-label="Matching titles" className="max-h-[min(70vh,34rem)] space-y-2 overflow-y-auto p-2 sm:p-3">
                     {suggestions.map((suggestion) => {
-                      const isEpisode = suggestion.resultKind === "episode" && suggestion.episodeInfo;
-                      const episodeLabel = suggestion.episodeInfo?.title || `Episode ${suggestion.episodeInfo?.episodeNumber ?? ""}`;
-                      const href = `/${suggestion.type}/${suggestion.slug}${isEpisode && suggestion.episodeId !== undefined ? `#episode-${suggestion.episodeId}` : ""}`;
+                      const episode = suggestion.resultKind === "episode" ? suggestion.episodeInfo : undefined;
+                      const episodeTitle = episode?.title || `Episode ${episode?.episodeNumber ?? ""}`;
+                      const href = `/${suggestion.type}/${suggestion.slug}${episode && suggestion.episodeId !== undefined ? `#episode-${suggestion.episodeId}` : ""}`;
                       return (
-                        <li key={isEpisode ? `episode-${suggestion.episodeId}` : `title-${suggestion.id}`}>
+                        <li key={episode ? `episode-${suggestion.episodeId}` : `title-${suggestion.id}`}>
                           <Link
                             href={href}
-                            aria-label={isEpisode
-                              ? `${episodeLabel}, Season ${suggestion.episodeInfo!.seasonNumber} Episode ${suggestion.episodeInfo!.episodeNumber} of ${suggestion.title}, ${TYPE_LABELS[suggestion.type]}`
+                            aria-label={episode
+                              ? `${episodeTitle}, from ${suggestion.title}, Season ${episode.seasonNumber} Episode ${episode.episodeNumber}, ${TYPE_LABELS[suggestion.type]}`
                               : `${suggestion.title}, ${TYPE_LABELS[suggestion.type]} title`}
                             onClick={() => setSearchOpen(false)}
-                            className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none"
+                            className="grid min-h-[4.5rem] grid-cols-1 gap-2 rounded-lg border border-neutral-800/80 bg-neutral-900/60 p-3 text-neutral-100 transition hover:border-neutral-700 hover:bg-neutral-900 focus:border-neutral-600 focus:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-red-500/40 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)] sm:items-center sm:gap-4 sm:p-4"
                           >
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{isEpisode ? episodeLabel : suggestion.title}</span>
-                              {isEpisode ? (
-                                <span className="block truncate text-xs text-neutral-500">
-                                  {suggestion.title} · Season {suggestion.episodeInfo!.seasonNumber} · Episode {suggestion.episodeInfo!.episodeNumber}
-                                </span>
-                              ) : suggestion.year ? (
-                                <span className="block text-xs text-neutral-500">{suggestion.year}</span>
-                              ) : null}
-                            </span>
-                            <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs">
-                              <span className={isEpisode ? "rounded bg-red-500/10 px-1.5 py-0.5 text-red-300" : "rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-300"}>
-                                {isEpisode ? "Episode" : "Title"}
+                            <span className="min-w-0 space-y-1">
+                              <span className="block whitespace-normal break-words text-sm font-semibold leading-snug sm:text-base">
+                                {episode ? episodeTitle : suggestion.title}
                               </span>
-                              <span className="text-neutral-500">{TYPE_LABELS[suggestion.type]}{suggestion.year ? ` · ${suggestion.year}` : ""}</span>
+                              {episode && (
+                                <span className="block whitespace-normal break-words text-xs leading-relaxed text-neutral-400 sm:text-sm">
+                                  From <span className="font-medium text-neutral-300">{suggestion.title}</span>
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-neutral-800 pt-2 text-xs sm:justify-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 sm:text-right">
+                              <span className={episode ? "rounded-md bg-red-500/10 px-2 py-1 font-medium text-red-300" : "rounded-md bg-neutral-800 px-2 py-1 font-medium text-neutral-300"}>
+                                {episode ? "Episode" : "Title"}
+                              </span>
+                              <span className="text-neutral-300">{TYPE_LABELS[suggestion.type]}</span>
+                              {suggestion.year && <span className="text-neutral-500">{suggestion.year}</span>}
+                              {episode && <span className="basis-full text-neutral-400 sm:basis-auto">Season {episode.seasonNumber} · Episode {episode.episodeNumber}</span>}
                             </span>
                           </Link>
                         </li>
