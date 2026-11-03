@@ -46,14 +46,38 @@ export default function Navbar() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [nearTop, setNearTop] = useState(true);
   const searchRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
+    let frame = 0;
+    const updateScrollState = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        setScrolled(scrollY > 8);
+        setNearTop(scrollY <= 80);
+        frame = 0;
+      });
+    };
+
+    updateScrollState();
+    window.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      window.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
   }, []);
+
+  const scrollPage = (toBottom: boolean) => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({
+      top: toBottom ? document.documentElement.scrollHeight : 0,
+      behavior: reducedMotion ? "auto" : "smooth",
+    });
+  };
 
   useEffect(() => {
     const closeOnOutsideClick = (event: MouseEvent) => {
@@ -142,6 +166,7 @@ export default function Navbar() {
   };
 
   return (
+    <>
     <header
       className={`sticky top-0 z-40 border-b backdrop-blur-md ${
         scrolled
@@ -150,14 +175,26 @@ export default function Navbar() {
       }`}
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:flex-nowrap sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-pink-600 font-bold text-white">
-            V
-          </div>
-          <span className="hidden text-lg font-bold tracking-tight text-white sm:inline">
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            aria-label="Scroll to top"
+            data-testid="brand-scroll-top"
+            title="Scroll to top"
+            onClick={() => scrollPage(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          >
+            <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none">
+              <rect x="4" y="4" width="16" height="16" rx="3.5" stroke="currentColor" strokeWidth="1.7" />
+              <circle cx="12" cy="12" r="4.25" stroke="currentColor" strokeWidth="1.7" />
+              <circle cx="12" cy="12" r="1.1" fill="currentColor" />
+              <path d="M12 5.9v1.8M12 16.3v1.8M5.9 12h1.8M16.3 12h1.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
+          <Link href="/" className="hidden text-lg font-bold tracking-tight text-white sm:inline">
             Vault
-          </span>
-        </Link>
+          </Link>
+        </div>
 
         <nav className="hidden items-center gap-1 md:flex">
           {NAV_LINKS.map((link) => {
@@ -305,5 +342,26 @@ export default function Navbar() {
         })}
       </div>
     </header>
+    <button
+      type="button"
+      aria-label={nearTop ? "Scroll to bottom" : "Scroll to top"}
+      data-testid="page-scroll-toggle"
+      title={nearTop ? "Scroll to bottom" : "Scroll to top"}
+      onClick={() => scrollPage(nearTop)}
+      className="fixed z-40 flex h-12 w-12 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-red-500 hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+      style={{
+        right: "calc(1rem + env(safe-area-inset-right, 0px))",
+        bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))",
+      }}
+    >
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {nearTop ? (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m0 0 7-7m-7 7-7-7" />
+        ) : (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 20V4m0 0-7 7m7-7 7 7" />
+        )}
+      </svg>
+    </button>
+    </>
   );
 }
