@@ -8,6 +8,9 @@ import {
   boolean,
   bigint,
   index,
+  uniqueIndex,
+  primaryKey,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -31,6 +34,7 @@ export const media = pgTable("media", {
   categoryId: integer("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
+  commentsEnabled: boolean("comments_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -55,6 +59,7 @@ export const episodes = pgTable("episodes", {
   episodeNumber: integer("episode_number").notNull(),
   title: varchar("title", { length: 255 }),
   duration: varchar("duration", { length: 20 }),
+  commentsEnabled: boolean("comments_enabled").notNull().default(true),
 });
 
 export const downloadLinks = pgTable("download_links", {
@@ -114,6 +119,65 @@ export const authRateLimits = pgTable("auth_rate_limits", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 }, (table) => [
   index("auth_rate_limits_expires_at_idx").on(table.expiresAt),
+]);
+
+// Site-wide customization is additive and stores only a validated image URL.
+// R2 image URLs resolve through the existing private-image signing endpoint.
+export const siteSettings = pgTable("site_settings", {
+  key: varchar("setting_key", { length: 100 }).primaryKey(),
+  value: text("setting_value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Publicly submitted requests are retained for admin review in PostgreSQL.
+export const contactRequests = pgTable("contact_requests", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  requestType: varchar("request_type", { length: 16 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("contact_requests_created_at_idx").on(table.createdAt),
+]);
+
+// Anonymous community discussion. author/session identifiers are one-way keyed hashes;
+// they are never returned by public APIs and contain no user-provided identity data.
+export const comments = pgTable("comments", {
+  id: serial("id").primaryKey(),
+  mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+  episodeId: integer("episode_id").references(() => episodes.id, { onDelete: "cascade" }),
+  parentId: integer("parent_id"),
+  authorHash: varchar("author_hash", { length: 64 }).notNull(),
+  body: text("body").notNull(),
+  isSpoiler: boolean("is_spoiler").notNull().default(false),
+  isHidden: boolean("is_hidden").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("comments_media_created_idx").on(table.mediaId, table.createdAt),
+  index("comments_episode_created_idx").on(table.episodeId, table.createdAt),
+  index("comments_parent_id_idx").on(table.parentId),
+  foreignKey({ columns: [table.parentId], foreignColumns: [table.id], name: "comments_parent_id_comments_id_fk" }).onDelete("cascade"),
+]);
+
+export const commentLikes = pgTable("comment_likes", {
+  commentId: integer("comment_id").notNull().references(() => comments.id, { onDelete: "cascade" }),
+  sessionHash: varchar("session_hash", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.commentId, table.sessionHash], name: "comment_likes_pk" }),
+]);
+
+export const commentReports = pgTable("comment_reports", {
+  id: serial("id").primaryKey(),
+  commentId: integer("comment_id").notNull().references(() => comments.id, { onDelete: "cascade" }),
+  reporterHash: varchar("reporter_hash", { length: 64 }).notNull(),
+  reason: varchar("reason", { length: 32 }).notNull(),
+  details: varchar("details", { length: 500 }),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("comment_reports_comment_reporter_unique").on(table.commentId, table.reporterHash),
+  index("comment_reports_status_created_idx").on(table.status, table.createdAt),
 ]);
 
 export const mediaRelations = relations(media, ({ one, many }) => ({

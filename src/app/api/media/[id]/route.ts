@@ -38,6 +38,10 @@ export async function PATCH(req: Request, { params }: Context) {
     if ("posterUrl" in body) updates.posterUrl = imageUrl(body.posterUrl, "Poster URL");
     if ("thumbnailUrl" in body) updates.thumbnailUrl = imageUrl(body.thumbnailUrl, "Thumbnail URL");
     if ("year" in body) updates.year = year(body.year);
+    if ("commentsEnabled" in body) {
+      if (typeof body.commentsEnabled !== "boolean") throw new ApiError(400, "commentsEnabled must be true or false");
+      updates.commentsEnabled = body.commentsEnabled;
+    }
     if ("categoryId" in body) {
       const categoryId = optionalId(body.categoryId, "categoryId");
       if (categoryId !== null) {

@@ -29,6 +29,27 @@
       "when": 1793529555040,
       "tag": "0003_upload_operation_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793595062622,
+      "tag": "0004_site_wallpaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793616734911,
+      "tag": "0005_contact_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793711657492,
+      "tag": "0006_comments",
+      "breakpoints": true
     }
   ]
 }

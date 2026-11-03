@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#09090b">
+    <title>Offline — Vault</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #09090b; color: #e5e5e5; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+      main { width: min(100%, 420px); padding: 32px; border: 1px solid #27272a; border-radius: 18px; background: #111113; text-align: center; }
+      .mark { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 20px; border-radius: 14px; background: linear-gradient(135deg, #ef4444, #db2777); color: white; font-size: 30px; font-weight: 800; }
+      h1 { margin: 0 0 10px; font-size: 24px; color: white; }
+      p { margin: 0 0 22px; color: #a1a1aa; line-height: 1.6; }
+      button { border: 0; border-radius: 8px; background: #dc2626; padding: 10px 16px; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+      button:hover { background: #ef4444; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">V</div>
+      <h1>You’re offline</h1>
+      <p>Vault needs a connection to load your library and account. Your saved titles and private data are not stored offline.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

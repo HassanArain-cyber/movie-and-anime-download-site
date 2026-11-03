@@ -19,6 +19,10 @@ export async function PATCH(req: Request, { params }: Context) {
     if ("episodeNumber" in body) updates.episodeNumber = positiveId(body.episodeNumber, "episodeNumber");
     if ("title" in body) updates.title = text(body.title, "Episode title", 255);
     if ("duration" in body) updates.duration = text(body.duration, "Duration", 20);
+    if ("commentsEnabled" in body) {
+      if (typeof body.commentsEnabled !== "boolean") throw new ApiError(400, "commentsEnabled must be true or false");
+      updates.commentsEnabled = body.commentsEnabled;
+    }
     if ("seasonId" in body) {
       const seasonId = positiveId(body.seasonId, "seasonId");
       const [season] = await db.select().from(seasons).where(and(eq(seasons.id, seasonId), eq(seasons.mediaId, existing.mediaId))).limit(1);

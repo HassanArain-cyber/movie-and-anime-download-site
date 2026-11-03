@@ -1,13 +1,15 @@
 // Disposable-service E2E runner used by CI and local verification.
-// It refuses non-loopback database/app/R2 targets so it cannot accidentally
-// mutate a production database or contact a real bucket.
+// It refuses non-loopback database/app/provider targets so it cannot
+// accidentally mutate production data or contact real providers.
 import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const appPort = Number(process.env.E2E_APP_PORT || 3001);
 const r2Port = Number(process.env.MOCK_R2_PORT || 9000);
+const resendPort = Number(process.env.MOCK_RESEND_PORT || 9001);
 const base = `http://127.0.0.1:${appPort}`;
 const dbUrl = process.env.DATABASE_URL || `postgresql://postgres:postgres@127.0.0.1:5433/postgres`;
 const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
@@ -26,6 +28,16 @@ const env = {
   E2E_BASE_URL: base,
   E2E_ADMIN_PASSWORD: password,
   ADMIN_PASSWORD: password,
+  ADMIN_EMAIL: "vault-test@example.com",
+  RESEND_API_KEY: "test-resend-key",
+  RESEND_FROM_EMAIL: "Vault Test <requests@example.com>",
+  RESEND_API_URL: `http://127.0.0.1:${resendPort}/emails`,
+  MOCK_RESEND_PORT: String(resendPort),
+  MOCK_RESEND_API_KEY: "test-resend-key",
+  CONTACT_RATE_LIMIT_SECRET: "e2e-contact-secret",
+  CONTACT_RATE_LIMIT_WINDOW_SECONDS: "900",
+  CONTACT_RATE_LIMIT_MAX_ATTEMPTS: "5",
+  CONTACT_RATE_LIMIT_GLOBAL_MAX_ATTEMPTS: "1000",
   APP_ORIGIN: base,
   NEXT_TELEMETRY_DISABLED: "1",
   ADMIN_LOGIN_TRUSTED_IP_HEADER: "x-e2e-client-ip",
@@ -44,6 +56,7 @@ const env = {
   MOCK_R2_SECRET_ACCESS_KEY: "test-secret-key",
 };
 assertLoopback(env.R2_ENDPOINT, "R2_ENDPOINT");
+assertLoopback(env.RESEND_API_URL, "RESEND_API_URL");
 
 await mkdir("test-results", { recursive: true });
 const children = [];
@@ -86,6 +99,8 @@ let failure;
 try {
   await run("node", ["tests/seed-legacy.mjs"]);
   await start("mock-r2", process.execPath, ["tests/mock-r2.mjs"]);
+  await start("mock-resend", process.execPath, ["tests/mock-resend.mjs"]);
+  await waitFor(`http://127.0.0.1:${resendPort}/last`, "mock Resend", 15000);
   await waitFor(`http://127.0.0.1:${r2Port}/`, "mock R2", 15000).catch(async (error) => {
     // A 403/404 still proves the listener is up.
     try { await fetch(`http://127.0.0.1:${r2Port}/`); } catch { throw error; }
@@ -97,6 +112,32 @@ try {
   failure = error;
 } finally {
   await cleanup();
+  if (!failure) {
+    try {
+      const app = children.find(({ name }) => name === "next-app");
+      const logs = app ? Buffer.concat(app.chunks).toString("utf8") : "";
+      for (const expected of [
+        '"httpStatus":422',
+        '"providerStatusCode":422',
+        '"code":"domain_not_verified"',
+        '"type":"invalid_from_address"',
+        '"name":"validation_error"',
+        '"message":',
+      ]) assert.ok(logs.includes(expected), `safe Resend diagnostics missing ${expected}`);
+      for (const forbidden of [
+        "vault-test@example.com",
+        "requests@example.com",
+        "Saved First",
+        "[MOCK_FAIL]",
+        "re_test-secret-token",
+        "test-resend-key",
+        "+1 555-123-4567",
+        "https://example.com/private",
+      ]) assert.equal(logs.includes(forbidden), false, `server logs leaked ${forbidden}`);
+    } catch (error) {
+      failure = error;
+    }
+  }
   if (failure) {
     for (const { name, log } of children) console.error(`\n--- ${name} log: ${log} ---`);
     console.error(failure);

@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { media } from "@/db/schema";
 import DownloadOptions from "@/components/DownloadOptions";
 import EpisodeList from "@/components/EpisodeList";
+import CommentSection from "@/components/CommentSection";
 import { getMediaDetails } from "@/lib/library";
 import { needsUnoptimizedImage, placeholderPoster } from "@/lib/utils";
 
@@ -56,9 +57,11 @@ export default async function DetailPage({ params }: PageProps) {
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Complete season downloads</h3>
             <DownloadOptions links={season.downloadLinks} />
           </div>}
-          <EpisodeList episodes={season.episodes} />
+          <EpisodeList mediaId={item.id} episodes={season.episodes} />
         </div>)}
       </div>}
+
+      <CommentSection mediaId={item.id} enabled={item.commentsEnabled !== false} />
     </div>
   );
 }

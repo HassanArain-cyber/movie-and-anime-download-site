@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createBulkDownloadQueue,
   formatBytes,
   getLinkHref,
   getLinkProvider,
@@ -10,6 +11,7 @@ import {
   selectBulkDownload,
 } from "../src/lib/media-links";
 import { positiveId, quality, ApiError } from "../src/lib/validation";
+import { validateContactRequest } from "../src/lib/contact-request";
 import type { DownloadLink } from "../src/lib/types";
 
 test("external URL safety preserves Telegram and magnet links but blocks scripts", () => {
@@ -52,6 +54,32 @@ test("bulk selection picks the chosen quality, highest available, and legacy uns
   assert.equal(selectBulkDownload(links, "720p")?.id, 1);
   assert.equal(selectBulkDownload(links, "unspecified")?.id, 3);
   assert.equal(selectBulkDownload(links, "480p"), null);
+});
+
+test("bulk queue preserves all three selected episodes and reports missing qualities", () => {
+  const base: Omit<DownloadLink, "id" | "url" | "quality" | "label" | "storageProvider"> = {
+    mediaId: 5, seasonId: 2, episodeId: null, fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null,
+  };
+  const episodes = [1, 2, 3].map((number) => ({
+    id: number, episodeNumber: number, title: null,
+    downloadLinks: number === 2 ? [] : [{ ...base, id: number, episodeId: number, url: `https://example.com/${number}.mp4`, quality: "1080p" as const, label: "1080p", storageProvider: "external" as const }],
+  }));
+  const queue = createBulkDownloadQueue(episodes, "1080p");
+  assert.deepEqual(queue.map((item) => item.episodeNumber), [1, 2, 3]);
+  assert.deepEqual(queue.map((item) => item.status), ["pending", "skipped", "pending"]);
+  assert.equal(queue[0].link?.id, 1);
+  assert.match(queue[1].message, /No safe, usable/);
+  assert.equal(queue[2].link?.id, 3);
+});
+
+test("contact requests are validated and sanitized before database storage", () => {
+  const request = validateContactRequest({
+    name: "  Ari\r\nSmith\u0000 ", type: "Anime", message: "  Please add season 2\r\nThanks\u0000  ",
+  });
+  assert.deepEqual(request, { name: "Ari Smith", type: "Anime", message: "Please add season 2\nThanks" });
+  assert.throws(() => validateContactRequest({ name: "Ari", type: "<script>", message: "hello" }), ApiError);
+  assert.throws(() => validateContactRequest({ name: "  ", type: "Movie", message: "hello" }), ApiError);
+  assert.throws(() => validateContactRequest({ name: "Ari", type: "Movie", message: "x".repeat(2001) }), ApiError);
 });
 
 test("ids and byte formatting are validated", () => {

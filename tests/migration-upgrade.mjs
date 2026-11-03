@@ -45,10 +45,32 @@ assert.deepEqual((await pool.query(`SELECT id,media_id,season_number,name FROM s
 assert.deepEqual((await pool.query(`SELECT id,media_id,season_id,episode_number,title,duration FROM episodes ORDER BY id`)).rows, episodesBefore.rows);
 const columns = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='download_links'`);
 for (const name of ["season_id", "quality", "storage_provider", "object_key", "size_bytes"]) assert.ok(columns.rows.some((row) => row.column_name === name));
+for (const table of ["comments", "comment_likes", "comment_reports"]) {
+  const exists = await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`]);
+  assert.equal(exists.rows[0].relation, table, `${table} should be added by migrations`);
+}
+for (const table of ["media", "episodes"]) {
+  const commentFlag = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name=$1 AND column_name='comments_enabled'", [table]);
+  assert.equal(commentFlag.rowCount, 1, `${table}.comments_enabled should be added`);
+}
 const lease = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='r2_uploads' AND column_name IN ('operation_expires_at','operation_id')`);
 assert.equal(lease.rowCount, 2);
 // Old application INSERT shape still works after additive migration.
 await pool.query(`INSERT INTO download_links (media_id,label,url) VALUES ($1,'Old client','https://example.com/old')`, [movie.rows[0].id]);
 await pool.query(`DELETE FROM download_links WHERE url='https://example.com/old'`);
-console.log("Migration upgrade passed: legacy categories/media/seasons/episodes/links preserved, additive columns present, migrations idempotent, old INSERT shape compatible.");
+const flags = await pool.query("SELECT comments_enabled FROM media WHERE id=$1", [movie.rows[0].id]);
+assert.equal(flags.rows[0].comments_enabled, true, "commenting defaults on without changing legacy records");
+await pool.query("UPDATE media SET comments_enabled=false WHERE id=$1", [movie.rows[0].id]);
+assert.equal((await pool.query("SELECT comments_enabled FROM media WHERE id=$1", [movie.rows[0].id])).rows[0].comments_enabled, false);
+const root = await pool.query("INSERT INTO comments (media_id, author_hash, body, is_spoiler) VALUES ($1, $2, $3, true) RETURNING id", [movie.rows[0].id, "a".repeat(64), "Legacy-compatible root"]);
+const reply = await pool.query("INSERT INTO comments (media_id, parent_id, author_hash, body) VALUES ($1, $2, $3, $4) RETURNING id", [movie.rows[0].id, root.rows[0].id, "b".repeat(64), "Reply"]);
+await pool.query("INSERT INTO comment_likes (comment_id, session_hash) VALUES ($1, $2)", [root.rows[0].id, "c".repeat(64)]);
+await assert.rejects(pool.query("INSERT INTO comment_likes (comment_id, session_hash) VALUES ($1, $2)", [root.rows[0].id, "c".repeat(64)]), /duplicate key/i, "like primary key should prevent duplicates");
+await pool.query("INSERT INTO comment_reports (comment_id, reporter_hash, reason) VALUES ($1, $2, 'spam')", [root.rows[0].id, "d".repeat(64)]);
+await assert.rejects(pool.query("INSERT INTO comment_reports (comment_id, reporter_hash, reason) VALUES ($1, $2, 'spam')", [root.rows[0].id, "d".repeat(64)]), /duplicate key/i, "unique report index should prevent repeated reports");
+await pool.query("DELETE FROM comments WHERE id=$1", [root.rows[0].id]);
+assert.equal((await pool.query("SELECT id FROM comments WHERE id IN ($1,$2)", [root.rows[0].id, reply.rows[0].id])).rowCount, 0, "deleting a comment should cascade through its replies");
+assert.equal((await pool.query("SELECT comment_id FROM comment_likes WHERE comment_id=$1", [root.rows[0].id])).rowCount, 0);
+assert.equal((await pool.query("SELECT comment_id FROM comment_reports WHERE comment_id=$1", [root.rows[0].id])).rowCount, 0);
+console.log("Migration upgrade passed: legacy categories/media/seasons/episodes/links preserved, comments migration added usable tables/settings, unique likes/reports and reply cascades work, migrations remain idempotent.");
 await pool.end();

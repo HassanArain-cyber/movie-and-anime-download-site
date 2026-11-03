@@ -9,16 +9,17 @@ import {
   getQuality,
   QUALITY_ORDER,
   qualityDisplay,
-  selectBulkDownload,
+  createBulkDownloadQueue,
   type BulkQualityChoice,
 } from "@/lib/media-links";
 import DownloadButton from "./DownloadButton";
+import CommentSection from "./CommentSection";
 
 interface BulkDownloadItem {
   episodeId: number;
   episodeNumber: number;
   title: string;
-  status: "started" | "skipped" | "failed";
+  status: "pending" | "completed" | "skipped" | "failed";
   message: string;
   link: DownloadLink | null;
 }
@@ -35,13 +36,7 @@ function choiceLabel(choice: BulkQualityChoice): string {
   return qualityDisplay(choice);
 }
 
-function missingReason(choice: BulkQualityChoice, hasAnyLinks: boolean): string {
-  if (!hasAnyLinks) return "No download link is available.";
-  if (choice === "best") return "No safe, usable download link is available.";
-  return `No ${choiceLabel(choice)} version is available.`;
-}
-
-export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[] }) {
+export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWithLinks[]; mediaId: number }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [bulkQuality, setBulkQuality] = useState<BulkQualityChoice>("best");
@@ -61,7 +56,7 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
       else hasUnspecified = true;
     }
   }
-  const selectedAvailableCount = selectedEpisodes.filter((episode) => selectBulkDownload(episode.downloadLinks || [], bulkQuality)).length;
+  const selectedAvailableCount = selectedEpisodes.filter((episode) => createBulkDownloadQueue([episode], bulkQuality)[0]?.status === "pending").length;
 
   const toggleEpisode = (id: number, checked: boolean) => {
     setSelectedIds((current) => {
@@ -83,61 +78,58 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
     setBulkResult(null);
   };
 
-  const downloadSelected = async () => {
-    if (bulkBusy || selectedEpisodes.length === 0) return;
-    const requested = selectedEpisodes.length;
-    const quality = choiceLabel(bulkQuality);
-    const items: BulkDownloadItem[] = [];
-    setBulkBusy(true);
-    setBulkResult({ requested, quality, items: [] });
+  const launchNext = (queue: BulkDownloadItem[], result: BulkDownloadResult) => {
+    const nextQueue = [...queue];
+    const index = nextQueue.findIndex((item) => item.status === "pending");
+    if (index < 0) {
+      setBulkBusy(false);
+      setBulkResult({ ...result, items: nextQueue });
+      return;
+    }
 
-    for (let index = 0; index < selectedEpisodes.length; index += 1) {
-      const episode = selectedEpisodes[index];
-      const title = episode.title || `Episode ${episode.episodeNumber}`;
-      const link = selectBulkDownload(episode.downloadLinks || [], bulkQuality);
-      if (!link) {
-        items.push({
-          episodeId: episode.id,
-          episodeNumber: episode.episodeNumber,
-          title,
-          status: "skipped",
-          message: missingReason(bulkQuality, !!episode.downloadLinks?.length),
-          link: null,
-        });
-      } else {
-        const href = getLinkHref(link);
-        if (!href) {
-          items.push({ episodeId: episode.id, episodeNumber: episode.episodeNumber, title, status: "failed", message: "This link is not safe to open.", link });
-        } else {
-          try {
-            const anchor = document.createElement("a");
-            anchor.href = href;
-            anchor.referrerPolicy = "no-referrer";
-            const provider = getLinkProvider(link);
-            if (provider === "r2" || provider === "local") anchor.download = "";
-            else {
-              anchor.target = "_blank";
-              anchor.rel = "noopener noreferrer";
-            }
-            anchor.style.display = "none";
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            const selectedQuality = getQuality(link);
-            items.push({ episodeId: episode.id, episodeNumber: episode.episodeNumber, title, status: "started", message: `Sent to browser${selectedQuality ? ` · ${qualityDisplay(selectedQuality)}` : ""}.`, link });
-          } catch {
-            items.push({ episodeId: episode.id, episodeNumber: episode.episodeNumber, title, status: "failed", message: "The browser could not start this download.", link });
-          }
+    const item = nextQueue[index];
+    const href = item.link ? getLinkHref(item.link) : null;
+    if (!href || !item.link) {
+      nextQueue[index] = { ...item, status: "failed", message: "This link is not safe to open." };
+    } else {
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.referrerPolicy = "no-referrer";
+        const provider = getLinkProvider(item.link);
+        if (provider === "r2" || provider === "local") anchor.download = "";
+        else {
+          anchor.target = "_blank";
+          anchor.rel = "noopener noreferrer";
         }
-      }
-
-      // Yield periodically so the queue indicator can update on large seasons.
-      if (items.length % 5 === 0 || index === selectedEpisodes.length - 1) {
-        setBulkResult({ requested, quality, items: [...items] });
-        if (index !== selectedEpisodes.length - 1) await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+        anchor.style.display = "none";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        const selectedQuality = getQuality(item.link);
+        nextQueue[index] = { ...item, status: "completed", message: `Handed to browser${selectedQuality ? ` · ${qualityDisplay(selectedQuality)}` : ""}.` };
+      } catch {
+        nextQueue[index] = { ...item, status: "failed", message: "The browser could not start this download." };
       }
     }
-    setBulkBusy(false);
+
+    setBulkResult({ ...result, items: nextQueue });
+    setBulkBusy(nextQueue.some((entry) => entry.status === "pending"));
+  };
+
+  const downloadSelected = () => {
+    if (selectedEpisodes.length === 0) return;
+    if (bulkBusy && bulkResult) {
+      launchNext(bulkResult.items, bulkResult);
+      return;
+    }
+    const items = createBulkDownloadQueue(selectedEpisodes, bulkQuality) as BulkDownloadItem[];
+    const result = { requested: selectedEpisodes.length, quality: choiceLabel(bulkQuality), items };
+    setBulkResult(result);
+    setBulkBusy(items.some((item) => item.status === "pending"));
+    // One file per explicit click keeps each handoff inside a fresh user gesture.
+    // Browsers can block synthetic multiple-download bursts without user approval.
+    launchNext(items, result);
   };
 
   const order: (VideoQuality | "unspecified")[] = [...QUALITY_ORDER, "unspecified"];
@@ -176,11 +168,11 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={selectAll} disabled={bulkBusy} className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-50">Select All</button>
           <button type="button" onClick={clearSelection} disabled={selectedEpisodes.length === 0 || bulkBusy} className="rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50">Clear Selection</button>
-          <button type="button" onClick={() => void downloadSelected()} disabled={selectedEpisodes.length === 0 || bulkBusy} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
-            {bulkBusy ? `Starting downloads… ${bulkResult?.items.length || 0}/${bulkResult?.requested || selectedEpisodes.length}` : `Download Selected (${selectedEpisodes.length})`}
+          <button type="button" onClick={downloadSelected} disabled={selectedEpisodes.length === 0} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
+            {bulkBusy ? `Download next (${bulkResult?.items.filter((item) => item.status === "pending").length || 0} remaining)` : `Download Selected (${selectedEpisodes.length})`}
           </button>
         </div>
-        <p className="text-xs leading-relaxed text-neutral-500">Files are handed off individually to your browser, which manages transfer progress. Allow multiple downloads if prompted. Existing complete-season archives remain available above.</p>
+        <p className="text-xs leading-relaxed text-neutral-500">To avoid browser multiple-download blocking, each click starts one queued episode; click Download next until the queue is complete. The browser manages transfer progress. Existing complete-season archives remain available above.</p>
       </div>
 
       {bulkResult && <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-950 p-3" aria-live="polite">
@@ -188,15 +180,15 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
           <div>
             <h3 className="text-sm font-semibold text-white">Bulk download progress</h3>
             <p role="status" className="text-xs text-neutral-400">
-              Download queue: {bulkResult.items.filter((item) => item.status === "started").length} started, {bulkResult.items.filter((item) => item.status === "skipped").length} skipped, {bulkResult.items.filter((item) => item.status === "failed").length} failed · {bulkResult.quality}
+              Download queue: {bulkResult.items.filter((item) => item.status === "completed").length} completed (handed to browser), {bulkResult.items.filter((item) => item.status === "pending").length} waiting, {bulkResult.items.filter((item) => item.status === "skipped").length} skipped, {bulkResult.items.filter((item) => item.status === "failed").length} failed · {bulkResult.quality}
             </p>
           </div>
-          <span className="text-xs text-neutral-500">{bulkResult.items.length} / {bulkResult.requested} processed</span>
+          <span className="text-xs text-neutral-500">{bulkResult.items.filter((item) => item.status !== "pending").length} / {bulkResult.requested} processed</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-neutral-800" role="progressbar" aria-label="Bulk download queue progress" aria-valuemin={0} aria-valuemax={bulkResult.requested} aria-valuenow={bulkResult.items.length}>
-          <div className="h-full bg-red-500 transition-all" style={{ width: `${bulkResult.requested ? Math.round((bulkResult.items.length / bulkResult.requested) * 100) : 0}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-neutral-800" role="progressbar" aria-label="Bulk download queue progress" aria-valuemin={0} aria-valuemax={bulkResult.requested} aria-valuenow={bulkResult.items.filter((item) => item.status !== "pending").length}>
+          <div className="h-full bg-red-500 transition-all" style={{ width: `${bulkResult.requested ? Math.round((bulkResult.items.filter((item) => item.status !== "pending").length / bulkResult.requested) * 100) : 0}%` }} />
         </div>
-        <p className="text-xs text-neutral-500">Progress tracks handing files to the browser, not bytes transferred. Check your browser&apos;s download manager for transfer status; skipped or failed episodes can be opened individually below.</p>
+        <p className="text-xs text-neutral-500">Progress tracks queue handoffs, not bytes transferred. The site cannot detect network failures after the browser accepts a file; check its download manager. Skipped or failed episodes can be opened individually below.</p>
         <ul className="space-y-2">
           {bulkResult.items.map((item) => {
             const episode = episodes.find((candidate) => candidate.id === item.episodeId);
@@ -204,7 +196,7 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
               <li key={item.episodeId} className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-900 px-3 py-2 text-xs">
                 <span className="font-medium text-neutral-200">Episode {item.episodeNumber}</span>
                 <span className="min-w-0 flex-1 truncate text-neutral-400">{item.title}</span>
-                <span className={item.status === "started" ? "text-green-400" : item.status === "failed" ? "text-red-400" : "text-amber-400"}>{item.status}</span>
+                <span className={item.status === "completed" ? "text-green-400" : item.status === "failed" ? "text-red-400" : "text-amber-400"}>{item.status}</span>
                 <span className="w-full text-neutral-500">{item.message}</span>
                 {item.status === "failed" && item.link && <DownloadButton link={item.link} />}
                 {item.status === "skipped" && episode?.downloadLinks?.length ? (
@@ -220,7 +212,7 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
         {episodes.map((ep) => {
           const open = openId === ep.id;
           return (
-            <div key={ep.id} className="bg-neutral-900/40">
+            <div key={ep.id} id={`episode-${ep.id}`} className="scroll-mt-24 bg-neutral-900/40">
               <div className="flex items-center gap-1 px-2 py-1 sm:gap-3 sm:px-4 sm:py-2">
                 <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-neutral-800" title={`Select Episode ${ep.episodeNumber}`}>
                   <input
@@ -245,6 +237,7 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
               {open && <div className="space-y-3 border-t border-neutral-800 bg-neutral-950 px-3 py-3 sm:px-4">
                 {!ep.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links for this episode.</p>}
                 {!!ep.downloadLinks?.length && <DownloadOptions links={ep.downloadLinks} />}
+                <CommentSection mediaId={mediaId} episodeId={ep.id} enabled={ep.commentsEnabled !== false} />
               </div>}
             </div>
           );

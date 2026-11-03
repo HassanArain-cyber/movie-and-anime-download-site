@@ -3,8 +3,11 @@
 import { useState } from "react";
 import MediaManager from "./MediaManager";
 import CategoryManager from "./CategoryManager";
+import AppearanceSettings from "./AppearanceSettings";
+import ContactRequestsManager from "./ContactRequestsManager";
+import CommentModerationManager from "./CommentModerationManager";
 
-type Tab = "media" | "categories";
+type Tab = "media" | "categories" | "appearance" | "requests" | "moderation";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("media");
@@ -29,8 +32,8 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      <div className="flex gap-1 border-b border-neutral-800">
-        {(["media", "categories"] as Tab[]).map((t) => (
+      <div className="flex gap-1 overflow-x-auto border-b border-neutral-800">
+        {(["media", "categories", "appearance", "requests", "moderation"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -40,12 +43,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 : "border-transparent text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            {t}
+            {t === "moderation" ? "Comment moderation" : t}
           </button>
         ))}
       </div>
 
-      {tab === "media" ? <MediaManager /> : <CategoryManager />}
+      {tab === "media" ? <MediaManager /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : tab === "requests" ? <ContactRequestsManager /> : <CommentModerationManager />}
     </div>
   );
 }

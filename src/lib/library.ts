@@ -48,6 +48,7 @@ export async function getMediaDetails(mediaId: number): Promise<MediaWithRelatio
     id: media.id, type: media.type, title: media.title, slug: media.slug,
     description: media.description, posterUrl: media.posterUrl, thumbnailUrl: media.thumbnailUrl,
     year: media.year, categoryId: media.categoryId, categoryName: categories.name,
+    commentsEnabled: media.commentsEnabled,
     createdAt: media.createdAt, updatedAt: media.updatedAt,
   }).from(media).leftJoin(categories, eq(media.categoryId, categories.id)).where(eq(media.id, mediaId)).limit(1);
   if (!item) throw new ApiError(404, "Media not found");

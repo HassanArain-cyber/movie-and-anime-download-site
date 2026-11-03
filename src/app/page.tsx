@@ -3,7 +3,9 @@ import MediaGrid from "@/components/MediaGrid";
 import CategoryFilter from "@/components/CategoryFilter";
 import { db } from "@/db";
 import { media, categories } from "@/db/schema";
-import { eq, like, or, and, desc, sql } from "drizzle-orm";
+import { eq, and, asc, desc, isNotNull, sql } from "drizzle-orm";
+import { searchMedia } from "@/lib/media-search";
+import { isLibrarySort, type LibrarySort } from "@/lib/library-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -12,54 +14,74 @@ interface HomeProps {
     q?: string;
     type?: string;
     category?: string;
+    year?: string;
+    sort?: string;
   }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
   const sp = await searchParams;
   const q = sp.q?.trim();
-  const typeFilter = sp.type;
+  const typeFilter = sp.type && ["movie", "anime", "series"].includes(sp.type) ? sp.type : undefined;
   const categorySlug = sp.category;
+  const explicitSort: LibrarySort | undefined = isLibrarySort(sp.sort) ? sp.sort : undefined;
+  const sortOption: LibrarySort = explicitSort ?? "newest";
 
-  // Fetch categories
-  const cats = await db.select().from(categories).orderBy(categories.name);
+  // Filters are driven by values actually present in the library.
+  const [cats, yearRows] = await Promise.all([
+    db.select().from(categories).orderBy(categories.name),
+    db.select({ year: media.year }).from(media).where(isNotNull(media.year)).groupBy(media.year).orderBy(desc(media.year)),
+  ]);
+  const years = yearRows.flatMap((row) => row.year === null ? [] : [row.year]);
+  const requestedYear = sp.year && /^\d{4}$/.test(sp.year) ? Number(sp.year) : undefined;
+  const yearFilter = requestedYear && years.includes(requestedYear) ? requestedYear : undefined;
 
-  // Build conditions for featured / latest
+  // Build conditions for the unfiltered / category browse view. Search uses the
+  // same ranked title/alias/episode matcher as the live suggestion endpoint.
   const conditions: any[] = [];
-  if (q) {
-    const search = `%${q}%`;
-    conditions.push(
-      or(like(media.title, search), like(media.description ?? "", search))
-    );
-  }
-  if (typeFilter && ["movie", "anime", "series"].includes(typeFilter)) {
-    conditions.push(eq(media.type, typeFilter));
-  }
-  if (categorySlug) {
-    const cat = cats.find((c) => c.slug === categorySlug);
-    if (cat) conditions.push(eq(media.categoryId, cat.id));
-  }
+  if (typeFilter) conditions.push(eq(media.type, typeFilter));
+  const resolvedCategory = categorySlug ? cats.find((category) => category.slug === categorySlug) : undefined;
+  if (resolvedCategory) conditions.push(eq(media.categoryId, resolvedCategory.id));
+  if (yearFilter) conditions.push(eq(media.year, yearFilter));
 
   let items: any[] = [];
-  items = await db
-    .select({
-      id: media.id,
-      type: media.type,
-      title: media.title,
-      slug: media.slug,
-      description: media.description,
-      posterUrl: media.posterUrl,
-      thumbnailUrl: media.thumbnailUrl,
-      year: media.year,
-      categoryId: media.categoryId,
-      categoryName: categories.name,
-      createdAt: media.createdAt,
-    })
-    .from(media)
-    .leftJoin(categories, eq(media.categoryId, categories.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(media.createdAt))
-    .limit(120);
+  if (q) {
+    items = await searchMedia(q, {
+      type: typeFilter,
+      categorySlug: resolvedCategory?.slug,
+      year: yearFilter,
+      sort: explicitSort,
+      limit: 120,
+      includeDescriptions: true,
+    });
+  } else {
+    items = await db
+      .select({
+        id: media.id,
+        type: media.type,
+        title: media.title,
+        slug: media.slug,
+        description: media.description,
+        posterUrl: media.posterUrl,
+        thumbnailUrl: media.thumbnailUrl,
+        year: media.year,
+        categoryId: media.categoryId,
+        categoryName: categories.name,
+        createdAt: media.createdAt,
+      })
+      .from(media)
+      .leftJoin(categories, eq(media.categoryId, categories.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(
+        sortOption === "az" ? asc(sql`lower(${media.title})`)
+          : sortOption === "za" ? desc(sql`lower(${media.title})`)
+            : sortOption === "oldest" ? asc(media.createdAt) : desc(media.createdAt),
+        ...(sortOption === "az" || sortOption === "za"
+          ? [desc(media.createdAt), desc(media.id)]
+          : [sortOption === "oldest" ? asc(media.id) : desc(media.id)]),
+      )
+      .limit(120);
+  }
 
   // Get counts per type for the hero stats
   const counts = {
@@ -68,9 +90,11 @@ export default async function Home({ searchParams }: HomeProps) {
     series: items.filter((i) => i.type === "series").length,
   };
 
+  const hasBrowseFilters = Boolean(q || typeFilter || categorySlug || yearFilter || explicitSort);
+
   // Compute total counts across all media (when no filter applied)
   let totalMovies = 0, totalAnime = 0, totalSeries = 0;
-  if (!q && !typeFilter && !categorySlug) {
+  if (!hasBrowseFilters) {
     totalMovies = counts.movies;
     totalAnime = counts.anime;
     totalSeries = counts.series;
@@ -95,7 +119,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   return (
     <div className="space-y-8">
-      {!q && !typeFilter && !categorySlug ? (
+      {!hasBrowseFilters ? (
         <section className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-black p-8 sm:p-12">
           <div className="relative z-10 max-w-2xl">
             <span className="inline-block rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
@@ -164,6 +188,8 @@ export default async function Home({ searchParams }: HomeProps) {
                 query: {
                   ...(q ? { q } : {}),
                   ...(categorySlug ? { category: categorySlug } : {}),
+                  ...(yearFilter ? { year: String(yearFilter) } : {}),
+                  ...(explicitSort ? { sort: explicitSort } : {}),
                   ...(t.key ? { type: t.key } : {}),
                 },
               }}
@@ -180,8 +206,11 @@ export default async function Home({ searchParams }: HomeProps) {
         <div className="mx-2 h-6 w-px bg-neutral-800" />
         <CategoryFilter
           categories={cats}
+          years={years}
           activeSlug={categorySlug}
-          baseQuery={{ q, type: typeFilter }}
+          activeYear={yearFilter}
+          activeSort={sortOption}
+          baseQuery={{ q, type: typeFilter, year: yearFilter, sort: explicitSort }}
         />
       </div>
 

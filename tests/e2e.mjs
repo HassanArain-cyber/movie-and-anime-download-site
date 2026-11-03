@@ -17,6 +17,23 @@ const password = process.env.E2E_ADMIN_PASSWORD || "test-admin-password";
 const dbUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/postgres";
 let cookie = "";
 
+function createAnonymousApi() {
+  let sessionCookie = "";
+  return async function anonymousApi(path, { method = "GET", body, headers = {} } = {}) {
+    const res = await fetch(base + path, {
+      method,
+      headers: { "x-e2e-client-ip": "198.51.100.88", ...(body ? { "Content-Type": "application/json" } : {}), ...(sessionCookie ? { Cookie: sessionCookie } : {}), ...headers },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const setCookie = res.headers.get("set-cookie");
+    if (setCookie) sessionCookie = setCookie.split(";")[0];
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch { data = text; }
+    return { res, data };
+  };
+}
+const commentApi = createAnonymousApi();
+
 async function api(path, { method = "GET", body, auth = true, redirect = "manual", headers = {} } = {}) {
   const res = await fetch(base + path, {
     method, redirect,
@@ -45,8 +62,114 @@ async function uploadFile({ kind, fileName, bytes, contentType, target }) {
 const pool = new pg.Pool({ connectionString: dbUrl, max: 1 });
 const before = await pool.query("SELECT (SELECT count(*) FROM media) AS media, (SELECT count(*) FROM download_links) AS links");
 
-// Auth and legacy preservation
+// Title suggestions are case-insensitive, title-only, and include every media type.
+const jujuFixtures = [
+  { type: "movie", title: `Juju Movie ${run}`, slug: `juju-movie-${run}` },
+  { type: "anime", title: `Jujutsu Kaisen ${run}`, slug: `jujutsu-kaisen-${run}`, year: 2024 },
+  { type: "series", title: `Juju Series ${run}`, slug: `juju-series-${run}` },
+  { type: "anime", title: `Dragon Ball Z ${run}`, slug: `dragon-ball-z-${run}` },
+  { type: "anime", title: `Sword Art Online ${run}`, slug: `sword-art-online-${run}` },
+  { type: "anime", title: `Attack on Titan ${run}`, slug: `attack-on-titan-${run}` },
+];
+for (const fixture of jujuFixtures) {
+  await pool.query("INSERT INTO media (type, title, slug, year) VALUES ($1, $2, $3, $4)", [fixture.type, fixture.title, fixture.slug, fixture.year ?? null]);
+}
+const attackAnime = await pool.query("SELECT id FROM media WHERE slug=$1", [`attack-on-titan-${run}`]);
+const attackSeason = await pool.query("INSERT INTO seasons (media_id, season_number, name) VALUES ($1, 1, 'Season One') RETURNING id", [attackAnime.rows[0].id]);
+await pool.query("INSERT INTO episodes (media_id, season_id, episode_number, title, duration) VALUES ($1, $2, 1, 'To You, in 2000 Years', '24m'), ($1, $2, 2, 'That Day', '24m'), ($1, $2, 3, 'Shared Spotlight', '24m'), ($1, $2, 4, 'Shared Spotlight Encore', '24m')", [attackAnime.rows[0].id, attackSeason.rows[0].id]);
+const filterCategory = await pool.query("INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING id", [`Filter Tag ${run}`, `filter-${run}`]);
+const filterFixtures = [
+  ["anime", `Filter Alpha ${run}`, `filter-alpha-${run}`, 2024, filterCategory.rows[0].id, "2024-01-01T00:00:00Z"],
+  ["anime", `Filter Zulu ${run}`, `filter-zulu-${run}`, 2024, filterCategory.rows[0].id, "2025-01-01T00:00:00Z"],
+  ["anime", `Filter Other Year ${run}`, `filter-other-year-${run}`, 2023, filterCategory.rows[0].id, "2023-01-01T00:00:00Z"],
+  ["movie", `Filter Movie 2023 ${run}`, `filter-movie-2023-${run}`, 2023, filterCategory.rows[0].id, "2023-06-01T00:00:00Z"],
+  ["movie", `Filter Movie 2024 ${run}`, `filter-movie-2024-${run}`, 2024, null, "2024-06-01T00:00:00Z"],
+];
+for (const [type, title, slug, year, categoryId, createdAt] of filterFixtures) {
+  await pool.query("INSERT INTO media (type, title, slug, year, category_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)", [type, title, slug, year, categoryId, createdAt]);
+}
+const searchSuggestions = async (query, type, year, category) => ok(await api(`/api/media?suggestions=1&q=${encodeURIComponent(query)}${type ? `&type=${type}` : ""}${year ? `&year=${year}` : ""}${category ? `&category=${category}` : ""}`));
+const jujuSuggestions = await searchSuggestions("JUJU");
+assert.deepEqual(new Set(jujuSuggestions.filter((item) => item.title.endsWith(run)).map((item) => item.type)), new Set(["movie", "anime", "series"]));
+assert.deepEqual(await searchSuggestions("Existing"), [], "suggestions must not match descriptions");
+assert.ok((await searchSuggestions("JJK")).some((item) => item.slug === `jujutsu-kaisen-${run}`), "JJK should expand to Jujutsu Kaisen");
+assert.ok((await searchSuggestions("DBZ")).some((item) => item.slug === `dragon-ball-z-${run}`), "DBZ should expand to Dragon Ball Z");
+assert.ok((await searchSuggestions("SAO")).some((item) => item.slug === `sword-art-online-${run}`), "SAO should expand to Sword Art Online");
+for (const typo of ["Jujutsu Kasien", "Jujutsu Kasen", "Jujutsu Kaaisen"]) {
+  assert.ok((await searchSuggestions(typo)).some((item) => item.slug === `jujutsu-kaisen-${run}`), `${typo} should find Jujutsu Kaisen`);
+}
+const animeOnlySuggestions = await searchSuggestions("Juju", "anime");
+assert.ok(animeOnlySuggestions.length > 0);
+assert.ok(animeOnlySuggestions.every((item) => item.type === "anime"), "anime filter must exclude movie and series suggestions");
+assert.ok((await searchSuggestions("Juju", "movie")).every((item) => item.type === "movie"));
+assert.ok((await searchSuggestions("Juju", "series")).every((item) => item.type === "series"));
+assert.deepEqual(await searchSuggestions("JJK", "movie"), [], "a selected content type must not leak unrelated types");
+const episodeSuggestions = await searchSuggestions("To You, in 2000 Years");
+const episodeSuggestion = episodeSuggestions.find((item) => item.slug === `attack-on-titan-${run}` && item.resultKind === "episode");
+assert.ok(episodeSuggestion, "episode hits should be returned as individual suggestions");
+assert.equal(episodeSuggestion.episodeId > 0, true);
+assert.deepEqual(episodeSuggestion.episodeInfo, { seasonNumber: 1, episodeNumber: 1, title: "To You, in 2000 Years" });
+assert.equal(episodeSuggestions.filter((item) => item.resultKind === "episode" && item.slug === `attack-on-titan-${run}`).length, 1);
+assert.ok(episodeSuggestions.every((item) => item.resultKind === "title" || item.resultKind === "episode"));
+const sameParentEpisodeSuggestions = await searchSuggestions("Shared Spotlight");
+const individualEpisodeResults = sameParentEpisodeSuggestions.filter((item) => item.slug === `attack-on-titan-${run}` && item.resultKind === "episode");
+assert.equal(individualEpisodeResults.length, 2, "multiple matching episodes must remain distinct instead of collapsing to one parent result");
+assert.equal(new Set(individualEpisodeResults.map((item) => item.episodeId)).size, 2);
+assert.deepEqual(new Set(await searchSuggestions(run, "anime", 2024, `filter-${run}`).then((items) => items.filter((item) => item.slug.startsWith("filter-")).map((item) => item.slug))), new Set([
+  `filter-alpha-${run}`, `filter-zulu-${run}`,
+]), "year, type, and tag filters must combine for suggestions");
+
+// Contact requests are saved directly to PostgreSQL; all management routes are admin-only.
 ok(await api("/api/health"));
+assert.equal((await api("/api/contact/requests", { auth: false })).res.status, 401);
+assert.equal((await api("/api/contact/requests/1", { method: "DELETE", auth: false })).res.status, 401);
+const contactIp = `198.51.100.${(Date.now() % 180) + 20}`;
+const contactPayload = { name: "  Ari\r\nSmith  ", type: "Anime", message: "Please add season 2\r\nThanks" };
+const sentContact = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { "x-e2e-client-ip": contactIp } });
+assert.equal(sentContact.res.status, 201, JSON.stringify(sentContact.data));
+assert.deepEqual(sentContact.data, { success: true, id: sentContact.data.id, notificationSent: true });
+assert.equal(JSON.stringify(sentContact.data).includes("test-resend-key"), false, "email credentials must not be returned to the browser");
+const mockResendPort = Number(process.env.MOCK_RESEND_PORT || 9001);
+const sentEmail = await (await fetch(`http://127.0.0.1:${mockResendPort}/last`)).json();
+assert.deepEqual(sentEmail.to, ["vault-test@example.com"]);
+assert.equal(sentEmail.from, "Vault Test <requests@example.com>");
+assert.match(sentEmail.text, /Name: Ari Smith/);
+assert.ok(sentEmail.text.includes("Please add season 2\nThanks"));
+const savedContact = await pool.query("SELECT name, request_type, message, created_at FROM contact_requests WHERE id=$1", [sentContact.data.id]);
+assert.equal(savedContact.rowCount, 1);
+assert.deepEqual({ name: savedContact.rows[0].name, requestType: savedContact.rows[0].request_type, message: savedContact.rows[0].message }, {
+  name: "Ari Smith", requestType: "Anime", message: "Please add season 2\nThanks",
+});
+assert.ok(savedContact.rows[0].created_at instanceof Date, "submission timestamp is created by PostgreSQL");
+const badContactType = await api("/api/contact", { method: "POST", auth: false, body: { name: "Ari", type: "<script>", message: "Hello" }, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.2` } });
+assert.equal(badContactType.res.status, 400);
+const honeypotContact = await api("/api/contact", { method: "POST", auth: false, body: { name: "Bot", type: "Other", message: "spam", company: "bot.example" }, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.3` } });
+assert.equal(honeypotContact.res.status, 400);
+const crossSiteContact = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { Origin: "https://evil.example", "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.4` } });
+assert.equal(crossSiteContact.res.status, 403);
+const backedUpTable = "contact_requests_test_backup";
+await pool.query(`ALTER TABLE contact_requests RENAME TO ${backedUpTable}`);
+const failedSave = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { "x-e2e-client-ip": `${contactIp.split(".").slice(0, 3).join(".")}.5` } });
+assert.equal(failedSave.res.status, 503);
+assert.match(failedSave.data.error, /couldn’t save your request/i);
+await pool.query(`ALTER TABLE ${backedUpTable} RENAME TO contact_requests`);
+const failedEmailIp = `${contactIp.split(".").slice(0, 3).join(".")}.7`;
+const failedEmail = await api("/api/contact", { method: "POST", auth: false, body: { name: "Saved First", type: "Movie", message: "[MOCK_FAIL]" }, headers: { "x-e2e-client-ip": failedEmailIp } });
+assert.equal(failedEmail.res.status, 201, JSON.stringify(failedEmail.data));
+assert.deepEqual(failedEmail.data, { success: true, id: failedEmail.data.id, notificationSent: false });
+const savedDespiteEmailFailure = await pool.query("SELECT name, message FROM contact_requests WHERE id=$1", [failedEmail.data.id]);
+assert.deepEqual(savedDespiteEmailFailure.rows[0], { name: "Saved First", message: "[MOCK_FAIL]" }, "email rejection must not lose the saved database request");
+const limitedContactIp = `${contactIp.split(".").slice(0, 3).join(".")}.6`;
+for (let attempt = 0; attempt < 5; attempt++) {
+  const accepted = await api("/api/contact", { method: "POST", auth: false, body: { name: "Ari", type: "Other", message: `Rate test ${attempt}` }, headers: { "x-e2e-client-ip": limitedContactIp } });
+  assert.equal(accepted.res.status, 201);
+}
+const rateLimitedContact = await api("/api/contact", { method: "POST", auth: false, body: contactPayload, headers: { "x-e2e-client-ip": limitedContactIp } });
+assert.equal(rateLimitedContact.res.status, 429);
+assert.ok(Number(rateLimitedContact.res.headers.get("retry-after")) >= 1);
+assert.equal(ok(await api("/api/site-settings")).wallpaperUrl, null);
+assert.equal((await api("/api/site-settings", { method: "PUT", auth: false, body: { wallpaperUrl: "https://example.com/wallpaper.jpg" } })).res.status, 401);
+assert.equal((await api("/api/site-settings", { method: "DELETE", auth: false })).res.status, 401);
 assert.equal((await api("/api/uploads", { method: "POST", auth: false, body: {} })).res.status, 401);
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password: "wrong" } })).res.status, 401);
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
@@ -195,6 +318,64 @@ const archive = await uploadFile({ kind: "archive", fileName: "season-1-1080p.zi
 const archiveLink = ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, quality: "1080p", label: "Complete season 1080p", r2UploadId: archive.id } }), 201);
 assert.equal(archiveLink.seasonId, season.id); assert.equal(archiveLink.episodeId, null);
 const ep1 = batch.episodes[0];
+
+// Anonymous title and episode discussions, threaded replies, duplicate-like
+// prevention, spoiler data, reports, and server-side moderation controls.
+assert.equal((await api("/api/admin/comments", { auth: false })).res.status, 401, "comment moderation must require admin authentication");
+assert.equal((await api("/api/admin/comments/1", { method: "PATCH", auth: false, body: { isHidden: true } })).res.status, 401);
+const titleDiscussionPath = `/api/comments?mediaId=${movie.id}`;
+const emptyDiscussion = ok(await commentApi(titleDiscussionPath));
+assert.equal(emptyDiscussion.count, 0);
+assert.equal(emptyDiscussion.enabled, true);
+const spoilerComment = ok(await commentApi("/api/comments", { method: "POST", body: { mediaId: movie.id, body: "The final scene reveals the hidden truth.", isSpoiler: true, website: "" } }), 201);
+const threadReply = ok(await commentApi("/api/comments", { method: "POST", body: { mediaId: movie.id, parentId: spoilerComment.id, body: "That reveal was beautifully set up.", website: "" } }), 201);
+assert.ok(threadReply.id > spoilerComment.id);
+const likedOnce = ok(await commentApi(`/api/comments/${spoilerComment.id}/like`, { method: "PUT" }));
+const likedTwice = ok(await commentApi(`/api/comments/${spoilerComment.id}/like`, { method: "PUT" }));
+assert.equal(likedOnce.likeCount, 1);
+assert.equal(likedTwice.likeCount, 1, "repeating a like from one anonymous session must not duplicate it");
+const reportResult = ok(await commentApi(`/api/comments/${spoilerComment.id}/report`, { method: "POST", body: { reason: "spoiler", details: "Please confirm this is marked clearly." } }), 201);
+assert.equal(reportResult.success, true);
+assert.equal((await commentApi(`/api/comments/${spoilerComment.id}/report`, { method: "POST", body: { reason: "spoiler" } })).res.status, 409, "one anonymous session may report a comment only once");
+const noPrivateCommentFields = ok(await commentApi(titleDiscussionPath));
+assert.equal(noPrivateCommentFields.count, 2);
+assert.ok(noPrivateCommentFields.comments.some((item) => item.id === spoilerComment.id && item.isSpoiler));
+assert.ok(noPrivateCommentFields.comments.every((item) => !("authorHash" in item) && !("sessionHash" in item)));
+const maliciousComment = createAnonymousApi();
+assert.equal((await maliciousComment("/api/comments", { method: "POST", body: { mediaId: movie.id, body: "<script>alert(1)</script>" } })).res.status, 400, "comment API must reject executable HTML");
+const allCommentRows = ok(await api("/api/admin/comments?view=all"));
+assert.ok(allCommentRows.comments.some((comment) => comment.id === spoilerComment.id));
+assert.ok(allCommentRows.comments.every((comment) => !("authorHash" in comment) && !("sessionHash" in comment)));
+const reportRows = ok(await api("/api/admin/comments?status=pending"));
+const reportRow = reportRows.find((report) => report.commentId === spoilerComment.id);
+assert.ok(reportRow, "Admin should be able to review a reported comment");
+assert.equal(reportRow.reason, "spoiler");
+assert.ok(!("reporterHash" in reportRow) && !("authorHash" in reportRow));
+const reportId = reportRow.id;
+ok(await api(`/api/admin/comment-reports/${reportId}`, { method: "PATCH", body: { status: "reviewed" } }));
+ok(await api(`/api/admin/comments/${spoilerComment.id}`, { method: "PATCH", body: { isHidden: true } }));
+const hiddenThread = ok(await commentApi(titleDiscussionPath));
+assert.equal(hiddenThread.count, 0, "hiding a parent also hides its replies from public discussions");
+ok(await api(`/api/admin/comments/${spoilerComment.id}`, { method: "PATCH", body: { isHidden: false } }));
+assert.equal(ok(await commentApi(titleDiscussionPath)).count, 2);
+ok(await api(`/api/admin/comment-reports/${reportId}`, { method: "PATCH", body: { status: "resolved" } }));
+const episodeComment = ok(await commentApi(`/api/comments?mediaId=${anime.id}&episodeId=${ep1.id}`, { method: "GET" }));
+assert.equal(episodeComment.count, 0);
+const episodePost = ok(await commentApi("/api/comments", { method: "POST", body: { mediaId: anime.id, episodeId: ep1.id, body: "This episode has great pacing." } }), 201);
+assert.ok(episodePost.id > 0);
+assert.equal(ok(await commentApi(`/api/comments?mediaId=${anime.id}`)).count, 0, "episode comments must not leak into title-level discussions");
+assert.equal(ok(await commentApi(`/api/comments?mediaId=${anime.id}&episodeId=${ep1.id}`)).count, 1);
+const commentRateResults = [];
+for (let attempt = 0; attempt < 4; attempt++) commentRateResults.push((await commentApi(`/api/comments/${threadReply.id}/like`, { method: "PUT" })).res.status);
+assert.deepEqual(commentRateResults, [200, 200, 200, 429], "anonymous comment actions should be rate-limited per session");
+ok(await api(`/api/episodes/${ep1.id}`, { method: "PATCH", body: { commentsEnabled: false } }));
+assert.equal(ok(await commentApi(`/api/comments?mediaId=${anime.id}&episodeId=${ep1.id}`)).enabled, false);
+assert.equal((await commentApi("/api/comments", { method: "POST", body: { mediaId: anime.id, episodeId: ep1.id, body: "Comments should now be disabled." } })).res.status, 403);
+ok(await api(`/api/episodes/${ep1.id}`, { method: "PATCH", body: { commentsEnabled: true } }));
+ok(await api(`/api/media/${movie.id}`, { method: "PATCH", body: { commentsEnabled: false } }));
+assert.equal(ok(await commentApi(titleDiscussionPath)).enabled, false);
+assert.equal((await commentApi("/api/comments", { method: "POST", body: { mediaId: movie.id, body: "Title comments should now be disabled." } })).res.status, 403);
+ok(await api(`/api/media/${movie.id}`, { method: "PATCH", body: { commentsEnabled: true } }));
 const epVideo = await uploadFile({ kind: "video", fileName: "S01E01-720p.mp4", bytes: Buffer.alloc(1024, 3), contentType: "video/mp4", target: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p" } });
 const ep720 = ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "720p", r2UploadId: epVideo.id } }), 201);
 const ep1080 = ok(await api("/api/download-links", { method: "POST", body: { mediaId: anime.id, seasonId: season.id, episodeId: ep1.id, quality: "1080p", label: "External 1080p", url: "https://example.com/episode-1080.mp4" } }), 201);
@@ -301,10 +482,269 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 900 
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
+await page.goto(`${base}/`);
+assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
+const tagDropdown = page.getByRole("combobox", { name: "Filter by tag" });
+await tagDropdown.selectOption("legacy");
+await page.waitForURL((url) => url.searchParams.get("category") === "legacy");
+await page.locator(".grid").getByText("Legacy Movie", { exact: true }).waitFor();
+assert.equal(await page.locator(".grid").getByText("Legacy Anime", { exact: true }).count(), 0, "selected tag should filter out uncategorized titles");
+await tagDropdown.selectOption("");
+await page.waitForURL((url) => !url.searchParams.has("category"));
+await page.locator(".grid").getByText("Legacy Anime", { exact: true }).waitFor();
+
+const yearDropdown = page.getByRole("combobox", { name: "Filter by release year" });
+const sortDropdown = page.getByRole("combobox", { name: "Sort library" });
+assert.ok(await yearDropdown.locator("option").evaluateAll((options) => options.some((option) => option.value === "2024")));
+assert.ok(await yearDropdown.locator("option").evaluateAll((options) => options.some((option) => option.value === "2023")));
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "Anime + 2024 + A-Z should filter and sort together");
+await sortDropdown.selectOption("za");
+await page.waitForURL((url) => url.searchParams.get("sort") === "za" && url.searchParams.get("type") === "anime" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Zulu ${run}`, `Filter Alpha ${run}`], "Z-A should reverse the title order without dropping other filters");
+await sortDropdown.selectOption("newest");
+await page.waitForURL((url) => !url.searchParams.has("sort") && url.searchParams.get("category") === `filter-${run}`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Zulu ${run}`, `Filter Alpha ${run}`], "newest-first should use creation timestamps");
+await sortDropdown.selectOption("oldest");
+await page.waitForURL((url) => url.searchParams.get("sort") === "oldest");
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "oldest-first should reverse creation order");
+await page.goto(`${base}/?type=movie&year=2023&category=filter-${run}`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Movie 2023 ${run}`], "Movies + 2023 + tag should exclude other years and content types");
+await page.goto(`${base}/anime?year=2024&category=filter-${run}&sort=az`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "type pages should use the same combined library filters");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
+const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
+assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
+await page.setViewportSize({ width: 1280, height: 900 });
+
+const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
+const suggestions = page.locator("#search-suggestions");
+await page.goto(`${base}/?type=anime`);
+await searchBox.fill("Juju");
+await suggestions.getByText(`Jujutsu Kaisen ${run}`, { exact: true }).waitFor();
+const desktopSearchLayout = await suggestions.evaluate((dropdown) => {
+  const dropdownRect = dropdown.getBoundingClientRect();
+  const searchRect = dropdown.closest("form").getBoundingClientRect();
+  const card = dropdown.querySelector("a");
+  const cardRect = card.getBoundingClientRect();
+  return { left: dropdownRect.left, right: dropdownRect.right, width: dropdownRect.width, centerDelta: Math.abs((dropdownRect.left + dropdownRect.right) / 2 - (searchRect.left + searchRect.right) / 2), cardWidth: cardRect.width, cardClass: card.className };
+});
+assert.ok(desktopSearchLayout.left >= 0 && desktopSearchLayout.right <= 1280, "desktop suggestions should remain inside the viewport");
+assert.ok(desktopSearchLayout.width > 320 && desktopSearchLayout.width <= 672, "desktop dropdown should be wider than the search field without becoming unbounded");
+assert.ok(desktopSearchLayout.centerDelta < 1, "desktop dropdown should stay centered relative to the search bar");
+assert.ok(desktopSearchLayout.cardClass.includes("grid-cols-1"), "suggestions should use a clear card row with separate title and metadata areas");
+const titleSuggestion = suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) });
+assert.match(await titleSuggestion.innerText(), /Anime/);
+assert.match(await titleSuggestion.innerText(), /2024/);
+const animeSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+assert.ok(animeSuggestionHrefs.length > 0 && animeSuggestionHrefs.every((href) => href?.startsWith("/anime/")), "selected Anime filter must scope every live suggestion");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/?type=movie`);
+await searchBox.fill("Juju");
+await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
+const mobileSuggestionBounds = await suggestions.boundingBox();
+assert.ok(mobileSuggestionBounds && mobileSuggestionBounds.x >= 0 && mobileSuggestionBounds.x + mobileSuggestionBounds.width <= 390, "mobile suggestions should stay within the viewport");
+const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(`${base}/`);
+await searchBox.fill("To You, in 2000 Years");
+const episodeAnchor = suggestions.locator('a[href*="#episode-"]');
+await episodeAnchor.waitFor();
+const episodeHref = await episodeAnchor.getAttribute("href");
+assert.match(episodeHref, new RegExp(`/anime/attack-on-titan-${run}#episode-\\d+`));
+const episodeRowText = await episodeAnchor.innerText();
+assert.match(episodeRowText, /To You, in 2000 Years/);
+assert.match(episodeRowText, /From Attack on Titan/);
+assert.match(episodeRowText, /Season 1 · Episode 1/);
+assert.match(episodeRowText, /Anime/);
+assert.match(episodeRowText, /Episode/);
+await episodeAnchor.click();
+await page.waitForURL((url) => url.pathname === `/anime/attack-on-titan-${run}` && /^#episode-\d+$/.test(url.hash));
+await page.locator(new URL(page.url()).hash).waitFor();
+await page.goto(`${base}/`);
+await searchBox.fill("NoSuchVaultTitle");
+await suggestions.getByText(/No matching results found/).waitFor();
+await searchBox.fill("");
+await searchBox.pressSequentially("Juju", { delay: 35 });
+await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
+await suggestions.getByText(`Jujutsu Kaisen ${run}`, { exact: true }).waitFor();
+await suggestions.getByText(`Juju Series ${run}`, { exact: true }).waitFor();
+assert.equal(new URL(page.url()).searchParams.has("q"), false, "suggestions should appear before submitting the search");
+await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) }).click();
+await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
+await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
+
+await searchBox.fill("Legacy");
+await searchBox.press("Enter");
+await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && url.searchParams.get("type") === "anime");
+await page.getByRole("heading", { name: /Search results for/ }).waitFor();
+
+// Public comment surfaces render safely, reveal spoilers on demand, and remain
+// within desktop and narrow mobile viewports for title and episode discussions.
+await page.goto(`${base}/movie/${movie.slug}`);
+const titleCommentPanel = page.locator('[aria-label="Title comments"]');
+await titleCommentPanel.getByRole("heading", { name: /Community comments/ }).waitFor();
+await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).waitFor();
+const desktopCommentBounds = await titleCommentPanel.boundingBox();
+assert.ok(desktopCommentBounds && desktopCommentBounds.x >= 0 && desktopCommentBounds.x + desktopCommentBounds.width <= 1280, "desktop title comments should fit the viewport");
+await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).click();
+await titleCommentPanel.getByText("The final scene reveals the hidden truth.", { exact: true }).waitFor();
+await page.getByRole("textbox", { name: "Write a comment" }).fill(`Browser comment ${run}`);
+await page.getByRole("button", { name: "Post comment" }).click();
+await titleCommentPanel.getByRole("status").getByText("Comment posted.").waitFor();
+await titleCommentPanel.getByText(`Browser comment ${run}`, { exact: true }).waitFor();
+await page.setViewportSize({ width: 390, height: 844 });
+const mobileCommentLayout = await titleCommentPanel.evaluate((section) => ({
+  left: section.getBoundingClientRect().left,
+  right: section.getBoundingClientRect().right,
+  scrollWidth: section.scrollWidth,
+  clientWidth: section.clientWidth,
+}));
+assert.ok(mobileCommentLayout.left >= 0 && mobileCommentLayout.right <= 390, "mobile title comments should stay within the viewport");
+assert.ok(mobileCommentLayout.scrollWidth <= mobileCommentLayout.clientWidth, "title comments must not cause horizontal overflow on mobile");
+await page.goto(`${base}/anime/${anime.slug}`);
+const targetEpisodeRow = page.locator(`#episode-${ep1.id}`);
+await targetEpisodeRow.locator("button[aria-expanded]").click();
+const episodeCommentPanel = page.locator('[aria-label="Episode comments"]');
+await episodeCommentPanel.getByRole("heading", { name: /Episode discussion/ }).waitFor();
+await episodeCommentPanel.getByText("This episode has great pacing.", { exact: true }).waitFor();
+const mobileEpisodeCommentBounds = await episodeCommentPanel.boundingBox();
+assert.ok(mobileEpisodeCommentBounds && mobileEpisodeCommentBounds.x >= 0 && mobileEpisodeCommentBounds.x + mobileEpisodeCommentBounds.width <= 390, "mobile episode discussion should stay inside the viewport");
+await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/admin`);
+await page.getByRole("button", { name: "Request" }).click();
+await page.getByRole("dialog", { name: "Send a request" }).waitFor();
+const desktopModalLayout = await page.getByRole("dialog").evaluate((dialog) => {
+  const rect = dialog.getBoundingClientRect();
+  const backdrop = dialog.parentElement;
+  const backdropRect = backdrop.getBoundingClientRect();
+  return { centerX: rect.left + rect.width / 2, viewportCenter: window.innerWidth / 2, backdropTop: backdropRect.top, backdropHeight: backdropRect.height, zIndex: getComputedStyle(backdrop).zIndex, portaledToBody: backdrop.parentElement === document.body };
+});
+assert.ok(Math.abs(desktopModalLayout.centerX - desktopModalLayout.viewportCenter) < 1, "desktop modal should be centered");
+assert.equal(desktopModalLayout.backdropTop, 0);
+assert.equal(desktopModalLayout.backdropHeight, 900);
+assert.equal(desktopModalLayout.zIndex, "1000");
+assert.equal(desktopModalLayout.portaledToBody, true, "modal must escape the sticky/backdrop-filter navbar stacking context");
+await page.setViewportSize({ width: 390, height: 430 });
+const mobileModalLayout = await page.getByRole("dialog").evaluate((dialog) => {
+  const rect = dialog.getBoundingClientRect();
+  return { x: rect.left, right: rect.right, centerX: rect.left + rect.width / 2, viewportCenter: window.innerWidth / 2, scrollHeight: dialog.scrollHeight, clientHeight: dialog.clientHeight, bodyOverflow: document.body.style.overflow };
+});
+assert.ok(mobileModalLayout.x >= 0 && mobileModalLayout.right <= 390, "mobile dialog should fit viewport width");
+assert.ok(Math.abs(mobileModalLayout.centerX - mobileModalLayout.viewportCenter) < 1, "mobile modal should be centered");
+assert.ok(mobileModalLayout.scrollHeight > mobileModalLayout.clientHeight, "tall mobile dialog should remain internally scrollable");
+assert.equal(mobileModalLayout.bodyOverflow, "hidden", "background page scrolling should be locked while the modal is open");
+await page.keyboard.press("Escape");
+await page.getByRole("dialog").waitFor({ state: "detached" });
+assert.equal(await page.evaluate(() => document.body.style.overflow), "", "background scroll should restore after closing");
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.getByRole("button", { name: "Request" }).click();
+await page.getByRole("textbox", { name: "Name" }).fill("E2E request sender");
+await page.getByLabel("Request Type").selectOption("Episode");
+await page.getByLabel("Message").fill("Please add episode 4");
+const requestPopups = [];
+page.on("popup", (popup) => requestPopups.push(popup));
+const failContactUi = (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "We couldn’t save your request right now. Please try again later." }) });
+await page.route("**/api/contact", failContactUi);
+await page.getByRole("button", { name: "Submit" }).click();
+await page.getByRole("alert").getByText(/couldn’t save your request/i).waitFor();
+assert.equal(await page.getByRole("status").count(), 0, "a failed send must not show success");
+await page.unroute("**/api/contact", failContactUi);
+const failEmailUi = (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, id: 999, notificationSent: false }) });
+await page.route("**/api/contact", failEmailUi);
+await page.getByRole("button", { name: "Submit" }).click();
+await page.getByRole("status").getByText(/request was saved, but the email notification could not be sent/i).waitFor();
+await page.unroute("**/api/contact", failEmailUi);
+await page.getByRole("textbox", { name: "Name" }).fill("E2E request sender");
+await page.getByLabel("Request Type").selectOption("Episode");
+await page.getByLabel("Message").fill("Please add episode 4");
+await page.getByRole("button", { name: "Submit" }).click();
+await page.getByText("Your request has been saved and the site admin has been notified. Thank you!").waitFor();
+assert.equal(requestPopups.length, 0, "submitting must not open Gmail, Telegram, or another app");
+assert.equal(await page.getByRole("link", { name: /Continue in (Telegram|Gmail)/ }).count(), 0);
+await page.getByRole("button", { name: "Close request form" }).click();
 await page.getByPlaceholder("Password").fill(password);
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.getByRole("heading", { name: "Admin Dashboard" }).waitFor();
+await page.getByRole("button", { name: "requests", exact: true }).click();
+await page.getByRole("heading", { name: "Submitted requests" }).waitFor();
+await page.getByText("Ari Smith", { exact: true }).waitFor();
+await page.getByText("E2E request sender", { exact: true }).waitFor();
+const confirmedDialogs = [];
+page.on("dialog", (dialog) => { confirmedDialogs.push(dialog.message()); void dialog.accept(); });
+await page.getByRole("button", { name: "Delete request from E2E request sender" }).click();
+await page.getByRole("status").getByText("Request deleted.").waitFor();
+await page.getByText("E2E request sender", { exact: true }).waitFor({ state: "detached" });
+const remainingRequests = ok(await api("/api/contact/requests"));
+assert.ok(remainingRequests.some((request) => request.id === sentContact.data.id), "deleting one request must preserve other submitted requests");
+await page.getByRole("button", { name: "Comment moderation" }).click();
+await page.getByRole("heading", { name: "Comment moderation" }).waitFor();
+await page.getByLabel("Moderation view").selectOption("comments");
+const unreportedEpisodeComment = page.locator("article").filter({ hasText: "This episode has great pacing." }).first();
+await unreportedEpisodeComment.waitFor();
+await unreportedEpisodeComment.getByRole("button", { name: "Hide" }).click();
+await page.getByRole("status").getByText("Comment hidden from the public discussion.").waitFor();
+await unreportedEpisodeComment.getByRole("button", { name: "Restore" }).click();
+await page.getByRole("status").getByText("Comment restored to the public discussion.").waitFor();
+await page.getByLabel("Moderation view").selectOption("reports");
+await page.getByLabel("Filter reports by status").selectOption("");
+const moderatedComment = page.locator("article").filter({ hasText: "The final scene reveals the hidden truth." }).first();
+await moderatedComment.waitFor();
+await moderatedComment.getByRole("button", { name: "Hide" }).click();
+await page.getByRole("status").getByText("Comment hidden from the public discussion.").waitFor();
+await moderatedComment.getByRole("button", { name: "Restore" }).click();
+await page.getByRole("status").getByText("Comment restored to the public discussion.").waitFor();
+await moderatedComment.getByLabel(/Report status for comment/).selectOption("reviewed");
+await page.getByRole("status").getByText("Report status updated.").waitFor();
+await moderatedComment.getByRole("button", { name: "Delete" }).click();
+await page.getByRole("status").getByText("Comment deleted.").waitFor();
+assert.ok(confirmedDialogs.some((message) => /delete this comment/i.test(message)), "admin comment deletion must ask for explicit confirmation");
+assert.equal(ok(await commentApi(titleDiscussionPath)).count, 1, "admin deletion must cascade through the original comment thread");
+assert.ok(!(await ok(await api("/api/admin/comments?status=")).some((report) => report.commentId === spoilerComment.id)), "deleting a comment should remove its reports from moderation");
+// A settings endpoint failure must not hide a working image gallery or falsely
+// report that R2 is unconfigured.
+const failWallpaperRead = async (route) => {
+  if (route.request().method() === "GET") await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Server error. Please try again." }) });
+  else await route.continue();
+};
+await page.route("**/api/site-settings", failWallpaperRead);
+await page.getByRole("button", { name: "Appearance" }).click();
+await page.getByText(/Could not load the saved wallpaper/).waitFor();
+await page.getByText("Legacy Movie · poster", { exact: true }).waitFor();
+assert.equal(await page.getByText(/Required R2 environment variables are missing/).count(), 0, "a settings failure must not be mislabeled as missing R2 configuration");
+await page.unroute("**/api/site-settings", failWallpaperRead);
+await page.getByRole("button", { name: "media", exact: true }).click();
+// Wallpaper uploads use the existing private-R2 image flow; the saved setting
+// persists, supports the media gallery, and can be removed without deleting R2.
+await page.getByRole("button", { name: "Appearance" }).click();
+await page.locator('input[type="file"]').setInputFiles({ name: "wallpaper.png", mimeType: "image/png", buffer: png });
+await page.getByText("Upload complete. Preview the image, then apply it to the site.").waitFor();
+await page.getByRole("button", { name: "Apply wallpaper" }).click();
+await page.getByText("Wallpaper applied and saved.").waitFor();
+let wallpaperSettings = ok(await api("/api/site-settings"));
+assert.match(wallpaperSettings.wallpaperUrl, /^\/api\/image\?upload=/);
+const privateWallpaper = await fetch(`${base}${wallpaperSettings.wallpaperUrl}`, { redirect: "manual" });
+assert.equal(privateWallpaper.status, 302, "wallpaper images are served through the private R2 signing route");
+await page.goto(`${base}/`);
+await page.locator('[data-testid="site-wallpaper"]').waitFor();
+assert.ok(await page.locator('[data-testid="site-wallpaper"] img').getAttribute("src"));
+await page.setViewportSize({ width: 390, height: 844 });
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "wallpaper must not cause mobile overflow");
+await page.goto(`${base}/admin`);
+await page.getByRole("heading", { name: "Admin Dashboard" }).waitFor();
+await page.getByRole("button", { name: "Appearance" }).click();
+await page.getByText("Legacy Movie · poster", { exact: true }).click();
+await page.getByRole("button", { name: "Replace wallpaper" }).click();
+await page.getByText("Wallpaper applied and saved.").waitFor();
+wallpaperSettings = ok(await api("/api/site-settings"));
+assert.equal(wallpaperSettings.wallpaperUrl, "/uploads/images/legacy.jpg");
+await page.getByRole("button", { name: "Remove wallpaper" }).click();
+await page.getByText("Wallpaper removed. The private R2 image itself was retained.").waitFor();
+assert.equal(ok(await api("/api/site-settings")).wallpaperUrl, null);
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.getByRole("button", { name: "media", exact: true }).click();
 await page.getByRole("button", { name: "+ Add media" }).click();
 await page.getByLabel("Type").selectOption("anime");
 await page.getByLabel("Title", { exact: true }).fill(`Browser Anime ${run}`);
@@ -313,9 +753,18 @@ await page.getByLabel("Season #").waitFor();
 await page.getByLabel("Season #").fill("1");
 await page.getByRole("button", { name: "+ Add season" }).click();
 await page.getByText("Create a complete season").waitFor();
-await page.getByLabel("Count").fill("2");
+await page.getByLabel("Count").fill("3");
 await page.getByRole("button", { name: "Create episodes" }).click();
 await page.getByText("Episode 1", { exact: true }).waitFor();
+// A single batch may contain multiple qualities for the same episode.
+await page.locator('input[type="file"][multiple]').setInputFiles([
+  { name: "S01E01-720p.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048, 4) },
+  { name: "S01E01-1080p.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048, 5) },
+]);
+await page.getByText("S01E01-720p.mp4").waitFor();
+await page.getByText("S01E01-720p.mp4").locator("..").locator("select").selectOption("720p");
+await page.getByRole("button", { name: "Upload / retry batch" }).click();
+await page.getByText("2 files uploaded and attached. Failed rows can be retried without re-uploading completed files.").waitFor({ timeout: 60000 });
 await page.getByText("Episode 1", { exact: true }).click();
 const episodeForm = page.getByRole("form", { name: "Download link form episode" });
 await episodeForm.getByPlaceholder("https://t.me/…, https://…, tg://…, or magnet:…").fill("https://t.me/browser/1080");
@@ -325,24 +774,40 @@ await page.getByText("Telegram", { exact: true }).waitFor();
 await episodeForm.locator('input[type="file"]').setInputFiles({ name: "browser-episode-1080p.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048, 9) });
 await page.getByText(/Uploaded and verified in R2/).waitFor();
 await episodeForm.getByRole("button", { name: "Add link", exact: true }).click();
-await page.getByText("Cloudflare R2", { exact: true }).waitFor();
+await page.getByText("Cloudflare R2", { exact: true }).first().waitFor();
+const browserAnime = (await pool.query("SELECT id FROM media WHERE slug=$1", [`browser-anime-${run}`])).rows[0];
+const browserEpisodes = (await pool.query("SELECT e.id, e.episode_number, s.id AS season_id FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.media_id=$1 ORDER BY e.episode_number", [browserAnime.id])).rows;
+const browserAnimeDetails = ok(await api(`/api/media/${browserAnime.id}`));
+assert.deepEqual(new Set(browserAnimeDetails.seasons[0].episodes[0].downloadLinks.map((link) => link.quality)), new Set(["720p", "1080p"]), "batch upload should attach both per-episode qualities");
+for (const episode of browserEpisodes.filter((item) => item.episode_number > 1)) {
+  ok(await api("/api/download-links", { method: "POST", body: { mediaId: browserAnime.id, seasonId: episode.season_id, episodeId: episode.id, quality: "1080p", label: "1080p", url: `https://example.com/browser-episode-${episode.episode_number}-1080.mp4` } }), 201);
+}
 await page.goto(`${base}/anime/browser-anime-${run}`);
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
 await page.getByText("Episode 1", { exact: true }).click();
-await page.locator('a[title="Cloudflare R2"]').waitFor();
+await page.locator('a[title="Cloudflare R2"]').first().waitFor();
+await page.getByRole("heading", { name: "720p", exact: true }).waitFor();
+await page.getByRole("heading", { name: "1080p", exact: true }).waitFor();
 const episodeOneCheckbox = page.getByRole("checkbox", { name: "Select episode 1 for bulk download" });
 await episodeOneCheckbox.check();
 await page.getByRole("button", { name: "Select All" }).click();
-await page.getByText("2 selected", { exact: true }).waitFor();
+await page.getByText("3 selected", { exact: true }).waitFor();
 await page.getByRole("button", { name: "Clear Selection" }).click();
 await page.getByText("0 selected", { exact: true }).waitFor();
 await page.getByRole("button", { name: "Select All" }).click();
+await page.getByText("3 selected", { exact: true }).waitFor();
 await page.getByLabel("Bulk download quality").selectOption("1080p");
-await page.getByRole("button", { name: "Download Selected (2)" }).click();
-await page.getByText("Download queue: 1 started, 1 skipped, 0 failed · 1080p", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Download Selected (3)" }).click();
+await page.getByText("Download queue: 1 completed (handed to browser), 2 waiting, 0 skipped, 0 failed · 1080p", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Download next (2 remaining)" }).click();
+await page.getByText("Download queue: 2 completed (handed to browser), 1 waiting, 0 skipped, 0 failed · 1080p", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Download next (1 remaining)" }).click();
+await page.getByText("Download queue: 3 completed (handed to browser), 0 waiting, 0 skipped, 0 failed · 1080p", { exact: true }).waitFor();
 await page.setViewportSize({ width: 390, height: 844 });
 assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection remains available on mobile");
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
+await page.goto(`${base}/movie/${movie.slug}`);
+for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
 assert.deepEqual(errors, []);
 await browser.close();
 
@@ -352,4 +817,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: auth/rate limits/CSRF, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");
+console.log("E2E passed: desktop/mobile Smart Search layout, aliases/typos/filters and episode deep links; anonymous title/episode comments, replies, idempotent likes, spoiler reveal, reporting, rate-limited validation, admin review/hide/restore/confirmed delete and comment toggles; responsive comment UI; combined library filters; auth/contact rate limits/CSRF and Resend/Admin Requests; legacy media, PWA-sensitive routes, R2 uploads/downloads, seasons/episodes/bulk links, object retention, and URL/poster security.");

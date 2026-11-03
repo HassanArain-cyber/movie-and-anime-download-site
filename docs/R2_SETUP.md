@@ -39,7 +39,7 @@ Example least-privilege policy (replace `BUCKET`):
 
 ## 3. Configure CORS for browser uploads
 
-Bucket → Settings → CORS Policy. Replace the origin with your deployed site origin. For local development you can add `http://localhost:3000`.
+Bucket → Settings → CORS Policy. Add the exact deployed site origin to `AllowedOrigins`, preserving all existing origins. For local development you can also add `http://localhost:3000`.
 
 ```json
 [
@@ -54,6 +54,12 @@ Bucket → Settings → CORS Policy. Replace the origin with your deployed site 
 ```
 
 The browser uploads parts with `PUT`; the browser does not need cross-origin `GET`, `POST`, or `DELETE` access for the current UI. Downloads are ordinary navigations/redirects to signed R2 URLs, so they do not require CORS. If you later add browser-side `fetch()` downloads, add only the methods you actually use. Do not use `*` for a production admin origin unless you intentionally accept any site. CORS is not an authorization control: anyone holding a valid presigned URL can use it from any client until it expires.
+
+### Vercel Preview origins
+
+For this repository's current PR Preview, use the stable branch alias `https://movie-and-anime-download-site-git-arena-e243c0-74d6de-gojo-d2e9.vercel.app` while testing. Add that exact origin to `AllowedOrigins` **alongside** the existing production and local origins; do not replace the existing list. The deployment-specific URL (the `...mcbk5avb1...vercel.app` form) changes with each deployment, so prefer the stable branch alias for repeatable tests. If you test on a different Preview hostname, add that exact origin too, then remove only that temporary entry when no longer needed. Do not use a wildcard to cover Preview deployments.
+
+The Vercel environment-variable names being configured does not prove their secret values are populated or valid. The admin storage status endpoint checks that required values are non-empty at runtime; it does not validate credentials against Cloudflare. Keep the values server-side and never paste them into browser code or support messages.
 
 ## 4. Environment variables
 
@@ -91,9 +97,11 @@ Upload sessions last 24 hours and slide forward when part URLs are refreshed. Pr
 
 ## 5. Migrate and deploy
 
+Vercel builds do not automatically apply database migrations. Before testing the saved wallpaper on Preview, apply the additive migration to the **Preview database only**, using its `DATABASE_URL`; do not point this command at Production while testing a Preview.
+
 ```bash
 npm ci
-npm run db:migrate
+DATABASE_URL='<Preview database URL>' npm run db:migrate
 npm run build
 npm start
 ```

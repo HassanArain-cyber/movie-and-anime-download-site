@@ -7,6 +7,22 @@ export const QUALITY_ORDER: VideoQuality[] = [...QUALITIES];
 
 export type BulkQualityChoice = "best" | VideoQuality | "unspecified";
 
+export interface BulkEpisodeInput {
+  id: number;
+  episodeNumber: number;
+  title: string | null;
+  downloadLinks: DownloadLink[];
+}
+
+export interface BulkQueueEntry {
+  episodeId: number;
+  episodeNumber: number;
+  title: string;
+  status: "pending" | "skipped";
+  message: string;
+  link: DownloadLink | null;
+}
+
 const QUALITY_ALIASES: Record<string, VideoQuality> = {
   "360p": "360p", "480p": "480p", "720p": "720p", "1080p": "1080p",
   "1440p": "1440p", "2k": "1440p", "2160p": "2160p", "4k": "2160p",
@@ -112,6 +128,23 @@ export function selectBulkDownload(links: DownloadLink[], choice: BulkQualityCho
     const bRank = bQuality ? QUALITY_ORDER.indexOf(bQuality) : QUALITY_ORDER.length;
     return aRank - bRank || providerRank(a) - providerRank(b) || a.id - b.id;
   })[0] || null;
+}
+
+/** Keep selected-episode order intact and retain an explicit entry for each
+ * selected item, including unavailable qualities, so bulk progress is auditable. */
+export function createBulkDownloadQueue(episodes: BulkEpisodeInput[], choice: BulkQualityChoice): BulkQueueEntry[] {
+  return episodes.map((episode) => {
+    const links = episode.downloadLinks || [];
+    const link = selectBulkDownload(links, choice);
+    const title = episode.title || `Episode ${episode.episodeNumber}`;
+    if (link) return { episodeId: episode.id, episodeNumber: episode.episodeNumber, title, status: "pending", message: "Waiting in queue.", link };
+    const reason = !links.some((candidate) => getLinkHref(candidate))
+      ? "No safe, usable download link is available."
+      : choice === "best"
+        ? "No safe, usable download link is available."
+        : `No ${choice === "unspecified" ? qualityDisplay(null) : qualityDisplay(choice)} version is available.`;
+    return { episodeId: episode.id, episodeNumber: episode.episodeNumber, title, status: "skipped", message: reason, link: null };
+  });
 }
 
 export function formatBytes(bytes: number): string {

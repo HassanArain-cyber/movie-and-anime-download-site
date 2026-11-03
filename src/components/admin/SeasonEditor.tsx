@@ -84,6 +84,7 @@ function EpisodeEditor({ mediaId, seasonId, episodes, onChange }: { mediaId: num
   const [batchPrefix, setBatchPrefix] = useState("Episode");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [commentsBusyId, setCommentsBusyId] = useState<number | null>(null);
 
   const addEpisode = async (event: React.FormEvent) => {
     event.preventDefault(); setErr(""); setBusy(true);
@@ -107,6 +108,22 @@ function EpisodeEditor({ mediaId, seasonId, episodes, onChange }: { mediaId: num
     finally { setBusy(false); }
   };
 
+  const toggleEpisodeComments = async (id: number, commentsEnabled: boolean) => {
+    setCommentsBusyId(id);
+    setErr("");
+    try {
+      const response = await fetch(`/api/episodes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentsEnabled }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not update episode comments.");
+      await onChange();
+    } catch (error) { setErr(error instanceof Error ? error.message : "Could not update episode comments."); }
+    finally { setCommentsBusyId(null); }
+  };
+
   const deleteEpisode = async (id: number) => {
     if (!confirm("Delete this episode and its links? R2 files are retained.")) return;
     const res = await fetch(`/api/episodes/${id}`, { method: "DELETE" });
@@ -128,7 +145,11 @@ function EpisodeEditor({ mediaId, seasonId, episodes, onChange }: { mediaId: num
                 {ep.duration && <span className="text-xs text-neutral-500">{ep.duration}</span>}
                 <span className="ml-auto text-xs text-neutral-500">{ep.downloadLinks?.length || 0} links</span>
               </button>
-              <button type="button" onClick={() => void deleteEpisode(ep.id)} className="rounded border border-red-900/40 px-2 py-0.5 text-xs text-red-400 hover:bg-red-900/20">Delete</button>
+              <label className="flex min-h-9 shrink-0 items-center gap-1.5 text-xs text-neutral-400" title="Allow comments on this episode">
+                <input type="checkbox" checked={ep.commentsEnabled ?? true} disabled={commentsBusyId === ep.id} onChange={(event) => void toggleEpisodeComments(ep.id, event.target.checked)} className="h-4 w-4 accent-red-500" />
+                <span className="hidden sm:inline">Comments</span>
+              </label>
+              <button type="button" onClick={() => void deleteEpisode(ep.id)} className="min-h-9 rounded border border-red-900/40 px-2 py-0.5 text-xs text-red-400 hover:bg-red-900/20">Delete</button>
             </div>
             {expandedEp === ep.id && <div className="border-t border-neutral-800 bg-neutral-950 p-3">
               <DownloadLinksEditor mediaId={mediaId} seasonId={seasonId} episodeId={ep.id} links={ep.downloadLinks || []} onChange={onChange} />

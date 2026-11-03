@@ -6,29 +6,53 @@ import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
 import { uniqueSlug } from "@/lib/slugs";
 import { errorResponse, imageUrl, mediaType, optionalId, readJson, text, year } from "@/lib/validation";
+import { searchMedia } from "@/lib/media-search";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type");
   const q = searchParams.get("q")?.trim();
   const category = searchParams.get("category");
+  const rawYear = searchParams.get("year");
+  const yearFilter = rawYear && /^\d{4}$/.test(rawYear) ? Number(rawYear) : undefined;
   const slug = searchParams.get("slug");
+  const suggestionsOnly = searchParams.get("suggestions") === "1";
   try {
+    if (suggestionsOnly) {
+      const suggestions = q
+        ? await searchMedia(q, {
+          type: type ?? undefined,
+          categorySlug: category ?? undefined,
+          year: yearFilter,
+          limit: 12,
+          includeEpisodeResults: true,
+        })
+        : [];
+      return NextResponse.json(suggestions.map(({ id, type: mediaType, title, slug: mediaSlug, year, episodeInfo, episodeId, resultKind }) => ({
+        id, type: mediaType, title, slug: mediaSlug, year, resultKind,
+        ...(episodeId !== undefined ? { episodeId } : {}),
+        ...(episodeInfo ? { episodeInfo } : {}),
+      })));
+    }
+
     const conditions: SQL[] = [];
     if (type) conditions.push(eq(media.type, type));
     if (category) conditions.push(eq(categories.slug, category));
     if (slug) conditions.push(eq(media.slug, slug));
     if (q) {
       const search = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
-      conditions.push(or(ilike(media.title, search), ilike(media.description, search))!);
+      conditions.push(suggestionsOnly
+        ? ilike(media.title, search)
+        : or(ilike(media.title, search), ilike(media.description, search))!);
     }
-    const results = await db.select({
+    const query = db.select({
       id: media.id, type: media.type, title: media.title, slug: media.slug,
       description: media.description, posterUrl: media.posterUrl, thumbnailUrl: media.thumbnailUrl,
       year: media.year, categoryId: media.categoryId, categoryName: categories.name,
       createdAt: media.createdAt, updatedAt: media.updatedAt,
     }).from(media).leftJoin(categories, eq(media.categoryId, categories.id))
       .where(conditions.length ? and(...conditions) : undefined).orderBy(desc(media.createdAt), desc(media.id));
+    const results = suggestionsOnly ? await query.limit(8) : await query;
     if (slug) {
       if (!results[0]) return NextResponse.json({ error: "Not found" }, { status: 404 });
       return NextResponse.json(await getMediaDetails(results[0].id));
