@@ -32,10 +32,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <WallpaperBackground />
         <Navbar />
         <PwaRegister />
-        <main className="relative z-10 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <main className="relative z-10 mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:px-8">
           {children}
         </main>
-        <footer className="relative z-10 mt-16 border-t border-neutral-900 py-6">
+        <footer className="relative z-10 mt-16 border-t border-neutral-900 py-6 pb-24">
           <div className="mx-auto max-w-7xl px-4 text-center text-xs text-neutral-300/70 sm:px-6">
             Vault — a private media library.
           </div>

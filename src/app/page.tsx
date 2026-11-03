@@ -125,13 +125,13 @@ export default async function Home({ searchParams }: HomeProps) {
             <span className="inline-block rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
               Private Library
             </span>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Your movies, anime & series. One click away.
             </h1>
-            <p className="mt-3 text-neutral-400">
+            <p className="mt-3 text-sm leading-relaxed text-neutral-400 sm:mt-2 sm:text-[15px]">
               Browse the collection and download instantly. No ads, no redirects, no clutter.
             </p>
-            <div className="mt-6 flex flex-wrap gap-2 text-xs text-neutral-500">
+            <div className="mt-5 flex flex-wrap gap-2 text-[11px] text-neutral-500 sm:text-xs">
               <Link
                 href="/?type=movie"
                 className="rounded-md border border-neutral-800 px-3 py-1.5 hover:border-neutral-700 hover:text-white"

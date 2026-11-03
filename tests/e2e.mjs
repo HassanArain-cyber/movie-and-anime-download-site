@@ -483,6 +483,104 @@ const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 await page.goto(`${base}/`);
+await page.evaluate(() => window.localStorage.removeItem("vault-brand-icon"));
+await page.reload();
+const desktopBrandIcon = page.getByTestId("brand-scroll-top");
+assert.equal(await desktopBrandIcon.getAttribute("data-brand-icon"), "vault");
+const desktopHeroTypography = await page.getByRole("heading", { name: "Your movies, anime & series. One click away." }).evaluate((heading) => ({
+  heading: getComputedStyle(heading).fontSize,
+  paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
+}));
+assert.deepEqual(desktopHeroTypography, { heading: "30px", paragraph: "15px" }, "desktop hero type should be slightly reduced");
+await page.getByRole("button", { name: "Choose brand icon" }).click();
+const desktopIconPicker = page.getByRole("group", { name: "Brand icon choices" });
+const desktopPickerBounds = await desktopIconPicker.boundingBox();
+assert.ok(desktopPickerBounds && desktopPickerBounds.x >= 0 && desktopPickerBounds.x + desktopPickerBounds.width <= 1280, "desktop icon picker should fit the viewport");
+await desktopIconPicker.getByRole("button", { name: "Use Film icon" }).click();
+assert.equal(await desktopBrandIcon.getAttribute("data-brand-icon"), "film");
+assert.equal(await page.evaluate(() => window.localStorage.getItem("vault-brand-icon")), "film");
+await page.reload();
+await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "film");
+assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "film", "brand icon choice should persist after refresh");
+
+// Global scroll controls work without navigation on desktop and narrow mobile pages.
+const frameNavigations = [];
+page.on("framenavigated", (frame) => {
+  if (frame === page.mainFrame()) frameNavigations.push(page.url());
+});
+await page.evaluate(() => {
+  const spacer = document.createElement("div");
+  spacer.id = "e2e-scroll-control-spacer";
+  spacer.setAttribute("aria-hidden", "true");
+  spacer.style.height = "1600px";
+  document.body.append(spacer);
+});
+const desktopScrollUrl = page.url();
+const desktopToggle = page.getByTestId("page-scroll-toggle");
+assert.equal(await desktopToggle.getAttribute("aria-label"), "Scroll to bottom");
+const desktopScrollBounds = await desktopToggle.boundingBox();
+assert.ok(desktopScrollBounds && desktopScrollBounds.width >= 44 && desktopScrollBounds.height >= 44, "desktop scroll control should have a usable hit target");
+assert.ok(desktopScrollBounds.x >= 0 && desktopScrollBounds.x + desktopScrollBounds.width <= 1280, "desktop scroll control should remain inside the viewport");
+await page.evaluate(() => window.scrollTo(0, 600));
+await page.waitForFunction(() => document.querySelector('[data-testid="page-scroll-toggle"]')?.getAttribute("aria-label") === "Scroll to top");
+const desktopNavigationCount = frameNavigations.length;
+await page.getByTestId("brand-scroll-top").click();
+await page.waitForFunction(() => window.scrollY <= 2);
+await page.waitForFunction(() => document.querySelector('[data-testid="page-scroll-toggle"]')?.getAttribute("aria-label") === "Scroll to bottom");
+assert.equal(page.url(), desktopScrollUrl, "brand icon must not navigate");
+assert.equal(frameNavigations.length, desktopNavigationCount, "brand icon must not reload the page");
+assert.equal(await desktopToggle.getAttribute("aria-label"), "Scroll to bottom");
+await desktopToggle.click();
+await page.waitForFunction(() => document.querySelector('[data-testid="page-scroll-toggle"]')?.getAttribute("aria-label") === "Scroll to top");
+await page.waitForFunction(() => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2);
+await desktopToggle.click();
+await page.waitForFunction(() => window.scrollY <= 2);
+assert.equal(page.url(), desktopScrollUrl, "floating control must not navigate");
+assert.equal(frameNavigations.length, desktopNavigationCount, "floating control must not reload the page");
+
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/`);
+const mobileHeroTypography = await page.getByRole("heading", { name: "Your movies, anime & series. One click away." }).evaluate((heading) => ({
+  heading: getComputedStyle(heading).fontSize,
+  paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
+}));
+assert.deepEqual(mobileHeroTypography, { heading: "24px", paragraph: "14px" }, "mobile hero type should remain readable at a reduced size");
+await page.goto(`${base}/anime`);
+await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "film");
+assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "film", "the desktop icon choice should carry over to mobile");
+await page.getByRole("button", { name: "Choose brand icon" }).click();
+const mobileIconPicker = page.getByRole("group", { name: "Brand icon choices" });
+const mobilePickerBounds = await mobileIconPicker.boundingBox();
+assert.ok(mobilePickerBounds && mobilePickerBounds.x >= 0 && mobilePickerBounds.x + mobilePickerBounds.width <= 390, "mobile icon picker should fit the viewport");
+await mobileIconPicker.getByRole("button", { name: "Use Clapperboard icon" }).click();
+assert.equal(await page.evaluate(() => window.localStorage.getItem("vault-brand-icon")), "clapperboard");
+await page.reload();
+await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "clapperboard");
+assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "clapperboard", "mobile icon choice should persist after refresh");
+const mobileLoadTime = await page.evaluate(() => performance.timeOrigin);
+await page.evaluate(() => {
+  const spacer = document.createElement("div");
+  spacer.id = "e2e-scroll-control-spacer";
+  spacer.setAttribute("aria-hidden", "true");
+  spacer.style.height = "1600px";
+  document.body.append(spacer);
+});
+const mobileScrollUrl = page.url();
+const mobileToggle = page.getByTestId("page-scroll-toggle");
+const mobileScrollBounds = await mobileToggle.boundingBox();
+assert.ok(mobileScrollBounds && mobileScrollBounds.width >= 44 && mobileScrollBounds.height >= 44, "mobile scroll control should have a usable hit target");
+assert.ok(mobileScrollBounds.x >= 0 && mobileScrollBounds.x + mobileScrollBounds.width <= 390, "mobile scroll control should fit the viewport width");
+assert.equal(await mobileToggle.getAttribute("aria-label"), "Scroll to bottom");
+await mobileToggle.click();
+await page.waitForFunction(() => document.querySelector('[data-testid="page-scroll-toggle"]')?.getAttribute("aria-label") === "Scroll to top");
+await page.waitForFunction(() => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2);
+await mobileToggle.click();
+await page.waitForFunction(() => window.scrollY <= 2);
+assert.equal(page.url(), mobileScrollUrl, "mobile scroll control must not navigate");
+assert.equal(await page.evaluate(() => performance.timeOrigin), mobileLoadTime, "mobile scroll control must not reload the page");
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "mobile scroll control must not cause horizontal overflow");
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(`${base}/`);
 assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
 const tagDropdown = page.getByRole("combobox", { name: "Filter by tag" });
 await tagDropdown.selectOption("legacy");

@@ -30,6 +30,51 @@ const TYPE_LABELS: Record<SearchSuggestion["type"], string> = {
   series: "Series",
 };
 
+const BRAND_ICONS = [
+  { id: "vault", label: "Vault" },
+  { id: "film", label: "Film" },
+  { id: "clapperboard", label: "Clapperboard" },
+  { id: "sparkles", label: "Sparkles" },
+] as const;
+type BrandIconId = (typeof BRAND_ICONS)[number]["id"];
+const BRAND_ICON_STORAGE_KEY = "vault-brand-icon";
+
+function BrandIconMark({ icon, className = "h-5 w-5" }: { icon: BrandIconId; className?: string }) {
+  if (icon === "film") {
+    return (
+      <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <rect x="4" y="3" width="16" height="18" rx="2" strokeWidth="1.7" />
+        <path d="M8 3v18M16 3v18M4 8h4m-4 8h4m8-8h4m-4 8h4" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (icon === "clapperboard") {
+    return (
+      <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M4 9h16v11H4zM4 9l1.1-5h15.1L19 9M8 4l4 5m2-5 4 5" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (icon === "sparkles") {
+    return (
+      <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3ZM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="4" width="16" height="16" rx="3.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="4.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="1.1" fill="currentColor" />
+      <path d="M12 5.9v1.8M12 16.3v1.8M5.9 12h1.8M16.3 12h1.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function getActiveContentType(pathname: string | null): SearchSuggestion["type"] | undefined {
   const queryType = new URLSearchParams(window.location.search).get("type");
   if (isSearchableContentType(queryType)) return queryType;
@@ -46,20 +91,70 @@ export default function Navbar() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [nearTop, setNearTop] = useState(true);
+  const [brandIcon, setBrandIcon] = useState<BrandIconId>("vault");
+  const [brandIconPickerOpen, setBrandIconPickerOpen] = useState(false);
   const searchRef = useRef<HTMLFormElement>(null);
+  const brandIconPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
+    let timer = 0;
+    try {
+      const savedIcon = window.localStorage.getItem(BRAND_ICON_STORAGE_KEY);
+      if (BRAND_ICONS.some(({ id }) => id === savedIcon)) {
+        timer = window.setTimeout(() => setBrandIcon(savedIcon as BrandIconId), 0);
+      }
+    } catch {
+      // The default icon remains available when browser storage is disabled.
+    }
+    return () => { if (timer) window.clearTimeout(timer); };
   }, []);
 
   useEffect(() => {
+    let frame = 0;
+    const updateScrollState = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        setScrolled(scrollY > 8);
+        setNearTop(scrollY <= 80);
+        frame = 0;
+      });
+    };
+
+    updateScrollState();
+    window.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      window.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const scrollPage = (toBottom: boolean) => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({
+      top: toBottom ? document.documentElement.scrollHeight : 0,
+      behavior: reducedMotion ? "auto" : "smooth",
+    });
+  };
+
+  const selectBrandIcon = (icon: BrandIconId) => {
+    setBrandIcon(icon);
+    setBrandIconPickerOpen(false);
+    try {
+      window.localStorage.setItem(BRAND_ICON_STORAGE_KEY, icon);
+    } catch {
+      // Keep the choice for this session even when persistent storage is unavailable.
+    }
+  };
+
+  useEffect(() => {
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (event.target instanceof Node && !searchRef.current?.contains(event.target)) {
-        setSearchOpen(false);
-      }
+      if (!(event.target instanceof Node)) return;
+      if (!searchRef.current?.contains(event.target)) setSearchOpen(false);
+      if (!brandIconPickerRef.current?.contains(event.target)) setBrandIconPickerOpen(false);
     };
     document.addEventListener("mousedown", closeOnOutsideClick);
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
@@ -142,6 +237,7 @@ export default function Navbar() {
   };
 
   return (
+    <>
     <header
       className={`sticky top-0 z-40 border-b backdrop-blur-md ${
         scrolled
@@ -150,14 +246,69 @@ export default function Navbar() {
       }`}
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:flex-nowrap sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-pink-600 font-bold text-white">
-            V
-          </div>
-          <span className="hidden text-lg font-bold tracking-tight text-white sm:inline">
+        <div
+          ref={brandIconPickerRef}
+          onKeyDown={(event) => { if (event.key === "Escape") setBrandIconPickerOpen(false); }}
+          className="relative flex shrink-0 items-center gap-2"
+        >
+          <button
+            type="button"
+            aria-label="Scroll to top"
+            data-testid="brand-scroll-top"
+            data-brand-icon={brandIcon}
+            title="Scroll to top"
+            onClick={() => scrollPage(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          >
+            <BrandIconMark icon={brandIcon} />
+          </button>
+          <button
+            type="button"
+            aria-label="Choose brand icon"
+            title="Choose brand icon"
+            aria-expanded={brandIconPickerOpen}
+            aria-controls="brand-icon-picker"
+            onClick={() => setBrandIconPickerOpen((open) => !open)}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/80 text-neutral-400 transition hover:border-neutral-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          >
+            <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M4 7h10M18 7h2M4 17h2m4 0h10M14 5v4M8 15v4" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+          {brandIconPickerOpen && (
+            <div
+              id="brand-icon-picker"
+              data-testid="brand-icon-picker"
+              role="group"
+              aria-label="Brand icon choices"
+              className="absolute left-0 top-full z-[60] mt-2 w-48 rounded-xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl shadow-black/50"
+            >
+              <p className="px-2 pb-2 pt-1 text-xs font-medium text-neutral-400">Choose an icon</p>
+              <div className="grid grid-cols-2 gap-1">
+                {BRAND_ICONS.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-label={`Use ${label} icon`}
+                    aria-pressed={brandIcon === id}
+                    onClick={() => selectBrandIcon(id)}
+                    className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
+                      brandIcon === id
+                        ? "border-red-500/60 bg-red-500/10 text-white"
+                        : "border-transparent text-neutral-400 hover:border-neutral-800 hover:bg-neutral-900 hover:text-white"
+                    }`}
+                  >
+                    <BrandIconMark icon={id} className="h-5 w-5" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <Link href="/" className="hidden text-lg font-bold tracking-tight text-white sm:inline">
             Vault
-          </span>
-        </Link>
+          </Link>
+        </div>
 
         <nav className="hidden items-center gap-1 md:flex">
           {NAV_LINKS.map((link) => {
@@ -305,5 +456,26 @@ export default function Navbar() {
         })}
       </div>
     </header>
+    <button
+      type="button"
+      aria-label={nearTop ? "Scroll to bottom" : "Scroll to top"}
+      data-testid="page-scroll-toggle"
+      title={nearTop ? "Scroll to bottom" : "Scroll to top"}
+      onClick={() => scrollPage(nearTop)}
+      className="fixed z-40 flex h-12 w-12 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-red-500 hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+      style={{
+        right: "calc(1rem + env(safe-area-inset-right, 0px))",
+        bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))",
+      }}
+    >
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {nearTop ? (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m0 0 7-7m-7 7-7-7" />
+        ) : (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 20V4m0 0-7 7m7-7 7 7" />
+        )}
+      </svg>
+    </button>
+    </>
   );
 }
