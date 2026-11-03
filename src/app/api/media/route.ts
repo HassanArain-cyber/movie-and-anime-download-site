@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
 import { uniqueSlug } from "@/lib/slugs";
 import { errorResponse, imageUrl, mediaType, optionalId, readJson, text, year } from "@/lib/validation";
+import { searchMedia } from "@/lib/media-search";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -15,6 +16,15 @@ export async function GET(req: Request) {
   const slug = searchParams.get("slug");
   const suggestionsOnly = searchParams.get("suggestions") === "1";
   try {
+    if (suggestionsOnly) {
+      const suggestions = q
+        ? await searchMedia(q, { type: type ?? undefined, categorySlug: category ?? undefined, limit: 8 })
+        : [];
+      return NextResponse.json(suggestions.map(({ id, type: mediaType, title, slug: mediaSlug, year, episodeInfo }) => ({
+        id, type: mediaType, title, slug: mediaSlug, year, ...(episodeInfo ? { episodeInfo } : {}),
+      })));
+    }
+
     const conditions: SQL[] = [];
     if (type) conditions.push(eq(media.type, type));
     if (category) conditions.push(eq(categories.slug, category));

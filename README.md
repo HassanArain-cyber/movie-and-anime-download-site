@@ -13,7 +13,32 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 - Legacy `/uploads/...` database records and local files remain readable. New local uploads are disabled.
 - Signed, short-lived R2 download URLs. The bucket can stay private.
 - Admin-managed site wallpaper: upload to private R2 or select an existing media poster/thumbnail, preview, apply/replace, and remove. Public rendering uses the existing signed image route with a readability overlay; clearing the setting does not delete the R2 object.
+- Smart live search supports title aliases/acronyms, typo-tolerant matches, episode-title hits, ranking, deduplication, and strict Movies/Anime/Series filters.
+- Installable PWA with Android/desktop standalone metadata, app icons, an offline fallback, and a service worker that caches only hashed static assets/icons—not pages, API responses, authentication, or admin data.
 - A mobile-friendly Request form stores submissions in PostgreSQL. Admins can review and delete requests in the Requests section; submitting never opens an external app.
+
+## Smart search
+
+The Navbar suggestion endpoint and submitted search results share the same bounded matcher. It normalizes text, expands the editable alias map in `src/lib/search.ts` (for example JJK, DBZ, SAO, AOT, and MHA), ranks exact matches ahead of aliases and fuzzy matches, and searches anime/series episode titles while returning the matching parent title and episode context. The selected content type and tag filter are applied on both suggestions and result pages. No search index or database migration is required.
+
+## Installable PWA
+
+Vault includes a Web App Manifest, 192/512px app icons (including maskable), Apple touch icon metadata, dark theme/background colors, standalone display mode, and a root-scoped service worker. The worker caches only versioned Next.js static assets, app icons, and the offline fallback. It always uses the network for page navigations and does not intercept `/api`, authentication, or admin requests, so offline data cannot become stale or bypass session checks. Offline navigation displays a generic connection message rather than cached library/private content. When changing cached assets, bump the `STATIC_CACHE` version in `public/sw.js`; activation removes older Vault cache versions.
+
+On supported HTTPS browsers (including Vercel Preview), use the browser’s **Install App** option. Android uses the manifest’s install/splash colors and maskable icon; desktop Chrome/Edge use the same standalone launch metadata. PWA smoke tests run against a production build at `PWA_BASE_URL` (default `http://127.0.0.1:3000`):
+
+```bash
+# Terminal 1: disposable local database
+npx pglite-server --port 5433 --host 127.0.0.1 --max-connections 8
+# Terminal 2: migrate, build, and serve the production bundle on loopback
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres npm run db:migrate
+npm run build
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres ADMIN_PASSWORD=test-password npm run start -- --hostname 127.0.0.1 --port 3000
+# Terminal 3: inspect installability, cache/privacy, update, and offline behavior
+PWA_BASE_URL=http://127.0.0.1:3000 npm run test:pwa
+```
+
+The smoke test verifies Chromium installability, manifest/icon validity, start URL, worker activation/update behavior, offline fallback, and that auth/API responses are not cached. Real Android-device installation still depends on the device/browser’s own install UI.
 
 ## Quick start
 

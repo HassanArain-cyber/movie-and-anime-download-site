@@ -3,7 +3,8 @@ import MediaGrid from "@/components/MediaGrid";
 import CategoryFilter from "@/components/CategoryFilter";
 import { db } from "@/db";
 import { media, categories } from "@/db/schema";
-import { eq, ilike, or, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
+import { searchMedia } from "@/lib/media-search";
 
 export const dynamic = "force-dynamic";
 
@@ -24,42 +25,44 @@ export default async function Home({ searchParams }: HomeProps) {
   // Fetch categories
   const cats = await db.select().from(categories).orderBy(categories.name);
 
-  // Build conditions for featured / latest
+  // Build conditions for the unfiltered / category browse view. Search uses the
+  // same ranked title/alias/episode matcher as the live suggestion endpoint.
   const conditions: any[] = [];
-  if (q) {
-    const search = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
-    conditions.push(
-      or(ilike(media.title, search), ilike(media.description ?? "", search))
-    );
-  }
   if (typeFilter && ["movie", "anime", "series"].includes(typeFilter)) {
     conditions.push(eq(media.type, typeFilter));
   }
-  if (categorySlug) {
-    const cat = cats.find((c) => c.slug === categorySlug);
-    if (cat) conditions.push(eq(media.categoryId, cat.id));
-  }
+  const resolvedCategory = categorySlug ? cats.find((category) => category.slug === categorySlug) : undefined;
+  if (resolvedCategory) conditions.push(eq(media.categoryId, resolvedCategory.id));
 
   let items: any[] = [];
-  items = await db
-    .select({
-      id: media.id,
-      type: media.type,
-      title: media.title,
-      slug: media.slug,
-      description: media.description,
-      posterUrl: media.posterUrl,
-      thumbnailUrl: media.thumbnailUrl,
-      year: media.year,
-      categoryId: media.categoryId,
-      categoryName: categories.name,
-      createdAt: media.createdAt,
-    })
-    .from(media)
-    .leftJoin(categories, eq(media.categoryId, categories.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(media.createdAt))
-    .limit(120);
+  if (q) {
+    items = await searchMedia(q, {
+      type: typeFilter && ["movie", "anime", "series"].includes(typeFilter) ? typeFilter : undefined,
+      categorySlug: resolvedCategory?.slug,
+      limit: 120,
+      includeDescriptions: true,
+    });
+  } else {
+    items = await db
+      .select({
+        id: media.id,
+        type: media.type,
+        title: media.title,
+        slug: media.slug,
+        description: media.description,
+        posterUrl: media.posterUrl,
+        thumbnailUrl: media.thumbnailUrl,
+        year: media.year,
+        categoryId: media.categoryId,
+        categoryName: categories.name,
+        createdAt: media.createdAt,
+      })
+      .from(media)
+      .leftJoin(categories, eq(media.categoryId, categories.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(media.createdAt))
+      .limit(120);
+  }
 
   // Get counts per type for the hero stats
   const counts = {

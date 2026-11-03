@@ -50,13 +50,37 @@ const jujuFixtures = [
   { type: "movie", title: `Juju Movie ${run}`, slug: `juju-movie-${run}` },
   { type: "anime", title: `Jujutsu Kaisen ${run}`, slug: `jujutsu-kaisen-${run}` },
   { type: "series", title: `Juju Series ${run}`, slug: `juju-series-${run}` },
+  { type: "anime", title: `Dragon Ball Z ${run}`, slug: `dragon-ball-z-${run}` },
+  { type: "anime", title: `Sword Art Online ${run}`, slug: `sword-art-online-${run}` },
+  { type: "anime", title: `Attack on Titan ${run}`, slug: `attack-on-titan-${run}` },
 ];
 for (const fixture of jujuFixtures) {
   await pool.query("INSERT INTO media (type, title, slug) VALUES ($1, $2, $3)", [fixture.type, fixture.title, fixture.slug]);
 }
-const jujuSuggestions = ok(await api("/api/media?suggestions=1&q=JUJU"));
+const attackAnime = await pool.query("SELECT id FROM media WHERE slug=$1", [`attack-on-titan-${run}`]);
+const attackSeason = await pool.query("INSERT INTO seasons (media_id, season_number, name) VALUES ($1, 1, 'Season One') RETURNING id", [attackAnime.rows[0].id]);
+await pool.query("INSERT INTO episodes (media_id, season_id, episode_number, title, duration) VALUES ($1, $2, 1, 'To You, in 2000 Years', '24m'), ($1, $2, 2, 'That Day', '24m')", [attackAnime.rows[0].id, attackSeason.rows[0].id]);
+const searchSuggestions = async (query, type) => ok(await api(`/api/media?suggestions=1&q=${encodeURIComponent(query)}${type ? `&type=${type}` : ""}`));
+const jujuSuggestions = await searchSuggestions("JUJU");
 assert.deepEqual(new Set(jujuSuggestions.filter((item) => item.title.endsWith(run)).map((item) => item.type)), new Set(["movie", "anime", "series"]));
-assert.deepEqual(ok(await api("/api/media?suggestions=1&q=Existing")), [], "suggestions must match titles rather than descriptions");
+assert.deepEqual(await searchSuggestions("Existing"), [], "suggestions must not match descriptions");
+assert.ok((await searchSuggestions("JJK")).some((item) => item.slug === `jujutsu-kaisen-${run}`), "JJK should expand to Jujutsu Kaisen");
+assert.ok((await searchSuggestions("DBZ")).some((item) => item.slug === `dragon-ball-z-${run}`), "DBZ should expand to Dragon Ball Z");
+assert.ok((await searchSuggestions("SAO")).some((item) => item.slug === `sword-art-online-${run}`), "SAO should expand to Sword Art Online");
+for (const typo of ["Jujutsu Kasien", "Jujutsu Kasen", "Jujutsu Kaaisen"]) {
+  assert.ok((await searchSuggestions(typo)).some((item) => item.slug === `jujutsu-kaisen-${run}`), `${typo} should find Jujutsu Kaisen`);
+}
+const animeOnlySuggestions = await searchSuggestions("Juju", "anime");
+assert.ok(animeOnlySuggestions.length > 0);
+assert.ok(animeOnlySuggestions.every((item) => item.type === "anime"), "anime filter must exclude movie and series suggestions");
+assert.ok((await searchSuggestions("Juju", "movie")).every((item) => item.type === "movie"));
+assert.ok((await searchSuggestions("Juju", "series")).every((item) => item.type === "series"));
+assert.deepEqual(await searchSuggestions("JJK", "movie"), [], "a selected content type must not leak unrelated types");
+const episodeSuggestions = await searchSuggestions("To You, in 2000 Years");
+assert.equal(episodeSuggestions.filter((item) => item.slug === `attack-on-titan-${run}`).length, 1, "episode hits should be deduplicated by parent title");
+assert.deepEqual(episodeSuggestions.find((item) => item.slug === `attack-on-titan-${run}`).episodeInfo, {
+  seasonNumber: 1, episodeNumber: 1, title: "To You, in 2000 Years",
+});
 
 // Contact requests are saved directly to PostgreSQL; all management routes are admin-only.
 ok(await api("/api/health"));
@@ -376,8 +400,23 @@ await page.locator(".grid").getByText("Legacy Anime", { exact: true }).waitFor()
 
 const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
 const suggestions = page.locator("#search-suggestions");
+await page.goto(`${base}/?type=anime`);
+await searchBox.fill("Juju");
+await suggestions.getByText(`Jujutsu Kaisen ${run}`, { exact: true }).waitFor();
+const animeSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+assert.ok(animeSuggestionHrefs.length > 0 && animeSuggestionHrefs.every((href) => href?.startsWith("/anime/")), "selected Anime filter must scope every live suggestion");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/?type=movie`);
+await searchBox.fill("Juju");
+await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
+const mobileSuggestionBounds = await suggestions.boundingBox();
+assert.ok(mobileSuggestionBounds && mobileSuggestionBounds.x >= 0 && mobileSuggestionBounds.x + mobileSuggestionBounds.width <= 390, "mobile suggestions should stay within the viewport");
+const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(`${base}/`);
 await searchBox.fill("NoSuchVaultTitle");
-await suggestions.getByText(/No matching titles found/).waitFor();
+await suggestions.getByText(/No matching results found/).waitFor();
 await searchBox.fill("");
 await searchBox.pressSequentially("Juju", { delay: 35 });
 await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
@@ -390,7 +429,7 @@ await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
 
 await searchBox.fill("Legacy");
 await searchBox.press("Enter");
-await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy");
+await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && url.searchParams.get("type") === "anime");
 await page.getByRole("heading", { name: /Search results for/ }).waitFor();
 await page.goto(`${base}/admin`);
 await page.getByRole("button", { name: "Request" }).click();
@@ -571,4 +610,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: auth/contact rate limits/CSRF, PostgreSQL request storage plus Resend success/failure notifications/admin listing/deletion, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");
+console.log("E2E passed: smart search suggestions/aliases/typos/episodes/type filters, auth/contact rate limits/CSRF, PostgreSQL request storage plus Resend success/failure notifications/admin listing/deletion, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");

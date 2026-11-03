@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import RequestContact from "@/components/RequestContact";
+import { isSearchableContentType } from "@/lib/search";
 
 type SearchSuggestion = {
   id: number;
@@ -11,6 +12,7 @@ type SearchSuggestion = {
   title: string;
   slug: string;
   year: number | null;
+  episodeInfo?: { seasonNumber: number; episodeNumber: number; title: string | null };
 };
 
 const NAV_LINKS = [
@@ -25,6 +27,13 @@ const TYPE_LABELS: Record<SearchSuggestion["type"], string> = {
   anime: "Anime",
   series: "Series",
 };
+
+function getActiveContentType(pathname: string | null): SearchSuggestion["type"] | undefined {
+  const queryType = new URLSearchParams(window.location.search).get("type");
+  if (isSearchableContentType(queryType)) return queryType;
+  const pathType = pathname?.split("/").filter(Boolean)[0] ?? "";
+  return isSearchableContentType(pathType) ? pathType : undefined;
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -56,11 +65,16 @@ export default function Navbar() {
 
   useEffect(() => {
     const q = query.trim();
-    if (!q) return;
+    if (q.length < 2) return;
 
     const controller = new AbortController();
+    const params = new URLSearchParams({ suggestions: "1", q });
+    const contentType = getActiveContentType(pathname);
+    if (contentType) params.set("type", contentType);
+    const tag = new URLSearchParams(window.location.search).get("category");
+    if (tag) params.set("category", tag);
     const timer = window.setTimeout(() => {
-      fetch(`/api/media?suggestions=1&q=${encodeURIComponent(q)}`, {
+      fetch(`/api/media?${params.toString()}`, {
         cache: "no-store",
         signal: controller.signal,
       })
@@ -92,14 +106,20 @@ export default function Navbar() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, pathname]);
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const q = query.trim();
     setSearchOpen(false);
-    if (q) router.push(`/?q=${encodeURIComponent(q)}`);
-    else router.push("/");
+    if (q) {
+      const params = new URLSearchParams({ q });
+      const contentType = getActiveContentType(pathname);
+      if (contentType) params.set("type", contentType);
+      const tag = new URLSearchParams(window.location.search).get("category");
+      if (tag) params.set("category", tag);
+      router.push(`/?${params.toString()}`);
+    } else router.push("/");
   };
 
   const handleQueryChange = (value: string) => {
@@ -108,7 +128,7 @@ export default function Navbar() {
     setSearchError("");
     const hasQuery = Boolean(value.trim());
     setSearchOpen(hasQuery);
-    setSearchLoading(hasQuery);
+    setSearchLoading(value.trim().length >= 2);
   };
 
   return (
@@ -191,6 +211,8 @@ export default function Navbar() {
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">Searching titles…</p>
                 ) : searchError ? (
                   <p role="status" className="px-3 py-3 text-sm text-amber-300">{searchError}</p>
+                ) : query.trim().length < 2 ? (
+                  <p role="status" className="px-3 py-3 text-sm text-neutral-400">Type at least 2 characters to search.</p>
                 ) : suggestions.length ? (
                   <ul aria-label="Matching titles" className="max-h-80 overflow-y-auto py-1">
                     {suggestions.map((suggestion) => (
@@ -200,7 +222,15 @@ export default function Navbar() {
                           onClick={() => setSearchOpen(false)}
                           className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none"
                         >
-                          <span className="min-w-0 truncate font-medium">{suggestion.title}</span>
+                          <span className="min-w-0 truncate">
+                            <span className="block truncate font-medium">{suggestion.title}</span>
+                            {suggestion.episodeInfo && (
+                              <span className="block truncate text-xs text-neutral-500">
+                                Season {suggestion.episodeInfo.seasonNumber} · Episode {suggestion.episodeInfo.episodeNumber}
+                                {suggestion.episodeInfo.title ? ` — ${suggestion.episodeInfo.title}` : ""}
+                              </span>
+                            )}
+                          </span>
                           <span className="shrink-0 text-xs text-neutral-500">
                             {TYPE_LABELS[suggestion.type]}{suggestion.year ? ` · ${suggestion.year}` : ""}
                           </span>
@@ -210,7 +240,7 @@ export default function Navbar() {
                   </ul>
                 ) : (
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">
-                    No matching titles found for “{query.trim()}”.
+                    No matching results found for “{query.trim()}”.
                   </p>
                 )}
               </div>
