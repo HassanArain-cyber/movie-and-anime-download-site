@@ -12,6 +12,8 @@ type SearchSuggestion = {
   title: string;
   slug: string;
   year: number | null;
+  resultKind: "title" | "episode";
+  episodeId?: number;
   episodeInfo?: { seasonNumber: number; episodeNumber: number; title: string | null };
 };
 
@@ -71,8 +73,11 @@ export default function Navbar() {
     const params = new URLSearchParams({ suggestions: "1", q });
     const contentType = getActiveContentType(pathname);
     if (contentType) params.set("type", contentType);
-    const tag = new URLSearchParams(window.location.search).get("category");
+    const currentParams = new URLSearchParams(window.location.search);
+    const tag = currentParams.get("category");
+    const year = currentParams.get("year");
     if (tag) params.set("category", tag);
+    if (year && /^\d{4}$/.test(year)) params.set("year", year);
     const timer = window.setTimeout(() => {
       fetch(`/api/media?${params.toString()}`, {
         cache: "no-store",
@@ -116,8 +121,13 @@ export default function Navbar() {
       const params = new URLSearchParams({ q });
       const contentType = getActiveContentType(pathname);
       if (contentType) params.set("type", contentType);
-      const tag = new URLSearchParams(window.location.search).get("category");
+      const currentParams = new URLSearchParams(window.location.search);
+      const tag = currentParams.get("category");
+      const year = currentParams.get("year");
+      const sort = currentParams.get("sort");
       if (tag) params.set("category", tag);
+      if (year && /^\d{4}$/.test(year)) params.set("year", year);
+      if (["az", "za", "newest", "oldest"].includes(sort ?? "")) params.set("sort", sort!);
       router.push(`/?${params.toString()}`);
     } else router.push("/");
   };
@@ -215,28 +225,40 @@ export default function Navbar() {
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">Type at least 2 characters to search.</p>
                 ) : suggestions.length ? (
                   <ul aria-label="Matching titles" className="max-h-80 overflow-y-auto py-1">
-                    {suggestions.map((suggestion) => (
-                      <li key={suggestion.id}>
-                        <Link
-                          href={`/${suggestion.type}/${suggestion.slug}`}
-                          onClick={() => setSearchOpen(false)}
-                          className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none"
-                        >
-                          <span className="min-w-0 truncate">
-                            <span className="block truncate font-medium">{suggestion.title}</span>
-                            {suggestion.episodeInfo && (
-                              <span className="block truncate text-xs text-neutral-500">
-                                Season {suggestion.episodeInfo.seasonNumber} · Episode {suggestion.episodeInfo.episodeNumber}
-                                {suggestion.episodeInfo.title ? ` — ${suggestion.episodeInfo.title}` : ""}
+                    {suggestions.map((suggestion) => {
+                      const isEpisode = suggestion.resultKind === "episode" && suggestion.episodeInfo;
+                      const episodeLabel = suggestion.episodeInfo?.title || `Episode ${suggestion.episodeInfo?.episodeNumber ?? ""}`;
+                      const href = `/${suggestion.type}/${suggestion.slug}${isEpisode && suggestion.episodeId !== undefined ? `#episode-${suggestion.episodeId}` : ""}`;
+                      return (
+                        <li key={isEpisode ? `episode-${suggestion.episodeId}` : `title-${suggestion.id}`}>
+                          <Link
+                            href={href}
+                            aria-label={isEpisode
+                              ? `${episodeLabel}, Season ${suggestion.episodeInfo!.seasonNumber} Episode ${suggestion.episodeInfo!.episodeNumber} of ${suggestion.title}, ${TYPE_LABELS[suggestion.type]}`
+                              : `${suggestion.title}, ${TYPE_LABELS[suggestion.type]} title`}
+                            onClick={() => setSearchOpen(false)}
+                            className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{isEpisode ? episodeLabel : suggestion.title}</span>
+                              {isEpisode ? (
+                                <span className="block truncate text-xs text-neutral-500">
+                                  {suggestion.title} · Season {suggestion.episodeInfo!.seasonNumber} · Episode {suggestion.episodeInfo!.episodeNumber}
+                                </span>
+                              ) : suggestion.year ? (
+                                <span className="block text-xs text-neutral-500">{suggestion.year}</span>
+                              ) : null}
+                            </span>
+                            <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs">
+                              <span className={isEpisode ? "rounded bg-red-500/10 px-1.5 py-0.5 text-red-300" : "rounded bg-neutral-800 px-1.5 py-0.5 text-neutral-300"}>
+                                {isEpisode ? "Episode" : "Title"}
                               </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 text-xs text-neutral-500">
-                            {TYPE_LABELS[suggestion.type]}{suggestion.year ? ` · ${suggestion.year}` : ""}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
+                              <span className="text-neutral-500">{TYPE_LABELS[suggestion.type]}{suggestion.year ? ` · ${suggestion.year}` : ""}</span>
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">

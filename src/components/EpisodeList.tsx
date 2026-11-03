@@ -211,7 +211,7 @@ export default function EpisodeList({ episodes }: { episodes: EpisodeWithLinks[]
         {episodes.map((ep) => {
           const open = openId === ep.id;
           return (
-            <div key={ep.id} className="bg-neutral-900/40">
+            <div key={ep.id} id={`episode-${ep.id}`} className="scroll-mt-24 bg-neutral-900/40">
               <div className="flex items-center gap-1 px-2 py-1 sm:gap-3 sm:px-4 sm:py-2">
                 <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-neutral-800" title={`Select Episode ${ep.episodeNumber}`}>
                   <input

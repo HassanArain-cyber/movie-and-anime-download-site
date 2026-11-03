@@ -13,15 +13,25 @@ export async function GET(req: Request) {
   const type = searchParams.get("type");
   const q = searchParams.get("q")?.trim();
   const category = searchParams.get("category");
+  const rawYear = searchParams.get("year");
+  const yearFilter = rawYear && /^\d{4}$/.test(rawYear) ? Number(rawYear) : undefined;
   const slug = searchParams.get("slug");
   const suggestionsOnly = searchParams.get("suggestions") === "1";
   try {
     if (suggestionsOnly) {
       const suggestions = q
-        ? await searchMedia(q, { type: type ?? undefined, categorySlug: category ?? undefined, limit: 8 })
+        ? await searchMedia(q, {
+          type: type ?? undefined,
+          categorySlug: category ?? undefined,
+          year: yearFilter,
+          limit: 12,
+          includeEpisodeResults: true,
+        })
         : [];
-      return NextResponse.json(suggestions.map(({ id, type: mediaType, title, slug: mediaSlug, year, episodeInfo }) => ({
-        id, type: mediaType, title, slug: mediaSlug, year, ...(episodeInfo ? { episodeInfo } : {}),
+      return NextResponse.json(suggestions.map(({ id, type: mediaType, title, slug: mediaSlug, year, episodeInfo, episodeId, resultKind }) => ({
+        id, type: mediaType, title, slug: mediaSlug, year, resultKind,
+        ...(episodeId !== undefined ? { episodeId } : {}),
+        ...(episodeInfo ? { episodeInfo } : {}),
       })));
     }
 

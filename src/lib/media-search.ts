@@ -3,6 +3,8 @@ import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, episodes, media, seasons } from "@/db/schema";
 import { getSearchCandidatePatterns, getSearchQueryForms, normalizeSearchText, rankSearchMatch, type SearchableContentType } from "./search";
+import type { LibrarySort } from "./library-filters";
+import { sortMediaItems } from "./library-filters";
 
 export type EpisodeSearchInfo = {
   seasonNumber: number;
@@ -24,6 +26,8 @@ export type MediaSearchResult = {
   createdAt: Date | null;
   score: number;
   episodeInfo?: EpisodeSearchInfo;
+  episodeId?: number;
+  resultKind?: "title" | "episode";
 };
 
 type SearchOptions = {
@@ -31,6 +35,9 @@ type SearchOptions = {
   categorySlug?: string;
   limit?: number;
   includeDescriptions?: boolean;
+  includeEpisodeResults?: boolean;
+  year?: number;
+  sort?: LibrarySort;
 };
 
 const MAX_QUERY_LENGTH = 120;
@@ -71,6 +78,7 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
     const filters: SQL[] = [or(...patterns.map((pattern) => ilike(media.title, pattern)))!];
     if (options.type) filters.push(eq(media.type, options.type));
     if (options.categorySlug) filters.push(eq(categories.slug, options.categorySlug));
+    if (options.year) filters.push(eq(media.year, options.year));
     const forms = getSearchQueryForms(trimmed).map((form) => sql`lower(${media.title}) = ${form.text}`);
     const exactOrder = sql`case when ${or(...forms)} then 0 else 1 end`;
     return db.select(selectedMedia)
@@ -82,12 +90,15 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
   };
 
   const fetchEpisodeRows = (patterns: string[]) => {
-    const episodeFilters: SQL[] = [or(...patterns.map((pattern) => ilike(episodes.title, pattern)))!];
+    const episodeTitle = sql`coalesce(${episodes.title}, 'Episode ' || ${episodes.episodeNumber}::text)`;
+    const episodeFilters: SQL[] = [or(...patterns.map((pattern) => ilike(episodeTitle, pattern)))!];
     if (options.type) episodeFilters.push(eq(media.type, options.type));
     if (options.categorySlug) episodeFilters.push(eq(categories.slug, options.categorySlug));
+    if (options.year) episodeFilters.push(eq(media.year, options.year));
     episodeFilters.push(sql`${media.type} in ('anime', 'series')`);
     return db.select({
       ...selectedMedia,
+      episodeId: episodes.id,
       seasonNumber: seasons.seasonNumber,
       episodeNumber: episodes.episodeNumber,
       episodeTitle: episodes.title,
@@ -101,13 +112,29 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
       .limit(MAX_EPISODE_CANDIDATES);
   };
 
-  const ranked = new Map<number, MediaSearchResult>();
-  const add = (row: Awaited<ReturnType<typeof fetchTitleRows>>[number], score: number, episodeInfo?: EpisodeSearchInfo) => {
+  const ranked = new Map<string, MediaSearchResult>();
+  const add = (
+    row: Awaited<ReturnType<typeof fetchTitleRows>>[number],
+    score: number,
+    episodeInfo?: EpisodeSearchInfo,
+    episodeId?: number,
+  ) => {
     const type = row.type as SearchableContentType;
     if (type !== "movie" && type !== "anime" && type !== "series") return;
-    const current = ranked.get(row.id);
+    const resultKind = episodeInfo ? "episode" : "title";
+    const key = options.includeEpisodeResults && episodeInfo && episodeId !== undefined
+      ? `episode:${episodeId}`
+      : `title:${row.id}`;
+    const current = ranked.get(key);
     if (current && (current.score > score || (current.score === score && !current.episodeInfo))) return;
-    ranked.set(row.id, { ...row, type, score, ...(episodeInfo ? { episodeInfo } : {}) });
+    ranked.set(key, {
+      ...row,
+      type,
+      score,
+      ...(episodeInfo ? { episodeInfo } : {}),
+      ...(options.includeEpisodeResults ? { resultKind } : {}),
+      ...(options.includeEpisodeResults && episodeId !== undefined ? { episodeId } : {}),
+    });
   };
 
   const rankCandidates = async (patterns: string[]) => {
@@ -119,11 +146,11 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
 
     const episodeRows = await fetchEpisodeRows(patterns);
     for (const row of episodeRows) {
-      if (!row.episodeTitle) continue;
-      const match = rankSearchMatch(trimmed, row.episodeTitle, "episode");
+      const { seasonNumber, episodeNumber, episodeTitle, episodeId, ...mediaRow } = row;
+      const displayTitle = episodeTitle ?? `Episode ${episodeNumber}`;
+      const match = rankSearchMatch(trimmed, displayTitle, "episode");
       if (!match) continue;
-      const { seasonNumber, episodeNumber, episodeTitle, ...mediaRow } = row;
-      add(mediaRow, match.score, { seasonNumber, episodeNumber, title: episodeTitle });
+      add(mediaRow, match.score, { seasonNumber, episodeNumber, title: displayTitle }, episodeId);
     }
   };
 
@@ -143,6 +170,7 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
       .where(and(
         ...(options.type ? [eq(media.type, options.type)] : []),
         ...(options.categorySlug ? [eq(categories.slug, options.categorySlug)] : []),
+        ...(options.year ? [eq(media.year, options.year)] : []),
         ilike(media.description, patternFor(trimmed)),
       ))
       .orderBy(desc(media.createdAt), desc(media.id))
@@ -154,5 +182,9 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
   }
 
   const maximum = Math.max(1, Math.min(options.limit ?? 8, 120));
-  return [...ranked.values()].sort((left, right) => right.score - left.score || right.id - left.id).slice(0, maximum);
+  const results = [...ranked.values()];
+  const sorted = options.sort
+    ? sortMediaItems(results, options.sort)
+    : results.sort((left, right) => right.score - left.score || right.id - left.id);
+  return sorted.slice(0, maximum);
 }

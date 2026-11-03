@@ -59,8 +59,19 @@ for (const fixture of jujuFixtures) {
 }
 const attackAnime = await pool.query("SELECT id FROM media WHERE slug=$1", [`attack-on-titan-${run}`]);
 const attackSeason = await pool.query("INSERT INTO seasons (media_id, season_number, name) VALUES ($1, 1, 'Season One') RETURNING id", [attackAnime.rows[0].id]);
-await pool.query("INSERT INTO episodes (media_id, season_id, episode_number, title, duration) VALUES ($1, $2, 1, 'To You, in 2000 Years', '24m'), ($1, $2, 2, 'That Day', '24m')", [attackAnime.rows[0].id, attackSeason.rows[0].id]);
-const searchSuggestions = async (query, type) => ok(await api(`/api/media?suggestions=1&q=${encodeURIComponent(query)}${type ? `&type=${type}` : ""}`));
+await pool.query("INSERT INTO episodes (media_id, season_id, episode_number, title, duration) VALUES ($1, $2, 1, 'To You, in 2000 Years', '24m'), ($1, $2, 2, 'That Day', '24m'), ($1, $2, 3, 'Shared Spotlight', '24m'), ($1, $2, 4, 'Shared Spotlight Encore', '24m')", [attackAnime.rows[0].id, attackSeason.rows[0].id]);
+const filterCategory = await pool.query("INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING id", [`Filter Tag ${run}`, `filter-${run}`]);
+const filterFixtures = [
+  ["anime", `Filter Alpha ${run}`, `filter-alpha-${run}`, 2024, filterCategory.rows[0].id, "2024-01-01T00:00:00Z"],
+  ["anime", `Filter Zulu ${run}`, `filter-zulu-${run}`, 2024, filterCategory.rows[0].id, "2025-01-01T00:00:00Z"],
+  ["anime", `Filter Other Year ${run}`, `filter-other-year-${run}`, 2023, filterCategory.rows[0].id, "2023-01-01T00:00:00Z"],
+  ["movie", `Filter Movie 2023 ${run}`, `filter-movie-2023-${run}`, 2023, filterCategory.rows[0].id, "2023-06-01T00:00:00Z"],
+  ["movie", `Filter Movie 2024 ${run}`, `filter-movie-2024-${run}`, 2024, null, "2024-06-01T00:00:00Z"],
+];
+for (const [type, title, slug, year, categoryId, createdAt] of filterFixtures) {
+  await pool.query("INSERT INTO media (type, title, slug, year, category_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)", [type, title, slug, year, categoryId, createdAt]);
+}
+const searchSuggestions = async (query, type, year, category) => ok(await api(`/api/media?suggestions=1&q=${encodeURIComponent(query)}${type ? `&type=${type}` : ""}${year ? `&year=${year}` : ""}${category ? `&category=${category}` : ""}`));
 const jujuSuggestions = await searchSuggestions("JUJU");
 assert.deepEqual(new Set(jujuSuggestions.filter((item) => item.title.endsWith(run)).map((item) => item.type)), new Set(["movie", "anime", "series"]));
 assert.deepEqual(await searchSuggestions("Existing"), [], "suggestions must not match descriptions");
@@ -77,10 +88,19 @@ assert.ok((await searchSuggestions("Juju", "movie")).every((item) => item.type =
 assert.ok((await searchSuggestions("Juju", "series")).every((item) => item.type === "series"));
 assert.deepEqual(await searchSuggestions("JJK", "movie"), [], "a selected content type must not leak unrelated types");
 const episodeSuggestions = await searchSuggestions("To You, in 2000 Years");
-assert.equal(episodeSuggestions.filter((item) => item.slug === `attack-on-titan-${run}`).length, 1, "episode hits should be deduplicated by parent title");
-assert.deepEqual(episodeSuggestions.find((item) => item.slug === `attack-on-titan-${run}`).episodeInfo, {
-  seasonNumber: 1, episodeNumber: 1, title: "To You, in 2000 Years",
-});
+const episodeSuggestion = episodeSuggestions.find((item) => item.slug === `attack-on-titan-${run}` && item.resultKind === "episode");
+assert.ok(episodeSuggestion, "episode hits should be returned as individual suggestions");
+assert.equal(episodeSuggestion.episodeId > 0, true);
+assert.deepEqual(episodeSuggestion.episodeInfo, { seasonNumber: 1, episodeNumber: 1, title: "To You, in 2000 Years" });
+assert.equal(episodeSuggestions.filter((item) => item.resultKind === "episode" && item.slug === `attack-on-titan-${run}`).length, 1);
+assert.ok(episodeSuggestions.every((item) => item.resultKind === "title" || item.resultKind === "episode"));
+const sameParentEpisodeSuggestions = await searchSuggestions("Shared Spotlight");
+const individualEpisodeResults = sameParentEpisodeSuggestions.filter((item) => item.slug === `attack-on-titan-${run}` && item.resultKind === "episode");
+assert.equal(individualEpisodeResults.length, 2, "multiple matching episodes must remain distinct instead of collapsing to one parent result");
+assert.equal(new Set(individualEpisodeResults.map((item) => item.episodeId)).size, 2);
+assert.deepEqual(new Set(await searchSuggestions(run, "anime", 2024, `filter-${run}`).then((items) => items.filter((item) => item.slug.startsWith("filter-")).map((item) => item.slug))), new Set([
+  `filter-alpha-${run}`, `filter-zulu-${run}`,
+]), "year, type, and tag filters must combine for suggestions");
 
 // Contact requests are saved directly to PostgreSQL; all management routes are admin-only.
 ok(await api("/api/health"));
@@ -398,6 +418,31 @@ await tagDropdown.selectOption("");
 await page.waitForURL((url) => !url.searchParams.has("category"));
 await page.locator(".grid").getByText("Legacy Anime", { exact: true }).waitFor();
 
+const yearDropdown = page.getByRole("combobox", { name: "Filter by release year" });
+const sortDropdown = page.getByRole("combobox", { name: "Sort library" });
+assert.ok(await yearDropdown.locator("option").evaluateAll((options) => options.some((option) => option.value === "2024")));
+assert.ok(await yearDropdown.locator("option").evaluateAll((options) => options.some((option) => option.value === "2023")));
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "Anime + 2024 + A-Z should filter and sort together");
+await sortDropdown.selectOption("za");
+await page.waitForURL((url) => url.searchParams.get("sort") === "za" && url.searchParams.get("type") === "anime" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Zulu ${run}`, `Filter Alpha ${run}`], "Z-A should reverse the title order without dropping other filters");
+await sortDropdown.selectOption("newest");
+await page.waitForURL((url) => !url.searchParams.has("sort") && url.searchParams.get("category") === `filter-${run}`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Zulu ${run}`, `Filter Alpha ${run}`], "newest-first should use creation timestamps");
+await sortDropdown.selectOption("oldest");
+await page.waitForURL((url) => url.searchParams.get("sort") === "oldest");
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "oldest-first should reverse creation order");
+await page.goto(`${base}/?type=movie&year=2023&category=filter-${run}`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Movie 2023 ${run}`], "Movies + 2023 + tag should exclude other years and content types");
+await page.goto(`${base}/anime?year=2024&category=filter-${run}&sort=az`);
+assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "type pages should use the same combined library filters");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
+const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
+assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
+await page.setViewportSize({ width: 1280, height: 900 });
+
 const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
 const suggestions = page.locator("#search-suggestions");
 await page.goto(`${base}/?type=anime`);
@@ -414,6 +459,19 @@ assert.ok(mobileSuggestionBounds && mobileSuggestionBounds.x >= 0 && mobileSugge
 const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
 assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
 await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(`${base}/`);
+await searchBox.fill("To You, in 2000 Years");
+const episodeAnchor = suggestions.locator('a[href*="#episode-"]');
+await episodeAnchor.waitFor();
+const episodeHref = await episodeAnchor.getAttribute("href");
+assert.match(episodeHref, new RegExp(`/anime/attack-on-titan-${run}#episode-\\d+`));
+const episodeRowText = await episodeAnchor.innerText();
+assert.match(episodeRowText, /To You, in 2000 Years/);
+assert.match(episodeRowText, /Season 1 · Episode 1/);
+assert.match(episodeRowText, /Episode/);
+await episodeAnchor.click();
+await page.waitForURL((url) => url.pathname === `/anime/attack-on-titan-${run}` && /^#episode-\d+$/.test(url.hash));
+await page.locator(new URL(page.url()).hash).waitFor();
 await page.goto(`${base}/`);
 await searchBox.fill("NoSuchVaultTitle");
 await suggestions.getByText(/No matching results found/).waitFor();
@@ -610,4 +668,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: smart search suggestions/aliases/typos/episodes/type filters, auth/contact rate limits/CSRF, PostgreSQL request storage plus Resend success/failure notifications/admin listing/deletion, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");
+console.log("E2E passed: distinct title/episode suggestions and episode deep links, aliases/typos/type/year filters, combined library year/tag/type/sort controls, auth/contact rate limits/CSRF, PostgreSQL request storage plus Resend success/failure notifications/admin listing/deletion, legacy files/ranges/encoded paths/zero-byte files/image optimizer, Telegram, R2 multipart video/image/archive, signed GET/HEAD/expiry/tampering, upload session guards/cleanup leases/failed cleanup, seasons, type-conversion guard, batch episodes, quality links, browser admin, object retention, open-redirect and poster validation.");
