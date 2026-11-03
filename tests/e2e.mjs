@@ -483,6 +483,25 @@ const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 await page.goto(`${base}/`);
+await page.evaluate(() => window.localStorage.removeItem("vault-brand-icon"));
+await page.reload();
+const desktopBrandIcon = page.getByTestId("brand-scroll-top");
+assert.equal(await desktopBrandIcon.getAttribute("data-brand-icon"), "vault");
+const desktopHeroTypography = await page.getByRole("heading", { name: "Your movies, anime & series. One click away." }).evaluate((heading) => ({
+  heading: getComputedStyle(heading).fontSize,
+  paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
+}));
+assert.deepEqual(desktopHeroTypography, { heading: "30px", paragraph: "15px" }, "desktop hero type should be slightly reduced");
+await page.getByRole("button", { name: "Choose brand icon" }).click();
+const desktopIconPicker = page.getByRole("group", { name: "Brand icon choices" });
+const desktopPickerBounds = await desktopIconPicker.boundingBox();
+assert.ok(desktopPickerBounds && desktopPickerBounds.x >= 0 && desktopPickerBounds.x + desktopPickerBounds.width <= 1280, "desktop icon picker should fit the viewport");
+await desktopIconPicker.getByRole("button", { name: "Use Film icon" }).click();
+assert.equal(await desktopBrandIcon.getAttribute("data-brand-icon"), "film");
+assert.equal(await page.evaluate(() => window.localStorage.getItem("vault-brand-icon")), "film");
+await page.reload();
+await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "film");
+assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "film", "brand icon choice should persist after refresh");
 
 // Global scroll controls work without navigation on desktop and narrow mobile pages.
 const frameNavigations = [];
@@ -520,7 +539,24 @@ assert.equal(page.url(), desktopScrollUrl, "floating control must not navigate")
 assert.equal(frameNavigations.length, desktopNavigationCount, "floating control must not reload the page");
 
 await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/`);
+const mobileHeroTypography = await page.getByRole("heading", { name: "Your movies, anime & series. One click away." }).evaluate((heading) => ({
+  heading: getComputedStyle(heading).fontSize,
+  paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
+}));
+assert.deepEqual(mobileHeroTypography, { heading: "24px", paragraph: "14px" }, "mobile hero type should remain readable at a reduced size");
 await page.goto(`${base}/anime`);
+await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "film");
+assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "film", "the desktop icon choice should carry over to mobile");
+await page.getByRole("button", { name: "Choose brand icon" }).click();
+const mobileIconPicker = page.getByRole("group", { name: "Brand icon choices" });
+const mobilePickerBounds = await mobileIconPicker.boundingBox();
+assert.ok(mobilePickerBounds && mobilePickerBounds.x >= 0 && mobilePickerBounds.x + mobilePickerBounds.width <= 390, "mobile icon picker should fit the viewport");
+await mobileIconPicker.getByRole("button", { name: "Use Clapperboard icon" }).click();
+assert.equal(await page.evaluate(() => window.localStorage.getItem("vault-brand-icon")), "clapperboard");
+await page.reload();
+await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "clapperboard");
+assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "clapperboard", "mobile icon choice should persist after refresh");
 const mobileLoadTime = await page.evaluate(() => performance.timeOrigin);
 await page.evaluate(() => {
   const spacer = document.createElement("div");
