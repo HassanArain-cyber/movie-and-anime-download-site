@@ -791,8 +791,56 @@ const nestedParentLinks = await nestedPanel.locator('[data-testid="comment-node"
   container: node.parentElement?.closest('[data-testid="comment-node"]')?.getAttribute("data-comment-id") ?? null,
 })));
 assert.ok(nestedParentLinks.every((link) => link.parent === link.container), "each reply article is nested inside its parent article");
+
+// Icon-only action bars and compact metadata apply at every nesting level.
+const commentPresentation = await nestedPanel.locator('[data-testid="comment-node"]').evaluateAll((nodes) => nodes.map((node) => {
+  const content = node.firstElementChild;
+  const bar = content?.querySelector('[data-testid="comment-action-bar"]');
+  const metadata = content?.querySelector('[data-testid="comment-metadata"]');
+  const buttons = bar ? [...bar.querySelectorAll("button[data-action]")] : [];
+  return {
+    hasCommunityMember: (node.textContent || "").includes("Community member"),
+    metadata: metadata?.textContent?.trim() ?? "",
+    metadataTag: metadata?.tagName ?? "",
+    metadataFontSize: metadata ? Number.parseFloat(getComputedStyle(metadata).fontSize) : 0,
+    actions: buttons.map((button) => {
+      const svg = button.querySelector("svg");
+      const iconRect = svg?.getBoundingClientRect();
+      return {
+        action: button.getAttribute("data-action"),
+        text: (button.textContent || "").trim(),
+        ariaLabel: button.getAttribute("aria-label"),
+        title: button.getAttribute("title"),
+        iconName: svg?.getAttribute("data-icon") ?? "",
+        iconWidth: iconRect ? Math.round(iconRect.width) : 0,
+        iconHeight: iconRect ? Math.round(iconRect.height) : 0,
+        height: Math.round(button.getBoundingClientRect().height),
+        display: getComputedStyle(button).display,
+        alignItems: getComputedStyle(button).alignItems,
+      };
+    }),
+  };
+}));
+const compactDate = /^[A-Z][a-z]{2} \d{1,2}, \d{4} · \d{1,2}:\d{2} (AM|PM)$/;
+assert.ok(commentPresentation.every((row) => !row.hasCommunityMember), "the Community member label is removed from every comment");
+assert.ok(commentPresentation.every((row) => compactDate.test(row.metadata)), "every comment shows the exact compact date/time format");
+assert.ok(commentPresentation.every((row) => row.metadataTag === "TIME"), "timestamps use semantic time elements");
+assert.ok(commentPresentation.every((row) => row.metadataFontSize > 0 && row.metadataFontSize <= 12), "metadata stays smaller and subtler than comment text");
+assert.ok(commentPresentation.every((row) => row.actions.length === 3), "every nesting level has like, reply, and report actions");
+// Chromium computes `inline-flex` on <button> as `flex`; both are centered flex layouts.
+assert.ok(commentPresentation.every((row) => row.actions.every((action) => action.display.includes("flex") && action.alignItems === "center")), "action icons are consistently aligned");
+assert.ok(commentPresentation.every((row) => row.actions.every((action) => action.iconWidth === 16 && action.iconHeight === 16)), "action icons share one 16px size");
+assert.ok(commentPresentation.every((row) => row.actions.every((action) => Math.abs(action.height - row.actions[0].height) <= 1)), "action buttons share one height");
+assert.ok(commentPresentation.every((row) => row.actions.every((action) => action.ariaLabel && action.title)), "every icon has an accessible label and tooltip");
+assert.ok(commentPresentation.every((row) => row.actions.every((action) => /like|reply|report/i.test(action.title))), "tooltips explain each action");
+assert.deepEqual(commentPresentation.map((row) => row.actions.map((action) => action.iconName)), Array(commentPresentation.length).fill(["thumbs-up", "reply", "flag"]), "thumbs-up, reply, and flag icons are used at every depth");
+const deepestActions = commentPresentation.at(-1).actions;
+assert.match(deepestActions.find((action) => action.action === "like").text, /^\d+$/, "the like count stays visible as the only like-button text");
+assert.match(deepestActions.find((action) => action.action === "like").ariaLabel, /like/i);
+assert.equal(deepestActions.find((action) => action.action === "reply").text, "", "reply is icon-only");
+assert.equal(deepestActions.find((action) => action.action === "report").text, "", "report is icon-only");
 const deepestNode = nestedPanel.locator(`[data-comment-id="${deepestId}"]`);
-assert.equal(await deepestNode.getByRole("button", { name: "Reply" }).count(), 1, "the deepest reply can itself be replied to");
+assert.equal(await deepestNode.locator('[data-action="reply"]').count(), 1, "the deepest reply can itself be replied to");
 await deepestNode.getByText("Reply · level 7", { exact: true }).waitFor();
 const desktopDepthLefts = [];
 for (const comment of deepChain) {
@@ -805,7 +853,7 @@ assert.ok(Math.abs(desktopDepthLefts[7] - desktopDepthLefts[6]) <= 1, "indentati
 const desktopNestedBounds = await nestedPanel.boundingBox();
 assert.ok(desktopNestedBounds && desktopNestedBounds.x >= 0 && desktopNestedBounds.x + desktopNestedBounds.width <= 1280, "nested desktop comments fit the viewport");
 const levelThreeActions = nestedPanel.locator(`[data-actions-for="${deepChain[3].id}"]`);
-await levelThreeActions.getByRole("button", { name: "Reply" }).click();
+await levelThreeActions.locator('[data-action="reply"]').click();
 const levelThreeNode = nestedPanel.locator(`[data-comment-id="${deepChain[3].id}"]`);
 await levelThreeNode.getByRole("textbox", { name: new RegExp(`Write a reply to comment ${deepChain[3].id}`) }).fill(`Browser nested reply ${run}`);
 await levelThreeNode.getByRole("button", { name: "Post reply" }).click();
@@ -826,6 +874,19 @@ const mobileNestedLayout = await nestedPanel.evaluate((section) => ({
 assert.ok(mobileNestedLayout.left >= 0 && mobileNestedLayout.right <= 390, "deeply nested mobile comments stay inside the viewport");
 assert.ok(mobileNestedLayout.scrollWidth <= mobileNestedLayout.clientWidth, "deep nesting must not cause horizontal overflow on mobile");
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "nested comments must not overflow the mobile document");
+const mobilePresentation = await nestedPanel.locator('[data-testid="comment-node"]').evaluateAll((nodes) => nodes.map((node) => {
+  const bar = node.firstElementChild?.querySelector('[data-testid="comment-action-bar"]');
+  const metadata = node.firstElementChild?.querySelector('[data-testid="comment-metadata"]');
+  const buttons = bar ? [...bar.querySelectorAll("button[data-action]")] : [];
+  return {
+    actionCount: buttons.length,
+    iconWidths: buttons.map((button) => Math.round(button.querySelector("svg")?.getBoundingClientRect().width ?? 0)),
+    metadataWidth: metadata ? Math.round(metadata.getBoundingClientRect().width) : 0,
+  };
+}));
+assert.ok(mobilePresentation.every((row) => row.actionCount === 3 && row.iconWidths.every((width) => width === 16) && row.metadataWidth > 0), "icon actions and compact metadata stay intact on mobile");
+const mobileMetadata = await nestedPanel.locator('[data-testid="comment-metadata"]').allTextContents();
+assert.ok(mobileMetadata.every((text) => compactDate.test(text.trim())), "compact timestamps remain exact on mobile");
 const mobileDeepestBounds = await nestedPanel.locator(`[data-comment-id="${deepestId}"]`).boundingBox();
 assert.ok(mobileDeepestBounds && mobileDeepestBounds.x >= 0 && mobileDeepestBounds.x + mobileDeepestBounds.width <= 390, "the deepest reply remains readable on mobile");
 await page.setViewportSize({ width: 1280, height: 900 });
@@ -1034,4 +1095,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: desktop/mobile Smart Search layout, aliases/typos/filters and episode deep links; anonymous title/episode comments, unlimited nested replies with inline composers, deep-thread spoilers/likes/reports, hidden-ancestor moderation, idempotent likes, rate-limited validation, admin review/hide/restore/confirmed delete and comment toggles; responsive nested comment UI; combined library filters; auth/contact rate limits/CSRF and Resend/Admin Requests; legacy media, PWA-sensitive routes, R2 uploads/downloads, seasons/episodes/bulk links, object retention, and URL/poster security.");
+console.log("E2E passed: desktop/mobile Smart Search layout, aliases/typos/filters and episode deep links; anonymous title/episode comments, unlimited nested replies with inline composers, icon-only action bars with labels/tooltips and compact timestamps, deep-thread spoilers/likes/reports, hidden-ancestor moderation, idempotent likes, rate-limited validation, admin review/hide/restore/confirmed delete and comment toggles; responsive nested comment UI; combined library filters; auth/contact rate limits/CSRF and Resend/Admin Requests; legacy media, PWA-sensitive routes, R2 uploads/downloads, seasons/episodes/bulk links, object retention, and URL/poster security.");

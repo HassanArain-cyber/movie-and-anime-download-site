@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatCommentTimestamp } from "@/lib/comment-display";
 import { buildCommentTree, MAX_INDENT_DEPTH, type ThreadedComment } from "@/lib/comment-thread";
 
 type PublicComment = {
@@ -43,11 +44,8 @@ type ThreadActions = {
 };
 
 const controlClass = "w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700";
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Recently" : date.toLocaleString();
-}
+const iconClass = "h-4 w-4 shrink-0";
+const actionButtonClass = "inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-neutral-800 px-2.5 py-1.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-600";
 
 export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
   const [items, setItems] = useState<PublicComment[]>([]);
@@ -266,15 +264,44 @@ function CommentNode({ node, actions }: { node: ThreadedComment<PublicComment>; 
       <div className={`min-w-0 px-3 py-3 ${node.depth === 0 ? "sm:px-4" : ""}`}>
         {node.depth > MAX_INDENT_DEPTH && <p className="mb-2 text-[11px] text-neutral-500">Reply · level {node.depth}</p>}
         <CommentBody comment={node} />
-        <div data-actions-for={node.id} className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="min-w-0 text-neutral-500">Community member · {formatDate(node.createdAt)}</span>
-          <button type="button" onClick={() => actions.onLike(node)} aria-pressed={node.likedByMe} className="min-h-9 rounded-md border border-neutral-800 px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 aria-pressed:border-red-900/60 aria-pressed:text-red-300">
-            {node.likedByMe ? "Liked" : "Like"} · {node.likeCount}
+        <div data-actions-for={node.id} data-testid="comment-action-bar" className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <time data-testid="comment-metadata" dateTime={node.createdAt} className="min-w-0 text-[11px] text-neutral-500">
+            {formatCommentTimestamp(node.createdAt)}
+          </time>
+          <button
+            type="button"
+            data-action="like"
+            onClick={() => actions.onLike(node)}
+            aria-pressed={node.likedByMe}
+            aria-label={node.likedByMe ? `Unlike this comment, ${node.likeCount} ${node.likeCount === 1 ? "like" : "likes"}` : `Like this comment, ${node.likeCount} ${node.likeCount === 1 ? "like" : "likes"}`}
+            title={node.likedByMe ? "Remove your like" : "Like this comment"}
+            className={`${actionButtonClass} aria-pressed:border-red-900/60 aria-pressed:text-red-300`}
+          >
+            <ThumbsUpIcon />
+            <span className="tabular-nums">{node.likeCount}</span>
           </button>
           {actions.enabled && (
-            <button type="button" onClick={() => actions.onReplyToggle(node.id)} className="min-h-9 rounded-md px-3 py-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-white">Reply</button>
+            <button
+              type="button"
+              data-action="reply"
+              onClick={() => actions.onReplyToggle(node.id)}
+              aria-label={`Reply to comment ${node.id}`}
+              title="Reply to this comment"
+              className={actionButtonClass}
+            >
+              <ReplyIcon />
+            </button>
           )}
-          <button type="button" onClick={() => actions.onReportToggle(node.id)} className="min-h-9 rounded-md px-3 py-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200">Report</button>
+          <button
+            type="button"
+            data-action="report"
+            onClick={() => actions.onReportToggle(node.id)}
+            aria-label={`Report comment ${node.id}`}
+            title="Report this comment"
+            className={actionButtonClass}
+          >
+            <FlagIcon />
+          </button>
         </div>
         {actions.reportingId === node.id && <ReportForm commentId={node.id} actions={actions} />}
         {actions.enabled && actions.replyingTo === node.id && <ReplyComposer parentId={node.id} depth={node.depth} inputId={`reply-body-${actions.mediaId}-${actions.episodeId ?? "title"}-${node.id}`} actions={actions} />}
@@ -388,5 +415,34 @@ function CommentBody({ comment }: { comment: PublicComment }) {
       {comment.isSpoiler && <span className="mb-2 inline-block rounded bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">Spoiler shown</span>}
       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-200">{comment.body}</p>
     </div>
+  );
+}
+
+/** Shared 16px outline icons keep every action button the same size and alignment. */
+function ThumbsUpIcon() {
+  return (
+    <svg data-icon="thumbs-up" className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7 10v10H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h3Z" />
+      <path d="M7 10l4.3-7.2a2 2 0 0 1 3.7 1.5L13.8 8H19a2 2 0 0 1 2 2.4l-1.2 6A2 2 0 0 1 17.8 18H7" />
+    </svg>
+  );
+}
+
+function ReplyIcon() {
+  return (
+    <svg data-icon="reply" className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2Z" />
+      <path d="m11 8-3 3 3 3" />
+      <path d="M8 11h6" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg data-icon="flag" className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 21V4" />
+      <path d="M5 4h12l-2 4 2 4H5" />
+    </svg>
   );
 }
