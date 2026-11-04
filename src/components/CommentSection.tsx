@@ -181,7 +181,7 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
   };
 
   return (
-    <section className="min-w-0 space-y-4 rounded-xl border border-neutral-800 bg-neutral-950/70 p-4 sm:p-6" aria-label={episodeId === undefined ? "Title comments" : "Episode comments"}>
+    <section className="vault-comments min-w-0 space-y-5 rounded-2xl border border-white/10 bg-neutral-950/70 p-4 sm:p-6" aria-label={episodeId === undefined ? "Title comments" : "Episode comments"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-white">
@@ -225,13 +225,13 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="flex min-h-10 items-center gap-2 text-xs text-neutral-400">
-              <input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} className="h-4 w-4 accent-red-500" />
+              <input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} className="h-4 w-4 accent-violet-500" />
               Contains spoilers
             </label>
             <span className="text-xs text-neutral-600">{draft.length}/2000</span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-11 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-11 rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
               {submitting ? "Posting…" : "Post comment"}
             </button>
             <span className="text-xs text-neutral-600">Comments are anonymous; no name or email is collected.</span>
@@ -275,7 +275,7 @@ function CommentNode({ node, actions }: { node: ThreadedComment<PublicComment>; 
             aria-pressed={node.likedByMe}
             aria-label={node.likedByMe ? `Unlike this comment, ${node.likeCount} ${node.likeCount === 1 ? "like" : "likes"}` : `Like this comment, ${node.likeCount} ${node.likeCount === 1 ? "like" : "likes"}`}
             title={node.likedByMe ? "Remove your like" : "Like this comment"}
-            className={`${actionButtonClass} aria-pressed:border-red-900/60 aria-pressed:text-red-300`}
+            className={`${actionButtonClass} aria-pressed:border-purple-500/60 aria-pressed:text-purple-300`}
           >
             <ThumbsUpIcon />
             <span className="tabular-nums">{node.likeCount}</span>
@@ -383,14 +383,14 @@ function ReplyComposer({ parentId, depth, inputId, actions }: { parentId: number
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex min-h-9 items-center gap-2 text-xs text-neutral-400">
-          <input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} className="h-4 w-4 accent-red-500" />
+          <input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} className="h-4 w-4 accent-violet-500" />
           Contains spoilers
         </label>
         <span className="text-xs text-neutral-600">{draft.length}/2000</span>
       </div>
       {replyError && <p role="alert" className="text-xs text-red-300">{replyError}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-10 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-10 rounded-md bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
           {submitting ? "Posting…" : "Post reply"}
         </button>
         <button type="button" onClick={actions.onReplyCancel} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>

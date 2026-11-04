@@ -109,7 +109,7 @@ export default function RequestContact() {
                   <input tabIndex={-1} autoComplete="off" value={company} onChange={(event) => setCompany(event.target.value)} />
                 </label>
               </div>
-              <button type="submit" disabled={submitting} className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-wait disabled:opacity-60">
+              <button type="submit" disabled={submitting} className="w-full rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-wait disabled:opacity-60">
                 {submitting ? "Submitting…" : "Submit"}
               </button>
             </form>

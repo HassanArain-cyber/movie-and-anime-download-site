@@ -83,89 +83,44 @@ export default async function Home({ searchParams }: HomeProps) {
       .limit(120);
   }
 
-  // Get counts per type for the hero stats
-  const counts = {
-    movies: items.filter((i) => i.type === "movie").length,
-    anime: items.filter((i) => i.type === "anime").length,
-    series: items.filter((i) => i.type === "series").length,
-  };
-
   const hasBrowseFilters = Boolean(q || typeFilter || categorySlug || yearFilter || explicitSort);
-
-  // Compute total counts across all media (when no filter applied)
-  let totalMovies = 0, totalAnime = 0, totalSeries = 0;
-  if (!hasBrowseFilters) {
-    totalMovies = counts.movies;
-    totalAnime = counts.anime;
-    totalSeries = counts.series;
-  } else {
-    const totals = await db
-      .select({ type: media.type, count: sql`count(*)` })
-      .from(media)
-      .groupBy(media.type);
-    for (const t of totals) {
-      if (t.type === "movie") totalMovies = Number(t.count);
-      if (t.type === "anime") totalAnime = Number(t.count);
-      if (t.type === "series") totalSeries = Number(t.count);
-    }
-  }
-
-  const typeLabels = [
-    { key: undefined, label: "All" },
-    { key: "movie", label: "Movies" },
-    { key: "anime", label: "Anime" },
-    { key: "series", label: "Series" },
-  ];
+  // Counts must include the full library, not only the first page of posters.
+  const totals = await db.select({ type: media.type, count: sql`count(*)` }).from(media).groupBy(media.type);
+  const totalFor = (type: string) => Number(totals.find((row) => row.type === type)?.count ?? 0);
+  const totalMovies = totalFor("movie"), totalAnime = totalFor("anime"), totalSeries = totalFor("series");
 
   return (
     <div className="space-y-8">
       {!hasBrowseFilters ? (
-        <section className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-black p-8 sm:p-12">
-          <div className="relative z-10 max-w-2xl">
-            <span className="inline-block rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
-              Private Library
-            </span>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Your movies, anime & series. One click away.
+        <section className="vault-hero">
+          <div className="relative z-10 max-w-3xl">
+            <span className="vault-badge"><span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" /> Your next obsession awaits</span>
+            <h1 className="mt-6 text-4xl font-bold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
+              Your movies, anime &amp; series.<br className="hidden sm:block" /> <span className="vault-gradient-text">One click away.</span>
             </h1>
-            <p className="mt-3 text-sm leading-relaxed text-neutral-400 sm:mt-2 sm:text-[15px]">
-              Browse the collection and download instantly. No ads, no redirects, no clutter.
+            <p className="mt-5 max-w-lg text-sm leading-7 text-neutral-300 sm:text-base">
+              Explore Gojo&apos;s Vault. Discover a new favorite, revisit a classic, and download without the clutter.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2 text-[11px] text-neutral-500 sm:text-xs">
-              <Link
-                href="/?type=movie"
-                className="rounded-md border border-neutral-800 px-3 py-1.5 hover:border-neutral-700 hover:text-white"
-              >
-                {totalMovies} movies
-              </Link>
-              <Link
-                href="/?type=anime"
-                className="rounded-md border border-neutral-800 px-3 py-1.5 hover:border-neutral-700 hover:text-white"
-              >
-                {totalAnime} anime
-              </Link>
-              <Link
-                href="/?type=series"
-                className="rounded-md border border-neutral-800 px-3 py-1.5 hover:border-neutral-700 hover:text-white"
-              >
-                {totalSeries} series
-              </Link>
+            <div className="vault-hero-actions mt-7 flex flex-wrap gap-3">
+              <Link href="#library" className="vault-primary">Explore the vault <span aria-hidden="true">↗</span></Link>
+              <Link href="/anime" className="vault-secondary">Discover anime <span aria-hidden="true">→</span></Link>
+            </div>
+            <div className="vault-hero-stats mt-8 flex flex-wrap gap-x-6 gap-y-2 text-xs text-neutral-400">
+              <Link href="/?type=movie" className="hover:text-purple-300"><strong className="text-neutral-200">{totalMovies}</strong> movies</Link>
+              <Link href="/?type=anime" className="hover:text-purple-300"><strong className="text-neutral-200">{totalAnime}</strong> anime</Link>
+              <Link href="/?type=series" className="hover:text-purple-300"><strong className="text-neutral-200">{totalSeries}</strong> series</Link>
             </div>
           </div>
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-red-600/10 blur-3xl"
-          />
         </section>
       ) : (
         <section>
           <h1 className="text-2xl font-bold text-white">
             {q ? (
-              <>Search results for <span className="text-red-400">&ldquo;{q}&rdquo;</span></>
+              <>Search results for <span className="text-purple-400">&ldquo;{q}&rdquo;</span></>
             ) : typeFilter ? (
               typeFilter === "movie" ? "Movies" : typeFilter === "anime" ? "Anime" : "TV Series"
             ) : categorySlug ? (
-              <>Category: <span className="text-red-400">{cats.find(c => c.slug === categorySlug)?.name}</span></>
+              <>Category: <span className="text-purple-400">{cats.find(c => c.slug === categorySlug)?.name}</span></>
             ) : (
               "Browse"
             )}
@@ -176,50 +131,20 @@ export default async function Home({ searchParams }: HomeProps) {
         </section>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        {typeLabels.map((t) => {
-          const active = t.key === typeFilter;
-          return (
-            <Link
-              key={t.label}
-              href={{
-                pathname: "/",
-                query: {
-                  ...(q ? { q } : {}),
-                  ...(categorySlug ? { category: categorySlug } : {}),
-                  ...(yearFilter ? { year: String(yearFilter) } : {}),
-                  ...(explicitSort ? { sort: explicitSort } : {}),
-                  ...(t.key ? { type: t.key } : {}),
-                },
-              }}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ring-1 ${
-                active
-                  ? "bg-white text-black ring-white"
-                  : "bg-neutral-900 text-neutral-300 ring-neutral-800 hover:bg-neutral-800 hover:text-white"
-              }`}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-        <div className="mx-2 h-6 w-px bg-neutral-800" />
-        <CategoryFilter
-          categories={cats}
-          years={years}
-          activeSlug={categorySlug}
-          activeYear={yearFilter}
-          activeSort={sortOption}
-          baseQuery={{ q, type: typeFilter, year: yearFilter, sort: explicitSort }}
-        />
-      </div>
+      <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
+        <div className="flex items-end justify-between gap-3">
+          <div><p className="vault-eyebrow">THE COLLECTION</p><h2 className="mt-1 text-xl font-bold text-white sm:text-2xl">Find your next favorite</h2></div>
+          <span className="shrink-0 text-xs text-neutral-400">{items.length} titles</span>
+        </div>
+        <CategoryFilter categories={cats} years={years} activeSlug={resolvedCategory?.slug} activeYear={yearFilter} activeSort={sortOption} baseQuery={{ q, type: typeFilter, year: yearFilter, sort: explicitSort }} />
+      </section>
 
       <MediaGrid items={items} />
       {items.length === 0 && (
         <div className="rounded-lg border border-dashed border-neutral-800 p-12 text-center">
           <p className="text-neutral-500">No items found.</p>
           <p className="mt-1 text-sm text-neutral-600">
-            Add content from the <Link href="/admin" className="text-red-400 hover:underline">admin panel</Link>.
+            Try another search or <Link href="/" className="text-purple-300 hover:underline">clear your filters</Link>.
           </p>
         </div>
       )}

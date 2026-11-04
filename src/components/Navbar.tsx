@@ -67,10 +67,7 @@ function BrandIconMark({ icon, className = "h-5 w-5" }: { icon: BrandIconId; cla
 
   return (
     <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none">
-      <rect x="4" y="4" width="16" height="16" rx="3.5" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="12" cy="12" r="4.25" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="12" cy="12" r="1.1" fill="currentColor" />
-      <path d="M12 5.9v1.8M12 16.3v1.8M5.9 12h1.8M16.3 12h1.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M2 4h6l5 12-3 6L2 4Zm13 0h7l-3 6h-7l3-6Z" fill="currentColor" />
     </svg>
   );
 }
@@ -245,7 +242,7 @@ export default function Navbar() {
           : "border-transparent bg-black/40"
       }`}
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:flex-nowrap sm:px-6">
+      <div className="vault-nav mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-3 lg:flex-nowrap sm:px-6">
         <div
           ref={brandIconPickerRef}
           onKeyDown={(event) => { if (event.key === "Escape") setBrandIconPickerOpen(false); }}
@@ -258,7 +255,7 @@ export default function Navbar() {
             data-brand-icon={brandIcon}
             title="Scroll to top"
             onClick={() => scrollPage(false)}
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-pink-600 text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             <BrandIconMark icon={brandIcon} />
           </button>
@@ -269,7 +266,7 @@ export default function Navbar() {
             aria-expanded={brandIconPickerOpen}
             aria-controls="brand-icon-picker"
             onClick={() => setBrandIconPickerOpen((open) => !open)}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/80 text-neutral-400 transition hover:border-neutral-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/80 text-neutral-400 transition hover:border-neutral-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
           >
             <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path d="M4 7h10M18 7h2M4 17h2m4 0h10M14 5v4M8 15v4" strokeWidth="1.8" strokeLinecap="round" />
@@ -292,9 +289,9 @@ export default function Navbar() {
                     aria-label={`Use ${label} icon`}
                     aria-pressed={brandIcon === id}
                     onClick={() => selectBrandIcon(id)}
-                    className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
+                    className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
                       brandIcon === id
-                        ? "border-red-500/60 bg-red-500/10 text-white"
+                        ? "border-purple-500/60 bg-purple-500/10 text-white"
                         : "border-transparent text-neutral-400 hover:border-neutral-800 hover:bg-neutral-900 hover:text-white"
                     }`}
                   >
@@ -305,12 +302,12 @@ export default function Navbar() {
               </div>
             </div>
           )}
-          <Link href="/" className="hidden text-lg font-bold tracking-tight text-white sm:inline">
-            Vault
+          <Link href="/" className="text-base font-bold tracking-tight text-white sm:text-lg">
+            Gojo&apos;s Vault
           </Link>
         </div>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {NAV_LINKS.map((link) => {
             const active =
               link.href === "/"
@@ -332,7 +329,7 @@ export default function Navbar() {
           })}
         </nav>
 
-        <form ref={searchRef} onSubmit={handleSearch} role="search" className="relative order-1 ml-0 w-full max-w-none flex-none basis-full sm:order-none sm:ml-auto sm:max-w-xs sm:flex-1 sm:basis-auto">
+        <form ref={searchRef} onSubmit={handleSearch} role="search" className="relative order-1 ml-0 w-full max-w-none flex-none basis-full lg:order-none lg:ml-auto lg:max-w-xs lg:flex-1 lg:basis-auto">
           <div className="relative">
             <input
               type="search"
@@ -388,7 +385,7 @@ export default function Navbar() {
                               ? `${episodeTitle}, from ${suggestion.title}, Season ${episode.seasonNumber} Episode ${episode.episodeNumber}, ${TYPE_LABELS[suggestion.type]}`
                               : `${suggestion.title}, ${TYPE_LABELS[suggestion.type]} title`}
                             onClick={() => setSearchOpen(false)}
-                            className="grid min-h-[4.5rem] grid-cols-1 gap-2 rounded-lg border border-neutral-800/80 bg-neutral-900/60 p-3 text-neutral-100 transition hover:border-neutral-700 hover:bg-neutral-900 focus:border-neutral-600 focus:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-red-500/40 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)] sm:items-center sm:gap-4 sm:p-4"
+                            className="grid min-h-[4.5rem] grid-cols-1 gap-2 rounded-lg border border-neutral-800/80 bg-neutral-900/60 p-3 text-neutral-100 transition hover:border-neutral-700 hover:bg-neutral-900 focus:border-neutral-600 focus:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-violet-500/40 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)] sm:items-center sm:gap-4 sm:p-4"
                           >
                             <span className="min-w-0 space-y-1">
                               <span className="block whitespace-normal break-words text-sm font-semibold leading-snug sm:text-base">
@@ -401,7 +398,7 @@ export default function Navbar() {
                               )}
                             </span>
                             <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-neutral-800 pt-2 text-xs sm:justify-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 sm:text-right">
-                              <span className={episode ? "rounded-md bg-red-500/10 px-2 py-1 font-medium text-red-300" : "rounded-md bg-neutral-800 px-2 py-1 font-medium text-neutral-300"}>
+                              <span className={episode ? "rounded-md bg-purple-500/10 px-2 py-1 font-medium text-purple-300" : "rounded-md bg-neutral-800 px-2 py-1 font-medium text-neutral-300"}>
                                 {episode ? "Episode" : "Title"}
                               </span>
                               <span className="text-neutral-300">{TYPE_LABELS[suggestion.type]}</span>
@@ -427,14 +424,14 @@ export default function Navbar() {
 
         <Link
           href="/admin"
-          className="shrink-0 rounded-md border border-neutral-800 px-3 py-1.5 text-sm font-medium text-neutral-400 hover:border-neutral-700 hover:text-white"
+          className="vault-signin ml-auto shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-white lg:ml-0"
         >
           Admin
         </Link>
       </div>
 
       {/* Mobile nav */}
-      <div className="flex items-center gap-1 overflow-x-auto border-t border-neutral-900 px-4 py-2 md:hidden">
+      <div className="flex items-center gap-1 overflow-x-auto border-t border-neutral-900 px-4 py-2 lg:hidden">
         {NAV_LINKS.map((link) => {
           const active =
             link.href === "/"
@@ -462,7 +459,7 @@ export default function Navbar() {
       data-testid="page-scroll-toggle"
       title={nearTop ? "Scroll to bottom" : "Scroll to top"}
       onClick={() => scrollPage(nearTop)}
-      className="fixed z-40 flex h-12 w-12 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-red-500 hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+      className="fixed z-40 flex h-12 w-12 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-purple-500 hover:bg-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
       style={{
         right: "calc(1rem + env(safe-area-inset-right, 0px))",
         bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))",

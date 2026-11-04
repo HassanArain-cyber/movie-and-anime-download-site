@@ -168,11 +168,11 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={selectAll} disabled={bulkBusy} className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-50">Select All</button>
           <button type="button" onClick={clearSelection} disabled={selectedEpisodes.length === 0 || bulkBusy} className="rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50">Clear Selection</button>
-          <button type="button" onClick={downloadSelected} disabled={selectedEpisodes.length === 0} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={downloadSelected} disabled={selectedEpisodes.length === 0} className="rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
             {bulkBusy ? `Download next (${bulkResult?.items.filter((item) => item.status === "pending").length || 0} remaining)` : `Download Selected (${selectedEpisodes.length})`}
           </button>
         </div>
-        <p className="text-xs leading-relaxed text-neutral-500">To avoid browser multiple-download blocking, each click starts one queued episode; click Download next until the queue is complete. The browser manages transfer progress. Existing complete-season archives remain available above.</p>
+        <details className="text-xs text-neutral-400"><summary className="min-h-8 cursor-pointer py-2 text-purple-300">How episode downloads work</summary><p className="pb-1 leading-relaxed">To avoid browser multiple-download blocking, each click starts one queued episode; click Download next until the queue is complete. The browser manages transfer progress. Existing complete-season archives remain available above.</p></details>
       </div>
 
       {bulkResult && <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-950 p-3" aria-live="polite">
@@ -186,7 +186,7 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
           <span className="text-xs text-neutral-500">{bulkResult.items.filter((item) => item.status !== "pending").length} / {bulkResult.requested} processed</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-neutral-800" role="progressbar" aria-label="Bulk download queue progress" aria-valuemin={0} aria-valuemax={bulkResult.requested} aria-valuenow={bulkResult.items.filter((item) => item.status !== "pending").length}>
-          <div className="h-full bg-red-500 transition-all" style={{ width: `${bulkResult.requested ? Math.round((bulkResult.items.filter((item) => item.status !== "pending").length / bulkResult.requested) * 100) : 0}%` }} />
+          <div className="h-full bg-violet-500 transition-all" style={{ width: `${bulkResult.requested ? Math.round((bulkResult.items.filter((item) => item.status !== "pending").length / bulkResult.requested) * 100) : 0}%` }} />
         </div>
         <p className="text-xs text-neutral-500">Progress tracks queue handoffs, not bytes transferred. The site cannot detect network failures after the browser accepts a file; check its download manager. Skipped or failed episodes can be opened individually below.</p>
         <ul className="space-y-2">
@@ -221,7 +221,7 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
                     disabled={bulkBusy}
                     onChange={(event) => toggleEpisode(ep.id, event.target.checked)}
                     aria-label={`Select episode ${ep.episodeNumber} for bulk download`}
-                    className="h-4 w-4 accent-red-500"
+                    className="h-4 w-4 accent-violet-500"
                   />
                 </label>
                 <button type="button" onClick={() => setOpenId(open ? null : ep.id)} aria-expanded={open} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-1 text-left hover:bg-neutral-900 sm:px-2">

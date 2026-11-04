@@ -18,7 +18,7 @@ export default function DownloadButton({ link }: { link: DownloadLink }) {
       href={href}
       {...(stored ? { download: "" } : { target: "_blank", rel: "noopener noreferrer" })}
       title={getProviderLabel(provider)}
-      className="inline-flex items-center gap-2 rounded-md bg-neutral-800 px-3 py-2 text-sm font-medium text-white ring-1 ring-neutral-700 transition hover:bg-red-600 hover:ring-red-600"
+      className="inline-flex items-center gap-2 rounded-md bg-neutral-800 px-3 py-2 text-sm font-medium text-white ring-1 ring-neutral-700 transition hover:bg-violet-600 hover:ring-purple-600"
     >
       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />

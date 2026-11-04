@@ -6,7 +6,7 @@ import WallpaperBackground from "@/components/WallpaperBackground";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Vault — Movies, Anime & Series",
+  title: "Gojo’s Vault — Movies, Anime & Series",
   description: "A lightweight library for movies, anime, and TV series with direct downloads.",
   manifest: "/manifest.webmanifest",
   icons: {
@@ -30,14 +30,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className="dark">
       <body className="relative min-h-screen bg-neutral-950 text-neutral-200 antialiased">
         <WallpaperBackground />
+        <a href="#main-content" className="vault-skip">Skip to content</a>
         <Navbar />
         <PwaRegister />
-        <main className="relative z-10 mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:px-8">
+        <main id="main-content" className="relative z-10 mx-auto w-full max-w-7xl px-4 py-6 pb-10 sm:px-6 lg:px-8">
           {children}
         </main>
-        <footer className="relative z-10 mt-16 border-t border-neutral-900 py-6 pb-24">
+        <footer className="relative z-10 mt-8 border-t border-neutral-900 py-6 pb-12">
           <div className="mx-auto max-w-7xl px-4 text-center text-xs text-neutral-300/70 sm:px-6">
-            Vault — a private media library.
+            Gojo’s Vault · Movies, anime & series. Your collection, beautifully organized.
           </div>
         </footer>
       </body>
