@@ -556,7 +556,7 @@ const desktopHeroTypography = await page.getByRole("heading", { name: "Your movi
   heading: getComputedStyle(heading).fontSize,
   paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
 }));
-assert.deepEqual(desktopHeroTypography, { heading: "30px", paragraph: "15px" }, "desktop hero type should be slightly reduced");
+assert.deepEqual(desktopHeroTypography, { heading: "60px", paragraph: "16px" }, "desktop hero should have prominent reference-inspired typography");
 await page.getByRole("button", { name: "Choose brand icon" }).click();
 const desktopIconPicker = page.getByRole("group", { name: "Brand icon choices" });
 const desktopPickerBounds = await desktopIconPicker.boundingBox();
@@ -609,7 +609,7 @@ const mobileHeroTypography = await page.getByRole("heading", { name: "Your movie
   heading: getComputedStyle(heading).fontSize,
   paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
 }));
-assert.deepEqual(mobileHeroTypography, { heading: "24px", paragraph: "14px" }, "mobile hero type should remain readable at a reduced size");
+assert.deepEqual(mobileHeroTypography, { heading: "36px", paragraph: "14px" }, "mobile hero should retain readable heading hierarchy");
 await page.goto(`${base}/anime`);
 await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "film");
 assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "film", "the desktop icon choice should carry over to mobile");
@@ -679,6 +679,17 @@ await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
 const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
 assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
+// The type dropdown must retain compatible filters; reset clears the entire query.
+await page.getByRole("combobox", { name: "Filter by content type" }).selectOption("movie");
+await page.waitForURL((url) => url.searchParams.get("type") === "movie" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
+assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-active"), "true");
+await page.getByRole("button", { name: "Reset filters" }).click();
+await page.waitForURL((url) => url.pathname === "/" && url.search === "");
+assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).inputValue(), "");
+for (const width of [360, 390, 768, 1280]) {
+  await page.setViewportSize({ width, height: 900 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `library should fit at ${width}px`);
+}
 await page.setViewportSize({ width: 1280, height: 900 });
 
 const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });

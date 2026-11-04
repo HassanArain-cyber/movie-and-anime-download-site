@@ -13,7 +13,7 @@ interface Props {
   baseQuery: { q?: string; type?: string; year?: number; sort?: LibrarySort };
 }
 
-type Overrides = { category?: string; year?: number; sort?: LibrarySort };
+type Overrides = { type?: string; category?: string; year?: number; sort?: LibrarySort };
 
 export default function CategoryFilter({ categories, years, activeSlug, activeYear, activeSort, baseQuery }: Props) {
   const pathname = usePathname() || "/";
@@ -22,7 +22,8 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
   const buildHref = (overrides: Overrides) => {
     const params = new URLSearchParams();
     if (baseQuery.q) params.set("q", baseQuery.q);
-    if (baseQuery.type) params.set("type", baseQuery.type);
+    const type = Object.hasOwn(overrides, "type") ? overrides.type : baseQuery.type;
+    if (type) params.set("type", type);
     const year = Object.hasOwn(overrides, "year") ? overrides.year : activeYear;
     const sort = Object.hasOwn(overrides, "sort") ? overrides.sort! : activeSort;
     const category = Object.hasOwn(overrides, "category") ? overrides.category : activeSlug;
@@ -30,17 +31,26 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
     if (sort !== "newest") params.set("sort", sort);
     if (category) params.set("category", category);
     const qs = params.toString();
-    return qs ? `${pathname}?${qs}` : pathname;
+    const target = Object.hasOwn(overrides, "type") ? "/" : pathname;
+    return qs ? `${target}?${qs}` : target;
   };
 
-  const selectClass = "min-w-0 w-full appearance-none rounded-md border border-neutral-800 bg-neutral-900 py-1.5 pl-3 pr-8 text-sm text-neutral-200 outline-none transition hover:bg-neutral-800 focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700 sm:w-auto";
+  const selectClass = "vault-select";
+  const filtered = Boolean(activeSlug || activeYear || activeSort !== "newest" || baseQuery.type || baseQuery.q);
 
   return (
-    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto" aria-label="Library filters">
-      <label className="relative min-w-0 sm:min-w-36">
+    <div className="vault-filters" aria-label="Library filters">
+      <label className="relative min-w-0">
+        <span className="sr-only">Filter by content type</span>
+        <select aria-label="Filter by content type" className={selectClass} value={baseQuery.type ?? ""} data-active={Boolean(baseQuery.type)} onChange={(event) => router.push(buildHref({ type: event.target.value || undefined }))}>
+          <option value="">All content</option><option value="movie">Movies</option><option value="anime">Anime</option><option value="series">Series</option>
+        </select><Chevron />
+      </label>
+      <label className="relative min-w-0">
         <span className="sr-only">Filter by tag</span>
         <select
           aria-label="Filter by tag"
+          data-active={Boolean(activeSlug)}
           value={activeSlug ?? ""}
           onChange={(event) => router.push(buildHref({ category: event.target.value || undefined }))}
           className={selectClass}
@@ -52,10 +62,11 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
         </select>
         <Chevron />
       </label>
-      <label className="relative min-w-0 sm:min-w-32">
+      <label className="relative min-w-0">
         <span className="sr-only">Filter by release year</span>
         <select
           aria-label="Filter by release year"
+          data-active={Boolean(activeYear)}
           value={activeYear ?? ""}
           onChange={(event) => router.push(buildHref({ year: event.target.value ? Number(event.target.value) : undefined }))}
           className={selectClass}
@@ -65,10 +76,11 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
         </select>
         <Chevron />
       </label>
-      <label className="relative col-span-2 min-w-0 sm:col-span-1 sm:min-w-44">
+      <label className="relative min-w-0">
         <span className="sr-only">Sort library</span>
         <select
           aria-label="Sort library"
+          data-active={activeSort !== "newest"}
           value={activeSort}
           onChange={(event) => router.push(buildHref({ sort: event.target.value as LibrarySort }))}
           className={selectClass}
@@ -80,6 +92,7 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
         </select>
         <Chevron />
       </label>
+      {filtered && <button type="button" className="min-h-11 px-2 text-left text-xs font-medium text-purple-300 hover:text-white" onClick={() => router.push("/")}>Reset filters ×</button>}
     </div>
   );
 }
