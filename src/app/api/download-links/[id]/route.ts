@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { safelyProcessNotifications } from "@/lib/notifications/worker";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { downloadLinks } from "@/db/schema";
@@ -10,6 +11,7 @@ import type { VideoQuality } from "@/lib/types";
 
 type Context = { params: Promise<{ id: string }> };
 
+export const maxDuration = 30;
 export async function PATCH(req: Request, { params }: Context) {
   const auth = await requireAdmin(req);
   if (auth !== true) return auth;
@@ -41,6 +43,7 @@ export async function PATCH(req: Request, { params }: Context) {
       updates.sizeBytes = null;
     }
     const [updated] = await db.update(downloadLinks).set(updates).where(eq(downloadLinks.id, id)).returning();
+    after(safelyProcessNotifications);
     return NextResponse.json(updated);
   } catch (error) { return errorResponse(error); }
 }

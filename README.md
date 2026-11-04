@@ -95,6 +95,12 @@ node tests/migration-upgrade.mjs
 
 Rollback: redeploy the previous application commit without dropping the new columns/tables. The old schema remains compatible, but links created as `r2:///...` and posters created as `/api/image?upload=...` require the new routes. See [docs/R2_SETUP.md](docs/R2_SETUP.md#rollback-considerations).
 
+## Followed titles and episode alerts
+
+Anime/series detail pages support anonymous browser-local Follow, a Following page, notification bell/history, and optional standard encrypted VAPID Web Push. New alerts are automatic on the **first usable episode link**, not placeholders or additional qualities. Push permission requires an explicit Enable click; disabling push retains follows/history. No public account or paid notification service is needed.
+
+Apply additive migration `0007` before release. Push needs stable VAPID/encryption keys plus authenticated retry scheduling; in-site alerts work without push configuration. See [setup, security, scheduling, exact tests and platform limits](docs/anime-notifications.md). Production rollout/key setup and physical Android receipt are separate operator acceptance steps.
+
 ## Tests
 
 ```bash
@@ -104,11 +110,13 @@ npm test
 npm run build
 ```
 
-End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub. They do **not** contact Cloudflare or Resend. The CI runner starts/stops both mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
+End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub, and a local browser-push transport. They do **not** contact Cloudflare, Resend, or real push providers. The CI runner starts/stops the mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
 
 ```bash
-# Terminal 1: disposable test database
-npx pglite-server --port 5433 --host 127.0.0.1 --max-connections 8
+# Terminal 1: a fresh disposable real PostgreSQL instance (required for concurrent
+# transaction/lease tests; a single-backend PGlite socket is not equivalent).
+# Example with Docker:
+docker run --rm --name vault-tests -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:5433:5432 postgres:16
 # Terminal 2: migrate, seed, start mock/app, run browser/API E2E, clean up
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres npm run db:migrate
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres npm run test:e2e:ci

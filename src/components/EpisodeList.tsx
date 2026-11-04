@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DownloadOptions from "./DownloadOptions";
 import type { DownloadLink, EpisodeWithLinks, VideoQuality } from "@/lib/types";
 import {
@@ -42,6 +42,23 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
   const [bulkQuality, setBulkQuality] = useState<BulkQualityChoice>("best");
   const [bulkResult, setBulkResult] = useState<BulkDownloadResult | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  useEffect(() => {
+    const syncHash = () => {
+      const match = window.location.hash.match(/^#episode-(\d+)$/);
+      const id = match ? Number(match[1]) : null;
+      if (id && episodes.some((ep) => ep.id === id)) {
+        setOpenId(id);
+        const target = document.getElementById(`episode-${id}`);
+        const season = target?.closest("details");
+        if (season) season.open = true;
+        requestAnimationFrame(() => target?.scrollIntoView({ block: "start" }));
+      }
+    };
+    const timer = setTimeout(syncHash, 0);
+    window.addEventListener("hashchange", syncHash);
+    return () => { clearTimeout(timer); window.removeEventListener("hashchange", syncHash); };
+  }, [episodes]);
 
   if (!episodes?.length) return <p className="rounded-md bg-neutral-900 p-4 text-sm text-neutral-500 ring-1 ring-neutral-800">No episodes added to this season.</p>;
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import NotificationBell from "./NotificationBell";
 import RequestContact from "@/components/RequestContact";
 import { isSearchableContentType } from "@/lib/search";
 
@@ -22,6 +23,7 @@ const NAV_LINKS = [
   { href: "/movie", label: "Movies" },
   { href: "/anime", label: "Anime" },
   { href: "/series", label: "Series" },
+  { href: "/following", label: "Following" },
 ];
 
 const TYPE_LABELS: Record<SearchSuggestion["type"], string> = {
@@ -421,6 +423,7 @@ export default function Navbar() {
         </form>
 
         <RequestContact />
+        <NotificationBell />
 
         <Link
           href="/admin"

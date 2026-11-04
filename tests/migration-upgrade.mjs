@@ -45,7 +45,7 @@ assert.deepEqual((await pool.query(`SELECT id,media_id,season_number,name FROM s
 assert.deepEqual((await pool.query(`SELECT id,media_id,season_id,episode_number,title,duration FROM episodes ORDER BY id`)).rows, episodesBefore.rows);
 const columns = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='download_links'`);
 for (const name of ["season_id", "quality", "storage_provider", "object_key", "size_bytes"]) assert.ok(columns.rows.some((row) => row.column_name === name));
-for (const table of ["comments", "comment_likes", "comment_reports"]) {
+for (const table of ["comments", "comment_likes", "comment_reports", "subscribers", "anime_follows", "episode_publications", "episode_notifications", "push_subscriptions", "push_deliveries"]) {
   const exists = await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`]);
   assert.equal(exists.rows[0].relation, table, `${table} should be added by migrations`);
 }
@@ -80,5 +80,9 @@ await pool.query("DELETE FROM comments WHERE id=$1", [root.rows[0].id]);
 assert.equal((await pool.query(`SELECT id FROM comments WHERE id IN (${chainPlaceholders})`, chainIds)).rowCount, 0, "deleting a root cascades through replies at every nesting level");
 assert.equal((await pool.query(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${chainPlaceholders})`, chainIds)).rowCount, 0);
 assert.equal((await pool.query(`SELECT comment_id FROM comment_reports WHERE comment_id IN (${chainPlaceholders})`, chainIds)).rowCount, 0);
+const publication = await pool.query("SELECT processed_at FROM episode_publications WHERE episode_id=$1", [ep.rows[0].id]);
+assert.equal(publication.rowCount, 1, "legacy published episode is backfilled once");
+assert.ok(publication.rows[0].processed_at, "legacy events must be marked processed to prevent retroactive spam");
+assert.equal((await pool.query("SELECT id FROM episode_notifications WHERE episode_id=$1", [ep.rows[0].id])).rowCount, 0);
 console.log("Migration upgrade passed: legacy categories/media/seasons/episodes/links preserved, comments migration added usable tables/settings, unlimited parent_id nesting, unique likes/reports and deep reply cascades work, migrations remain idempotent.");
 await pool.end();

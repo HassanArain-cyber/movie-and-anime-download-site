@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { safelyProcessNotifications } from "@/lib/notifications/worker";
 import { db } from "@/db";
 import { downloadLinks } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
@@ -8,6 +9,7 @@ import { getUpload, r2LinkValues } from "@/lib/storage";
 import { errorResponse, externalUrl, quality, readJson, text, uuid } from "@/lib/validation";
 import type { VideoQuality } from "@/lib/types";
 
+export const maxDuration = 30;
 export async function POST(req: Request) {
   const auth = await requireAdmin(req);
   if (auth !== true) return auth;
@@ -32,6 +34,7 @@ export async function POST(req: Request) {
       };
     }
     const [link] = await db.insert(downloadLinks).values({ ...target, ...values }).returning();
+    after(safelyProcessNotifications);
     return NextResponse.json(link, { status: 201 });
   } catch (error) { return errorResponse(error); }
 }

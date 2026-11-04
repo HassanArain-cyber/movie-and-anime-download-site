@@ -207,3 +207,51 @@ export const downloadLinksRelations = relations(downloadLinks, ({ one }) => ({
 export const categoriesRelations = relations(categories, ({ many }) => ({
   media: many(media),
 }));
+
+// Independent anonymous follow identity: only a SHA-256 digest of a random
+// 256-bit HttpOnly cookie is stored. Comments/admin sessions are untouched.
+export const subscribers = pgTable("subscribers", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const animeFollows = pgTable("anime_follows", {
+  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.subscriberId, t.mediaId] }), index("anime_follows_media_idx").on(t.mediaId, t.subscriberId)]);
+export const episodePublications = pgTable("episode_publications", {
+  episodeId: integer("episode_id").primaryKey().references(() => episodes.id, { onDelete: "cascade" }),
+  mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  episodeNumber: integer("episode_number").notNull(),
+  episodeTitle: varchar("episode_title", { length: 255 }),
+  seasonNumber: integer("season_number").notNull(),
+  url: text("url").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+}, (t) => [index("episode_publications_pending_idx").on(t.processedAt, t.publishedAt)]);
+export const episodeNotifications = pgTable("episode_notifications", {
+  id: serial("id").primaryKey(),
+  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  episodeId: integer("episode_id").notNull().references(() => episodePublications.episodeId, { onDelete: "cascade" }),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("episode_notifications_subscriber_episode_unique").on(t.subscriberId, t.episodeId), index("episode_notifications_inbox_idx").on(t.subscriberId, t.id)]);
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().unique().references(() => subscribers.id, { onDelete: "cascade" }),
+  endpointHash: varchar("endpoint_hash", { length: 64 }).notNull().unique(),
+  encrypted: text("encrypted").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const pushDeliveries = pgTable("push_deliveries", {
+  id: serial("id").primaryKey(),
+  notificationId: integer("notification_id").notNull().references(() => episodeNotifications.id, { onDelete: "cascade" }),
+  subscriptionId: integer("subscription_id").notNull().references(() => pushSubscriptions.id, { onDelete: "cascade" }),
+  attempts: integer("attempts").notNull().default(0),
+  state: varchar("state", { length: 16 }).notNull().default("pending"),
+  nextAttempt: timestamp("next_attempt", { withTimezone: true }).notNull().defaultNow(),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  leaseToken: varchar("lease_token", { length: 36 }),
+  lastStatus: integer("last_status"),
+}, (t) => [uniqueIndex("push_deliveries_notification_subscription_unique").on(t.notificationId, t.subscriptionId), index("push_deliveries_due_idx").on(t.state, t.nextAttempt)]);

@@ -6,6 +6,9 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
+import webpush from "web-push";
+const vapid = webpush.generateVAPIDKeys();
 
 const appPort = Number(process.env.E2E_APP_PORT || 3001);
 const r2Port = Number(process.env.MOCK_R2_PORT || 9000);
@@ -24,6 +27,13 @@ assertLoopback(base, "E2E_BASE_URL");
 const password = process.env.E2E_ADMIN_PASSWORD || "test-admin-password";
 const env = {
   ...process.env,
+  E2E_PUSH_TRANSPORT: "1",
+  NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --require=${path.resolve("tests/mock-push.cjs")}`,
+  WEB_PUSH_PUBLIC_KEY: vapid.publicKey,
+  WEB_PUSH_PRIVATE_KEY: vapid.privateKey,
+  WEB_PUSH_SUBJECT: "mailto:push-test@example.com",
+  PUSH_SUBSCRIPTION_SECRET: randomBytes(32).toString("base64"),
+  CRON_SECRET: randomBytes(32).toString("hex"),
   DATABASE_URL: dbUrl,
   E2E_BASE_URL: base,
   E2E_ADMIN_PASSWORD: password,
@@ -98,6 +108,8 @@ async function cleanup() {
 let failure;
 try {
   await run("node", ["tests/seed-legacy.mjs"]);
+  await start("mock-push", process.execPath, ["tests/mock-push.mjs"]);
+  await waitFor("http://127.0.0.1:9002/state", "mock push", 15000);
   await start("mock-r2", process.execPath, ["tests/mock-r2.mjs"]);
   await start("mock-resend", process.execPath, ["tests/mock-resend.mjs"]);
   await waitFor(`http://127.0.0.1:${resendPort}/last`, "mock Resend", 15000);
@@ -108,6 +120,7 @@ try {
   await start("next-app", process.execPath, ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", String(appPort)]);
   await waitFor(`${base}/api/health`, "Next app");
   await run(process.execPath, ["tests/e2e.mjs"]);
+  await run(process.execPath, ["tests/notifications-e2e.mjs"]);
 } catch (error) {
   failure = error;
 } finally {
@@ -133,6 +146,7 @@ try {
         "test-resend-key",
         "+1 555-123-4567",
         "https://example.com/private",
+        "deliberately-private-provider-body",
       ]) assert.equal(logs.includes(forbidden), false, `server logs leaked ${forbidden}`);
     } catch (error) {
       failure = error;

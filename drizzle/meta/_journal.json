@@ -50,6 +50,13 @@
       "when": 1793711657492,
       "tag": "0006_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793806633286,
+      "tag": "0007_anime_notifications",
+      "breakpoints": true
     }
   ]
 }
