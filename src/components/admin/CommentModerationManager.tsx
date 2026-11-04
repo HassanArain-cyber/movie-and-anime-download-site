@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { commentDepths } from "@/lib/comment-thread";
 
 type ModeratedComment = {
   id: number;
@@ -112,6 +113,8 @@ export default function CommentModerationManager() {
     finally { setBusyId(null); }
   };
 
+  const depths = useMemo(() => commentDepths(comments), [comments]);
+
   const remove = async (commentId: number, busyKey: number) => {
     if (!window.confirm("Delete this comment and its replies/reports? This cannot be undone.")) return;
     setBusyId(busyKey); setError(""); setNotice("");
@@ -189,7 +192,7 @@ export default function CommentModerationManager() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{comment.parentId ? "Reply" : "Comment"}</span>
+                    <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{(depths.get(comment.id) ?? 0) > 0 ? `Reply · level ${depths.get(comment.id)}` : comment.parentId ? "Reply" : "Comment"}</span>
                     <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{comment.reportCount} reports</span>
                     {comment.isSpoiler && <span className="rounded bg-amber-500/10 px-2 py-1 text-xs text-amber-300">Spoiler</span>}
                     {comment.isHidden && <span className="rounded bg-amber-500/10 px-2 py-1 text-xs text-amber-300">Hidden</span>}

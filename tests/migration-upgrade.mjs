@@ -62,15 +62,23 @@ const flags = await pool.query("SELECT comments_enabled FROM media WHERE id=$1",
 assert.equal(flags.rows[0].comments_enabled, true, "commenting defaults on without changing legacy records");
 await pool.query("UPDATE media SET comments_enabled=false WHERE id=$1", [movie.rows[0].id]);
 assert.equal((await pool.query("SELECT comments_enabled FROM media WHERE id=$1", [movie.rows[0].id])).rows[0].comments_enabled, false);
+const parentColumn = await pool.query("SELECT data_type FROM information_schema.columns WHERE table_name='comments' AND column_name='parent_id'");
+assert.equal(parentColumn.rowCount, 1, "the existing comments.parent_id column is reused for unlimited nesting; no extra migration is needed");
 const root = await pool.query("INSERT INTO comments (media_id, author_hash, body, is_spoiler) VALUES ($1, $2, $3, true) RETURNING id", [movie.rows[0].id, "a".repeat(64), "Legacy-compatible root"]);
-const reply = await pool.query("INSERT INTO comments (media_id, parent_id, author_hash, body) VALUES ($1, $2, $3, $4) RETURNING id", [movie.rows[0].id, root.rows[0].id, "b".repeat(64), "Reply"]);
-await pool.query("INSERT INTO comment_likes (comment_id, session_hash) VALUES ($1, $2)", [root.rows[0].id, "c".repeat(64)]);
+// An eight-level reply chain proves the self-FK cascades at arbitrary depth.
+const chainIds = [root.rows[0].id];
+for (let level = 1; level <= 7; level++) {
+  const inserted = await pool.query("INSERT INTO comments (media_id, parent_id, author_hash, body) VALUES ($1, $2, $3, $4) RETURNING id", [movie.rows[0].id, chainIds[level - 1], String.fromCharCode(98 + level).repeat(64), `Nested level ${level}`]);
+  chainIds.push(inserted.rows[0].id);
+}
+const chainPlaceholders = chainIds.map((_, index) => `$${index + 1}`).join(",");
+await pool.query("INSERT INTO comment_likes (comment_id, session_hash) VALUES ($1, $2), ($3, $4)", [root.rows[0].id, "c".repeat(64), chainIds.at(-1), "e".repeat(64)]);
 await assert.rejects(pool.query("INSERT INTO comment_likes (comment_id, session_hash) VALUES ($1, $2)", [root.rows[0].id, "c".repeat(64)]), /duplicate key/i, "like primary key should prevent duplicates");
-await pool.query("INSERT INTO comment_reports (comment_id, reporter_hash, reason) VALUES ($1, $2, 'spam')", [root.rows[0].id, "d".repeat(64)]);
-await assert.rejects(pool.query("INSERT INTO comment_reports (comment_id, reporter_hash, reason) VALUES ($1, $2, 'spam')", [root.rows[0].id, "d".repeat(64)]), /duplicate key/i, "unique report index should prevent repeated reports");
+await pool.query("INSERT INTO comment_reports (comment_id, reporter_hash, reason) VALUES ($1, $2, 'spam'), ($3, $4, 'spam')", [root.rows[0].id, "d".repeat(64), chainIds.at(-1), "f".repeat(64)]);
+await assert.rejects(pool.query("INSERT INTO comment_reports (comment_id, reporter_hash, reason) VALUES ($1, $2, 'spam')", [root.rows[0].id, "d".repeat(64)]), /unique/i, "unique report index should prevent repeated reports");
 await pool.query("DELETE FROM comments WHERE id=$1", [root.rows[0].id]);
-assert.equal((await pool.query("SELECT id FROM comments WHERE id IN ($1,$2)", [root.rows[0].id, reply.rows[0].id])).rowCount, 0, "deleting a comment should cascade through its replies");
-assert.equal((await pool.query("SELECT comment_id FROM comment_likes WHERE comment_id=$1", [root.rows[0].id])).rowCount, 0);
-assert.equal((await pool.query("SELECT comment_id FROM comment_reports WHERE comment_id=$1", [root.rows[0].id])).rowCount, 0);
-console.log("Migration upgrade passed: legacy categories/media/seasons/episodes/links preserved, comments migration added usable tables/settings, unique likes/reports and reply cascades work, migrations remain idempotent.");
+assert.equal((await pool.query(`SELECT id FROM comments WHERE id IN (${chainPlaceholders})`, chainIds)).rowCount, 0, "deleting a root cascades through replies at every nesting level");
+assert.equal((await pool.query(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${chainPlaceholders})`, chainIds)).rowCount, 0);
+assert.equal((await pool.query(`SELECT comment_id FROM comment_reports WHERE comment_id IN (${chainPlaceholders})`, chainIds)).rowCount, 0);
+console.log("Migration upgrade passed: legacy categories/media/seasons/episodes/links preserved, comments migration added usable tables/settings, unlimited parent_id nesting, unique likes/reports and deep reply cascades work, migrations remain idempotent.");
 await pool.end();
