@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { commentDepths } from "@/lib/comment-thread";
 
 type ModeratedComment = {
@@ -157,30 +157,17 @@ export default function CommentModerationManager() {
       ) : (
         <div className="space-y-3">
           {reports.map((report) => (
-            <article key={report.id} className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-red-500/10 px-2 py-1 text-xs font-medium capitalize text-red-300">{report.reason}</span>
-                    <span className="rounded bg-neutral-800 px-2 py-1 text-xs capitalize text-neutral-300">{report.status}</span>
-                    {report.isHidden && <span className="rounded bg-amber-500/10 px-2 py-1 text-xs text-amber-300">Hidden</span>}
-                  </div>
-                  <p className="text-xs text-neutral-500">{report.mediaType} · {report.mediaTitle}{report.episodeId ? ` · Season ${report.seasonNumber} Episode ${report.episodeNumber}${report.episodeTitle ? ` — ${report.episodeTitle}` : ""}` : " · Title comment"}</p>
-                  <p className="text-xs text-neutral-600">Reported {new Date(report.reportedAt).toLocaleString()}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void toggleHidden(report.commentId, report.isHidden, report.id)} disabled={busyId === report.id} className="min-h-10 rounded-md border border-neutral-700 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-50">{report.isHidden ? "Restore" : "Hide"}</button>
-                  <button type="button" onClick={() => void remove(report.commentId, report.id)} disabled={busyId === report.id} className="min-h-10 rounded-md border border-red-900/50 px-3 py-2 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50">Delete</button>
-                </div>
-              </div>
-              <blockquote className="whitespace-pre-wrap break-words rounded-md border-l-2 border-neutral-700 bg-neutral-950/70 p-3 text-sm text-neutral-200">{report.commentBody}</blockquote>
-              {report.details && <p className="whitespace-pre-wrap break-words text-sm text-neutral-400">Report details: {report.details}</p>}
-              <label className="inline-flex items-center gap-2 text-xs text-neutral-400">Report state
+            <ModerationRow key={report.id} id={`report-${report.id}`} body={report.commentBody} hidden={report.isHidden} disabled={busyId === report.id} onToggle={() => void toggleHidden(report.commentId, report.isHidden, report.id)}>
+              <div className="flex flex-wrap gap-2 text-xs"><span className="capitalize text-purple-300">{report.reason}</span><span className="capitalize">{report.status}</span>{report.isSpoiler && <span>Spoiler</span>}</div>
+              <p className="break-words text-xs text-neutral-400">{report.mediaType} · {report.mediaTitle}{report.episodeId ? ` · Season ${report.seasonNumber} Episode ${report.episodeNumber}${report.episodeTitle ? ` — ${report.episodeTitle}` : ""}` : " · Title comment"}</p>
+              <p className="text-xs text-neutral-500">Reported {new Date(report.reportedAt).toLocaleString()} · Posted {new Date(report.commentCreatedAt).toLocaleString()}</p>
+              {report.details && <p className="whitespace-pre-wrap break-words text-xs text-neutral-300">Report details: {report.details}</p>}
+              <div className="flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-xs text-neutral-400">Report state
                 <select aria-label={`Report status for comment ${report.commentId}`} disabled={busyId === report.id} value={report.status} onChange={(event) => void updateStatus(report, event.target.value as Report["status"])} className="min-h-9 rounded-md border border-neutral-800 bg-neutral-950 px-2 text-neutral-200">
                   <option value="pending">Pending</option><option value="reviewed">Reviewed</option><option value="resolved">Resolved</option>
                 </select>
-              </label>
-            </article>
+              </label><button type="button" onClick={() => void remove(report.commentId, report.id)} disabled={busyId === report.id} className="min-h-9 rounded-md border border-red-900/50 px-3 text-xs text-red-300 disabled:opacity-50">Delete</button></div>
+            </ModerationRow>
           ))}
         </div>
       ) : comments.length === 0 ? (
@@ -188,28 +175,32 @@ export default function CommentModerationManager() {
       ) : (
         <div className="space-y-3">
           {comments.map((comment) => (
-            <article key={comment.id} className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{(depths.get(comment.id) ?? 0) > 0 ? `Reply · level ${depths.get(comment.id)}` : comment.parentId ? "Reply" : "Comment"}</span>
-                    <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{comment.reportCount} reports</span>
-                    {comment.isSpoiler && <span className="rounded bg-amber-500/10 px-2 py-1 text-xs text-amber-300">Spoiler</span>}
-                    {comment.isHidden && <span className="rounded bg-amber-500/10 px-2 py-1 text-xs text-amber-300">Hidden</span>}
-                  </div>
-                  <p className="text-xs text-neutral-500">{comment.mediaType} · {comment.mediaTitle}{comment.episodeId ? ` · Season ${comment.seasonNumber} Episode ${comment.episodeNumber}${comment.episodeTitle ? ` — ${comment.episodeTitle}` : ""}` : " · Title comment"}</p>
-                  <p className="text-xs text-neutral-600">Posted {new Date(comment.createdAt).toLocaleString()}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void toggleHidden(comment.id, comment.isHidden, comment.id)} disabled={busyId === comment.id} className="min-h-10 rounded-md border border-neutral-700 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-50">{comment.isHidden ? "Restore" : "Hide"}</button>
-                  <button type="button" onClick={() => void remove(comment.id, comment.id)} disabled={busyId === comment.id} className="min-h-10 rounded-md border border-red-900/50 px-3 py-2 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50">Delete</button>
-                </div>
-              </div>
-              <blockquote className="whitespace-pre-wrap break-words rounded-md border-l-2 border-neutral-700 bg-neutral-950/70 p-3 text-sm text-neutral-200">{comment.body}</blockquote>
-            </article>
+            <ModerationRow key={comment.id} id={`comment-${comment.id}`} body={comment.body} hidden={comment.isHidden} disabled={busyId === comment.id} onToggle={() => void toggleHidden(comment.id, comment.isHidden, comment.id)}>
+              <div className="flex flex-wrap gap-2 text-xs text-neutral-300"><span>{(depths.get(comment.id) ?? 0) > 0 ? `Reply · level ${depths.get(comment.id)}` : comment.parentId ? "Reply" : "Comment"}</span><span>{comment.reportCount} reports</span>{comment.isSpoiler && <span className="text-amber-300">Spoiler</span>}</div>
+              <p className="break-words text-xs text-neutral-400">{comment.mediaType} · {comment.mediaTitle}{comment.episodeId ? ` · Season ${comment.seasonNumber} Episode ${comment.episodeNumber}${comment.episodeTitle ? ` — ${comment.episodeTitle}` : ""}` : " · Title comment"}</p>
+              <p className="text-xs text-neutral-500">Posted {new Date(comment.createdAt).toLocaleString()}</p>
+              <button type="button" onClick={() => void remove(comment.id, comment.id)} disabled={busyId === comment.id} className="min-h-9 rounded-md border border-red-900/50 px-3 text-xs text-red-300 disabled:opacity-50">Delete</button>
+            </ModerationRow>
           ))}
         </div>
       )}
     </section>
   );
+}
+
+/** Visibility tick stays available; only supplementary information is disclosed. */
+function ModerationRow({ id, body, hidden, disabled, onToggle, children }: { id: string; body: string; hidden: boolean; disabled: boolean; onToggle: () => void; children: ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  return <article className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3">
+    <div className="flex items-start gap-2">
+      <button type="button" aria-label={hidden ? "Restore" : "Hide"} title={hidden ? "Restore comment to public discussion" : "Hide comment from public discussion"} aria-pressed={!hidden} disabled={disabled} onClick={onToggle} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-purple-300 hover:bg-neutral-800 disabled:opacity-50">
+        <svg aria-hidden="true" data-icon="moderation-tick" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="18" height="18" rx="4" />{!hidden && <path d="m7 12 3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />}</svg>
+      </button>
+      <div className="min-w-0 flex-1 py-1"><blockquote className={`whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-200 ${expanded ? "" : "line-clamp-2"}`}>{body}</blockquote>{hidden && <span className="text-[11px] text-amber-300">Hidden</span>}</div>
+      <button type="button" aria-label={expanded ? "Collapse comment details" : "Expand comment details"} aria-expanded={expanded} aria-controls={`moderation-details-${id}`} onClick={() => setExpanded((value) => !value)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-white">
+        <svg aria-hidden="true" className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+    </div>
+    <div id={`moderation-details-${id}`} hidden={!expanded} className="mt-3 space-y-3 border-t border-neutral-800 pt-3">{children}</div>
+  </article>;
 }

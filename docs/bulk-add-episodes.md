@@ -1,5 +1,7 @@
 # Bulk Add Episodes
 
+> For the recommended placeholder-first workflow with one quality per link batch, use **Bulk Add Links**. See [Episode placeholders and bulk links by quality](episode-links-by-quality.md). This advanced row/file creation tool remains available unchanged.
+
 ## Android workflow
 
 1. Tap **Admin** and enter your existing admin password.

@@ -1064,6 +1064,13 @@ await moderatedComment.getByRole("button", { name: "Hide" }).click();
 await page.getByRole("status").getByText("Comment hidden from the public discussion.").waitFor();
 await moderatedComment.getByRole("button", { name: "Restore" }).click();
 await page.getByRole("status").getByText("Comment restored to the public discussion.").waitFor();
+assert.equal(await moderatedComment.locator('[data-icon="moderation-tick"]').isVisible(), true);
+assert.equal(await moderatedComment.getByRole("button", { name: "Delete", exact: true }).count(), 0, "secondary actions start collapsed");
+await moderatedComment.getByRole("button", { name: "Expand comment details" }).click();
+assert.equal(await moderatedComment.getByRole("button", { name: "Delete", exact: true }).isVisible(), true);
+await moderatedComment.getByRole("button", { name: "Collapse comment details" }).click();
+assert.equal(await moderatedComment.getByRole("button", { name: "Delete", exact: true }).count(), 0);
+await moderatedComment.getByRole("button", { name: "Expand comment details" }).click();
 await moderatedComment.getByLabel(/Report status for comment/).selectOption("reviewed");
 await page.getByRole("status").getByText("Report status updated.").waitFor();
 await moderatedComment.getByRole("button", { name: "Delete" }).click();
@@ -1234,6 +1241,77 @@ for (const width of [360, 390, 768, 1280]) {
   await page.setViewportSize({ width, height: 900 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `bulk admin fits at ${width}px`);
 }
+// Inclusive ranges and a separate quality batch operate only on existing placeholders.
+const qualityTitle = ok(await api("/api/media", { method: "POST", body: { type: "series", title: `Quality series ${run}` } }), 201);
+const qualitySeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: qualityTitle.id, seasonNumber: 1 } }), 201);
+const largeQualitySeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: qualityTitle.id, seasonNumber: 2 } }), 201);
+await page.goto(`${base}/admin`);
+await page.getByRole("button", { name: "Bulk Add Links", exact: true }).click();
+await page.getByLabel("Link batch anime or series").selectOption(String(qualityTitle.id));
+await page.getByLabel("Link batch season").selectOption(String(qualitySeason.id));
+await page.getByRole("button", { name: "Create Episodes", exact: true }).click();
+await page.getByText("Created Episodes 1–12. Add links below; no links or other qualities were changed.", { exact: true }).waitFor();
+assert.equal(await page.getByTestId("quality-link-row").count(), 12);
+await page.getByLabel("Start episode", { exact: true }).fill("13");
+await page.getByLabel("End episode", { exact: true }).fill("100");
+await page.getByRole("button", { name: "Create Episodes", exact: true }).click();
+await page.getByText("Created Episodes 13–100. Add links below; no links or other qualities were changed.", { exact: true }).waitFor();
+assert.equal(await page.getByTestId("quality-link-row").count(), 100);
+let qualityDetails = ok(await api(`/api/media/${qualityTitle.id}`));
+const originalEpisodeIds = qualityDetails.seasons[0].episodes.map((episode) => episode.id);
+await page.getByLabel("Start episode", { exact: true }).fill("1");
+await page.getByLabel("End episode", { exact: true }).fill("12");
+await page.getByRole("button", { name: "Create Episodes", exact: true }).click();
+await page.getByRole("alert").getByText(/Episode numbers already exist/).waitFor();
+assert.equal(ok(await api(`/api/media/${qualityTitle.id}`)).seasons[0].episodes.length, 100, 'overlapping range never duplicates placeholders');
+for (let number = 1; number <= 3; number++) await page.getByLabel(`Link for episode ${number}`, { exact: true }).fill(`https://example.com/quality-${number}-720.mp4`);
+let failQualityLink = true;
+await page.route('**/api/download-links', async (route) => {
+  if (route.request().method() === 'POST' && route.request().postDataJSON()?.url === 'https://example.com/quality-2-720.mp4' && failQualityLink) {
+    failQualityLink = false; return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Quality link temporary failure' }) });
+  }
+  return route.continue();
+});
+await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByText("2 saved · 1 failed · 0 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByText("1 saved · 0 failed · 0 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
+await page.unroute('**/api/download-links');
+await page.getByLabel("Batch link quality").selectOption("1080p");
+for (let number = 1; number <= 3; number++) await page.getByLabel(`Link for episode ${number}`, { exact: true }).fill(`https://example.com/quality-${number}-1080.mp4`);
+await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByText("3 saved · 0 failed · 0 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
+qualityDetails = ok(await api(`/api/media/${qualityTitle.id}`));
+assert.deepEqual(qualityDetails.seasons[0].episodes.map((episode) => episode.id), originalEpisodeIds, 'quality batches never recreate episodes');
+for (const episode of qualityDetails.seasons[0].episodes.slice(0, 3)) {
+  assert.deepEqual(new Set(episode.downloadLinks.map((link) => link.quality)), new Set(['720p', '1080p']));
+  assert.equal(episode.downloadLinks.length, 2, 'both quality links retained with no duplicate retries');
+}
+await page.getByLabel("Batch link quality").selectOption("720p");
+assert.equal(await page.getByLabel("Link for episode 1", { exact: true }).isDisabled(), true, 'saved quality cannot be overwritten in bulk UI');
+await page.getByLabel("Link for episode 4", { exact: true }).fill('https://example.com/proposed-change.mp4');
+const episodeFour = qualityDetails.seasons[0].episodes[3];
+ok(await api('/api/download-links', { method: 'POST', body: { mediaId: qualityTitle.id, seasonId: qualitySeason.id, episodeId: episodeFour.id, quality: '720p', url: 'https://example.com/existing-protected.mp4' } }), 201);
+await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByText("0 saved · 0 failed · 1 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
+qualityDetails = ok(await api(`/api/media/${qualityTitle.id}`));
+assert.deepEqual(qualityDetails.seasons[0].episodes[3].downloadLinks.map((link) => link.url), ['https://example.com/existing-protected.mp4']);
+await page.getByLabel("Link for episode 5", { exact: true }).fill('javascript:alert(1)');
+await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByRole("alert").getByText("Fix the invalid links before saving. Nothing new was submitted.").waitFor();
+assert.equal(ok(await api(`/api/media/${qualityTitle.id}`)).seasons[0].episodes[4].downloadLinks.length, 0);
+for (const width of [360, 390, 768, 1280]) {
+  await page.setViewportSize({ width, height: 900 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `quality link workflow fits at ${width}px`);
+}
+await page.getByLabel("Link batch season").selectOption(String(largeQualitySeason.id));
+await page.getByLabel("Start episode", { exact: true }).fill("1");
+await page.getByLabel("End episode", { exact: true }).fill("100");
+await page.getByRole("button", { name: "Create Episodes", exact: true }).click();
+await page.getByText("Created Episodes 1–100. Add links below; no links or other qualities were changed.", { exact: true }).waitFor();
+const finalQualityDetails = ok(await api(`/api/media/${qualityTitle.id}`));
+assert.equal(finalQualityDetails.seasons.find((season) => season.id === largeQualitySeason.id).episodes.length, 100);
+assert.deepEqual(finalQualityDetails.seasons[0].episodes.map((episode) => episode.id), originalEpisodeIds);
 assert.deepEqual(errors, []);
 await browser.close();
 
