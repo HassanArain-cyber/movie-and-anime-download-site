@@ -777,13 +777,23 @@ const mobileEpisodeCommentBounds = await episodeCommentPanel.boundingBox();
 assert.ok(mobileEpisodeCommentBounds && mobileEpisodeCommentBounds.x >= 0 && mobileEpisodeCommentBounds.x + mobileEpisodeCommentBounds.width <= 390, "mobile episode discussion should stay inside the viewport");
 await page.setViewportSize({ width: 1280, height: 900 });
 
+// Seed one previous-year comment directly so the browser can prove the
+// conditional year rule without hardcoding the current calendar year.
+const browserCurrentYear = await page.evaluate(() => new Date().getFullYear());
+const previousYear = browserCurrentYear - 1;
+const previousYearCommentBody = `Previous-year discussion ${run}`;
+await pool.query(
+  "INSERT INTO comments (media_id, author_hash, body, created_at) VALUES ($1, $2, $3, $4)",
+  [nestedMedia.id, "e".repeat(64), previousYearCommentBody, `${previousYear}-11-04 04:45:00+00`],
+);
+
 // Unlimited nesting renders as a real DOM tree on desktop and mobile, with an
 // inline reply composer on every node and indentation capped for narrow screens.
 await page.goto(`${base}/movie/${nestedMedia.slug}`);
 const nestedPanel = page.locator('[aria-label="Title comments"]');
 await nestedPanel.getByRole("heading", { name: /Community comments/ }).waitFor();
 await nestedPanel.locator(`[data-comment-id="${deepestId}"]`).waitFor();
-assert.equal(await nestedPanel.locator('[data-testid="comment-node"]').count(), deepChain.length);
+assert.equal(await nestedPanel.locator('[data-testid="comment-node"]').count(), deepChain.length + 1, "the seeded previous-year comment is rendered too");
 const nestedDepths = await nestedPanel.locator('[data-testid="comment-node"]').evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute("data-depth"))));
 assert.deepEqual([...new Set(nestedDepths)].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7], "eight nesting levels are rendered");
 const nestedParentLinks = await nestedPanel.locator('[data-testid="comment-node"]').evaluateAll((nodes) => nodes.map((node) => ({
@@ -799,6 +809,7 @@ const commentPresentation = await nestedPanel.locator('[data-testid="comment-nod
   const metadata = content?.querySelector('[data-testid="comment-metadata"]');
   const buttons = bar ? [...bar.querySelectorAll("button[data-action]")] : [];
   return {
+    id: node.getAttribute("data-comment-id") ?? "",
     hasCommunityMember: (node.textContent || "").includes("Community member"),
     metadata: metadata?.textContent?.trim() ?? "",
     metadataTag: metadata?.tagName ?? "",
@@ -821,9 +832,16 @@ const commentPresentation = await nestedPanel.locator('[data-testid="comment-nod
     }),
   };
 }));
-const compactDate = /^[A-Z][a-z]{2} \d{1,2}, \d{4} · \d{1,2}:\d{2} (AM|PM)$/;
+const compactDate = /^[A-Z][a-z]{2} \d{1,2}(?:, \d{4})? · \d{1,2}:\d{2} (AM|PM)$/;
 assert.ok(commentPresentation.every((row) => !row.hasCommunityMember), "the Community member label is removed from every comment");
-assert.ok(commentPresentation.every((row) => compactDate.test(row.metadata)), "every comment shows the exact compact date/time format");
+assert.ok(commentPresentation.every((row) => compactDate.test(row.metadata)), "every comment shows the compact date/time format");
+const previousYearRows = commentPresentation.filter((row) => row.metadata.includes(String(previousYear)));
+assert.equal(previousYearRows.length, 1, "previous-year comments show their four-digit year");
+assert.match(previousYearRows[0].metadata, new RegExp(`^[A-Z][a-z]{2} \\d{1,2}, ${previousYear} · `));
+assert.ok(
+  commentPresentation.filter((row) => !row.metadata.includes(String(previousYear))).every((row) => !row.metadata.includes(String(browserCurrentYear))),
+  "current-year comments hide the year dynamically",
+);
 assert.ok(commentPresentation.every((row) => row.metadataTag === "TIME"), "timestamps use semantic time elements");
 assert.ok(commentPresentation.every((row) => row.metadataFontSize > 0 && row.metadataFontSize <= 12), "metadata stays smaller and subtler than comment text");
 assert.ok(commentPresentation.every((row) => row.actions.length === 3), "every nesting level has like, reply, and report actions");
@@ -834,7 +852,9 @@ assert.ok(commentPresentation.every((row) => row.actions.every((action) => Math.
 assert.ok(commentPresentation.every((row) => row.actions.every((action) => action.ariaLabel && action.title)), "every icon has an accessible label and tooltip");
 assert.ok(commentPresentation.every((row) => row.actions.every((action) => /like|reply|report/i.test(action.title))), "tooltips explain each action");
 assert.deepEqual(commentPresentation.map((row) => row.actions.map((action) => action.iconName)), Array(commentPresentation.length).fill(["thumbs-up", "reply", "flag"]), "thumbs-up, reply, and flag icons are used at every depth");
-const deepestActions = commentPresentation.at(-1).actions;
+const deepestPresentation = commentPresentation.find((row) => row.id === String(deepestId));
+assert.ok(deepestPresentation, "the deepest reply is present in the rendered tree");
+const deepestActions = deepestPresentation.actions;
 assert.match(deepestActions.find((action) => action.action === "like").text, /^\d+$/, "the like count stays visible as the only like-button text");
 assert.match(deepestActions.find((action) => action.action === "like").ariaLabel, /like/i);
 assert.equal(deepestActions.find((action) => action.action === "reply").text, "", "reply is icon-only");
@@ -863,7 +883,7 @@ const browserNestedReply = nestedPanel.locator('[data-testid="comment-node"]').f
 await browserNestedReply.waitFor();
 assert.equal(await browserNestedReply.getAttribute("data-parent-id"), String(deepChain[3].id));
 assert.equal(Number(await browserNestedReply.getAttribute("data-depth")), 4, "an inline reply to a level-3 comment is level 4");
-assert.equal(await nestedPanel.locator('[data-testid="comment-node"]').count(), deepChain.length + 1);
+assert.equal(await nestedPanel.locator('[data-testid="comment-node"]').count(), deepChain.length + 2, "the inline reply is added alongside the previous-year comment");
 await page.setViewportSize({ width: 390, height: 844 });
 const mobileNestedLayout = await nestedPanel.evaluate((section) => ({
   left: section.getBoundingClientRect().left,
@@ -887,6 +907,11 @@ const mobilePresentation = await nestedPanel.locator('[data-testid="comment-node
 assert.ok(mobilePresentation.every((row) => row.actionCount === 3 && row.iconWidths.every((width) => width === 16) && row.metadataWidth > 0), "icon actions and compact metadata stay intact on mobile");
 const mobileMetadata = await nestedPanel.locator('[data-testid="comment-metadata"]').allTextContents();
 assert.ok(mobileMetadata.every((text) => compactDate.test(text.trim())), "compact timestamps remain exact on mobile");
+assert.equal(mobileMetadata.filter((text) => text.includes(String(previousYear))).length, 1, "previous-year comments keep their year on mobile");
+assert.ok(
+  mobileMetadata.filter((text) => !text.includes(String(previousYear))).every((text) => !text.includes(String(browserCurrentYear))),
+  "current-year comments hide the year on mobile",
+);
 const mobileDeepestBounds = await nestedPanel.locator(`[data-comment-id="${deepestId}"]`).boundingBox();
 assert.ok(mobileDeepestBounds && mobileDeepestBounds.x >= 0 && mobileDeepestBounds.x + mobileDeepestBounds.width <= 390, "the deepest reply remains readable on mobile");
 await page.setViewportSize({ width: 1280, height: 900 });
@@ -1095,4 +1120,4 @@ assert.ok(Number(after.rows[0].media) >= Number(before.rows[0].media));
 const legacyStill = await pool.query("SELECT url FROM download_links WHERE media_id=$1 AND url='/uploads/videos/legacy.mp4'", [legacyMovie.id]);
 assert.equal(legacyStill.rowCount, 1);
 await pool.end();
-console.log("E2E passed: desktop/mobile Smart Search layout, aliases/typos/filters and episode deep links; anonymous title/episode comments, unlimited nested replies with inline composers, icon-only action bars with labels/tooltips and compact timestamps, deep-thread spoilers/likes/reports, hidden-ancestor moderation, idempotent likes, rate-limited validation, admin review/hide/restore/confirmed delete and comment toggles; responsive nested comment UI; combined library filters; auth/contact rate limits/CSRF and Resend/Admin Requests; legacy media, PWA-sensitive routes, R2 uploads/downloads, seasons/episodes/bulk links, object retention, and URL/poster security.");
+console.log("E2E passed: desktop/mobile Smart Search layout, aliases/typos/filters and episode deep links; anonymous title/episode comments, unlimited nested replies with inline composers, icon-only action bars with labels/tooltips and conditional-year compact timestamps, deep-thread spoilers/likes/reports, hidden-ancestor moderation, idempotent likes, rate-limited validation, admin review/hide/restore/confirmed delete and comment toggles; responsive nested comment UI; combined library filters; auth/contact rate limits/CSRF and Resend/Admin Requests; legacy media, PWA-sensitive routes, R2 uploads/downloads, seasons/episodes/bulk links, object retention, and URL/poster security.");
