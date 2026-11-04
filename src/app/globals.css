@@ -42,8 +42,12 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-secondary { border: 1px solid #b57be577; background: #13101780; color: #d8b4fe; }
 .vault-secondary:hover { background: #a855f718; border-color: #c4a2ff; }
 .vault-eyebrow { font-size: .65rem; letter-spacing: .16em; font-weight: 700; color: #c4a2ff; }
-.vault-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; width: 100%; padding: .75rem; border: 1px solid #ffffff0d; border-radius: 1rem; background: #111114b8; }
-.vault-select { width: 100%; min-width: 0; min-height: 44px; appearance: none; border-radius: .55rem; border: 1px solid #ffffff10; background: #222226; padding: .6rem 2rem .6rem .8rem; color: #dddde5; font-size: .8rem; transition: border-color .2s, background .2s; }
+/* Compact native pickers: one row on phones, intrinsic widths on larger screens. */
+.vault-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; width: 100%; }
+.vault-filters > label { width: 8rem; max-width: 100%; }
+.vault-select { width: 100%; min-width: 0; min-height: 36px; appearance: none; border-radius: .45rem; border: 1px solid #ffffff18; background: #222226; padding: .4rem 1.4rem .4rem .6rem; color: #dddde5; font-size: .75rem; transition: border-color .2s, background .2s; }
+.vault-filter-reset { min-height: 36px; }
+
 .vault-select:hover { background: #2a2730; border-color: #c4a2ff60; }
 .vault-select[data-active="true"] { border-color: #c4a2ff70; color: #e9d5ff; background: #30213d; }
 .vault-poster-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1.25rem .85rem; }
@@ -62,7 +66,6 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-nav > div:first-child > button:nth-child(2) { width: 24px; border: 0; background: transparent; }
 @media (min-width: 480px) { .vault-poster-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (min-width: 768px) {
-  .vault-filters { grid-template-columns: repeat(4,minmax(0,1fr)) auto; align-items: center; }
   .vault-poster-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.5rem 1.1rem; }
   .vault-detail { grid-template-columns: 240px minmax(0,1fr); gap: 2rem; padding: 2rem; }
 }
@@ -76,4 +79,19 @@ button:not(:disabled), summary, select { cursor: pointer; }
   .vault-nav > div:first-child > a { font-size: .85rem; }
   .vault-nav > button { padding-inline: .5rem; font-size: .7rem; }
   .vault-signin { padding-inline: .65rem; font-size: .7rem; }
+}
+
+/* Keep the mobile introduction short without changing its artwork or content. */
+@media (max-width: 639px) {
+  .vault-hero { padding: 1.25rem 1rem; }
+  .vault-hero h1 { margin-top: 1rem; font-size: 30px; line-height: 1.12; }
+  .vault-hero p { margin-top: .75rem; line-height: 1.6; }
+  .vault-badge { padding: .3rem .6rem; }
+  .vault-hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin-top: 1rem; }
+  .vault-hero-actions a { min-height: 44px; gap: .5rem; padding: .5rem .4rem; font-size: .7rem; }
+  .vault-hero-stats { margin-top: 1rem; column-gap: 1.25rem; }
+  .vault-filters { display: grid; grid-template-columns: 1.1fr .9fr .85fr 1fr; gap: .35rem; }
+  .vault-filters > label { width: auto; }
+  .vault-select { font-size: .6875rem; padding: .35rem 1.1rem .35rem .4rem; }
+  .vault-filter-reset { grid-column: 1 / -1; justify-self: start; }
 }

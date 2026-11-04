@@ -43,7 +43,7 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
       <label className="relative min-w-0">
         <span className="sr-only">Filter by content type</span>
         <select aria-label="Filter by content type" className={selectClass} value={baseQuery.type ?? ""} data-active={Boolean(baseQuery.type)} onChange={(event) => router.push(buildHref({ type: event.target.value || undefined }))}>
-          <option value="">All content</option><option value="movie">Movies</option><option value="anime">Anime</option><option value="series">Series</option>
+          <option value="">Content</option><option value="movie">Movies</option><option value="anime">Anime</option><option value="series">Series</option>
         </select><Chevron />
       </label>
       <label className="relative min-w-0">
@@ -55,7 +55,7 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
           onChange={(event) => router.push(buildHref({ category: event.target.value || undefined }))}
           className={selectClass}
         >
-          <option value="">All Tags</option>
+          <option value="">Tags</option>
           {categories.map((category) => (
             <option key={category.id} value={category.slug}>{category.name}</option>
           ))}
@@ -71,7 +71,7 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
           onChange={(event) => router.push(buildHref({ year: event.target.value ? Number(event.target.value) : undefined }))}
           className={selectClass}
         >
-          <option value="">All Years</option>
+          <option value="">Years</option>
           {years.map((year) => <option key={year} value={year}>{year}</option>)}
         </select>
         <Chevron />
@@ -87,19 +87,19 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
         >
           <option value="az">A–Z</option>
           <option value="za">Z–A</option>
-          <option value="newest">Newest to Oldest</option>
-          <option value="oldest">Oldest to Newest</option>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
         </select>
         <Chevron />
       </label>
-      {filtered && <button type="button" className="min-h-11 px-2 text-left text-xs font-medium text-purple-300 hover:text-white" onClick={() => router.push("/")}>Reset filters ×</button>}
+      {filtered && <button type="button" className="vault-filter-reset px-2 text-left text-xs font-medium text-purple-300 hover:text-white" onClick={() => router.push("/")}>Reset filters ×</button>}
     </div>
   );
 }
 
 function Chevron() {
   return (
-    <svg aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
     </svg>
   );

@@ -35,3 +35,12 @@ The first regression run found obsolete assertions for the previous hero typogra
 Browser validation uses synthetic test content, not production data. Review the PR with your real posters, descriptions, and admin-managed wallpaper, plus a physical Android device before approving. No production database or provider was used, no PR was merged, and no production deployment was initiated. Local screenshots and test fixtures remain ignored rather than being committed.
 
 The session's fixed Arena branch was already identical to the latest production `main` when work began; all changes remain on that assigned branch.
+
+## PR #6 review corrections — compact mobile layout
+
+- Renamed the navigation link back to **Admin**, still targeting `/admin`; existing password authentication/security and the separate Request dialog are unchanged.
+- Removed the large filter-panel wrapper and replaced oversized controls with 36px native selects. Four controls fit on one row at 360/390px using concise visible labels and unchanged accessible labels, query parameters, filtering, sorting, and reset behavior. On larger screens the controls use compact 128px widths rather than stretching across the page.
+- Reduced mobile hero padding, margins, description line height, and heading size (30px). Preserved every content element, gradient, and Admin-managed wallpaper behavior. The two actions sit side-by-side with at least 44px tap targets.
+- Production-rendered Chromium checks: mobile hero measured 358px at both 360px and 390px; filter row measured 36px. No horizontal overflow at 360/390/768/1280px on home/detail pages. Screenshots inspected locally.
+- Re-ran TypeScript, ESLint, all 36 unit tests, production build, and the full browser/API E2E suite successfully. Added assertions for compact control heights, single-row alignment, hero height, usable action targets, and the Admin destination. Initial browser runs hit a dev hydration/reload timing race; waiting for network-idle around the test's initial reload resolved it without changing application behavior.
+- No database, API, storage, upload, wallpaper, or unrelated interface changes in this follow-up.

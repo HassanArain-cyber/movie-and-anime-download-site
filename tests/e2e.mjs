@@ -547,9 +547,10 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 900 
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
-await page.goto(`${base}/`);
+// Let initial hydration/dev asset updates settle before testing a full reload.
+await page.goto(`${base}/`, { waitUntil: "networkidle" });
 await page.evaluate(() => window.localStorage.removeItem("vault-brand-icon"));
-await page.reload();
+await page.reload({ waitUntil: "networkidle" });
 const desktopBrandIcon = page.getByTestId("brand-scroll-top");
 assert.equal(await desktopBrandIcon.getAttribute("data-brand-icon"), "vault");
 const desktopHeroTypography = await page.getByRole("heading", { name: "Your movies, anime & series. One click away." }).evaluate((heading) => ({
@@ -609,7 +610,7 @@ const mobileHeroTypography = await page.getByRole("heading", { name: "Your movie
   heading: getComputedStyle(heading).fontSize,
   paragraph: getComputedStyle(heading.parentElement.querySelector("p")).fontSize,
 }));
-assert.deepEqual(mobileHeroTypography, { heading: "36px", paragraph: "14px" }, "mobile hero should retain readable heading hierarchy");
+assert.deepEqual(mobileHeroTypography, { heading: "30px", paragraph: "14px" }, "mobile hero should retain readable heading hierarchy");
 await page.goto(`${base}/anime`);
 await page.waitForFunction(() => document.querySelector('[data-testid="brand-scroll-top"]')?.getAttribute("data-brand-icon") === "film");
 assert.equal(await page.getByTestId("brand-scroll-top").getAttribute("data-brand-icon"), "film", "the desktop icon choice should carry over to mobile");
@@ -689,6 +690,19 @@ assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }
 for (const width of [360, 390, 768, 1280]) {
   await page.setViewportSize({ width, height: 900 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `library should fit at ${width}px`);
+  const compactLayout = await page.evaluate(() => {
+    const hero = document.querySelector('.vault-hero');
+    const selects = [...document.querySelectorAll('.vault-filters select')].map((select) => select.getBoundingClientRect());
+    const actions = [...document.querySelectorAll('.vault-hero-actions a')].map((link) => link.getBoundingClientRect());
+    return { heroHeight: hero.getBoundingClientRect().height, filterHeights: selects.map((rect) => rect.height), filterTops: selects.map((rect) => rect.top), actionHeights: actions.map((rect) => rect.height) };
+  });
+  assert.ok(compactLayout.filterHeights.every((height) => height <= 38), 'filter controls should stay compact');
+  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the four filters should fit on one row');
+  if (width <= 390) {
+    assert.ok(compactLayout.heroHeight <= 410, `hero should be compact at ${width}px`);
+    assert.ok(compactLayout.actionHeights.every((height) => height >= 44), 'hero actions should retain usable tap targets');
+  }
+  assert.equal(await page.getByRole('link', { name: 'Admin', exact: true }).getAttribute('href'), '/admin');
 }
 await page.setViewportSize({ width: 1280, height: 900 });
 

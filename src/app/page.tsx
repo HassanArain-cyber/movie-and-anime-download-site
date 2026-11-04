@@ -101,11 +101,11 @@ export default async function Home({ searchParams }: HomeProps) {
             <p className="mt-5 max-w-lg text-sm leading-7 text-neutral-300 sm:text-base">
               Explore Gojo&apos;s Vault. Discover a new favorite, revisit a classic, and download without the clutter.
             </p>
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="vault-hero-actions mt-7 flex flex-wrap gap-3">
               <Link href="#library" className="vault-primary">Explore the vault <span aria-hidden="true">↗</span></Link>
               <Link href="/anime" className="vault-secondary">Discover anime <span aria-hidden="true">→</span></Link>
             </div>
-            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-xs text-neutral-400">
+            <div className="vault-hero-stats mt-8 flex flex-wrap gap-x-6 gap-y-2 text-xs text-neutral-400">
               <Link href="/?type=movie" className="hover:text-purple-300"><strong className="text-neutral-200">{totalMovies}</strong> movies</Link>
               <Link href="/?type=anime" className="hover:text-purple-300"><strong className="text-neutral-200">{totalAnime}</strong> anime</Link>
               <Link href="/?type=series" className="hover:text-purple-300"><strong className="text-neutral-200">{totalSeries}</strong> series</Link>
