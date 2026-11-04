@@ -125,6 +125,9 @@ try {
   await pool.query("INSERT INTO anime_follows (subscriber_id,media_id) SELECT unnest($1::varchar[]),$2", [subscriberIds, media.id]);
   const ep40 = await episode(40); await link(ep40); await job(); await job();
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM episode_notifications WHERE episode_id=$1", [ep40.id])).rows[0].count, 511);
+  assert.equal((await pool.query("SELECT count(DISTINCT subscriber_id)::int AS count FROM episode_notifications WHERE episode_id=$1", [ep40.id])).rows[0].count, 511);
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM anime_follows f JOIN episode_publications p ON p.media_id=f.media_id
+    WHERE p.episode_id=$1 AND f.created_at<=p.published_at AND NOT EXISTS (SELECT 1 FROM episode_notifications n WHERE n.subscriber_id=f.subscriber_id AND n.episode_id=p.episode_id)`, [ep40.id])).rows[0].count, 0, "no eligible follower is omitted");
   assert.ok((await pool.query("SELECT processed_at FROM episode_publications WHERE episode_id=$1", [ep40.id])).rows[0].processed_at);
   await pool.query("DELETE FROM subscribers WHERE id=ANY($1::varchar[])", [subscriberIds]);
   // Terminal failures are observable and explicitly requeueable by the admin;

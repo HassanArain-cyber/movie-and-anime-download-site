@@ -3,34 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import webpush from "web-push";
 import { pool } from "@/db";
 import { decryptSubscription, pushConfigured } from "./subscription-crypto";
+import { drainFanout } from "./fanout";
 import { pushFailure, retryDelay } from "./validation";
-
-/** Bounded, concurrency-safe, restartable fanout. Publication never waits on a push service. */
-async function fanout(): Promise<number> {
-  const client = await pool.connect();
-  let count = 0;
-  try {
-    await client.query("BEGIN");
-    const events = await client.query(`SELECT * FROM episode_publications WHERE processed_at IS NULL ORDER BY published_at,episode_id LIMIT 5 FOR UPDATE SKIP LOCKED`);
-    for (const event of events.rows) {
-      const inserted = await client.query(`INSERT INTO episode_notifications (subscriber_id,episode_id)
-        SELECT f.subscriber_id,$1 FROM anime_follows f WHERE f.media_id=$2 AND f.created_at<=$3
-        AND NOT EXISTS (SELECT 1 FROM episode_notifications n WHERE n.subscriber_id=f.subscriber_id AND n.episode_id=$1)
-        ORDER BY f.subscriber_id LIMIT 500 ON CONFLICT DO NOTHING RETURNING id`, [event.episode_id, event.media_id, event.published_at]);
-      count += inserted.rowCount || 0;
-      // No retroactive push when somebody enables push after publication.
-      await client.query(`INSERT INTO push_deliveries (notification_id,subscription_id)
-        SELECT n.id,s.id FROM episode_notifications n JOIN push_subscriptions s ON s.subscriber_id=n.subscriber_id
-        WHERE n.id=ANY($1::int[]) AND s.created_at<=$2 ON CONFLICT DO NOTHING`, [inserted.rows.map((row) => row.id), event.published_at]);
-      if ((inserted.rowCount || 0) < 500) await client.query("UPDATE episode_publications SET processed_at=now() WHERE episode_id=$1", [event.episode_id]);
-    }
-    await client.query("COMMIT");
-    return count;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally { client.release(); }
-}
 
 type Delivery = { id: number; notification_id: number; subscription_id: number; attempts: number; lease_token: string; encrypted: string; title: string; episode_number: number; episode_title: string | null; season_number: number; url: string };
 async function claim(): Promise<Delivery[]> {
@@ -88,7 +62,7 @@ async function deliver(job: Delivery): Promise<void> {
 export async function processNotifications() {
   const deadline = Date.now() + 18000;
   await pool.query("DELETE FROM auth_rate_limits WHERE key IN (SELECT key FROM auth_rate_limits WHERE expires_at<now()-interval '1 day' LIMIT 500)");
-  const notifications = await fanout();
+  const notifications = await drainFanout(pool, deadline);
   if (!pushConfigured()) return { notifications, deliveries: 0, pushConfigured: false };
   let deliveries = 0;
   // Drain small backlogs immediately without unbounded work on a serverless

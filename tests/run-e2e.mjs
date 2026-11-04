@@ -108,6 +108,7 @@ async function cleanup() {
 let failure;
 try {
   await run("node", ["tests/seed-legacy.mjs"]);
+  await run(process.execPath, ["--import", "tsx", "tests/notification-fanout-integration.mjs"]);
   await start("mock-push", process.execPath, ["tests/mock-push.mjs"]);
   await waitFor("http://127.0.0.1:9002/state", "mock push", 15000);
   await start("mock-r2", process.execPath, ["tests/mock-r2.mjs"]);
