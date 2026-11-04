@@ -95,3 +95,39 @@ button:not(:disabled), summary, select { cursor: pointer; }
   .vault-select { font-size: .6875rem; padding: .35rem 1.1rem .35rem .4rem; }
   .vault-filter-reset { grid-column: 1 / -1; justify-self: start; }
 }
+
+/* Bounded, app-owned filter menus, including on Android. */
+.vault-filters > .vault-select { width: 8rem; padding-right: .55rem; }
+.vault-select-menu { position: fixed; z-index: 100; overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid #6d527f; border-radius: .65rem; background: #18151f; color: #eee7f7; box-shadow: 0 12px 32px #0009; scrollbar-width: thin; }
+.vault-select-option { display: flex; justify-content: space-between; align-items: center; gap: .5rem; min-height: 36px; padding: .4rem .6rem; border-radius: .35rem; font-size: .8125rem; line-height: 1.3; cursor: pointer; }
+.vault-select-option.is-focused { background: #382747; }
+.vault-select-option[aria-selected="true"] { color: #e2beff; background: #59317a66; }
+@media (max-width: 639px) { .vault-filters > .vault-select { width: 100%; } }
+
+/* Editorial lead poster + compact supporting collection, rather than two large columns. */
+.vault-editorial-grid { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1rem .6rem; align-items: start; }
+.vault-editorial-grid:has(.vault-card-featured) { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.vault-card-featured { grid-column: span 2; grid-row: span 2; }
+.vault-editorial-grid .vault-card-caption { padding-top: .5rem; }
+.vault-editorial-grid .vault-card h3 { font-size: .72rem; line-height: 1rem; min-height: 2rem; }
+.vault-editorial-grid .vault-card-featured h3 { font-size: .95rem; line-height: 1.3rem; }
+.vault-editorial-grid .vault-card:not(.vault-card-featured) .vault-card-poster > span { font-size: .55rem; padding: .15rem .25rem; left: .25rem; top: .25rem; }
+.vault-editorial-grid .vault-card:not(.vault-card-featured) .vault-card-poster > span:last-child:not(:first-of-type) { left: auto; right: .25rem; top: auto; bottom: .25rem; }
+.vault-editorial-grid .vault-card-caption > p { font-size: .625rem; }
+@media (min-width: 768px) {
+  .vault-editorial-grid, .vault-editorial-grid:has(.vault-card-featured) { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 1.25rem 1rem; }
+  .vault-editorial-grid .vault-card h3 { font-size: .875rem; line-height: 1.25rem; }
+}
+@media (min-width: 1024px) { .vault-editorial-grid, .vault-editorial-grid:has(.vault-card-featured) { grid-template-columns: repeat(6,minmax(0,1fr)); } }
+
+/* Tighten supporting detail content only: poster dimensions and title size are unchanged. */
+.vault-detail-page > :not(:first-child) { margin-top: 1.25rem; }
+.vault-detail-page .vault-detail > div:nth-child(2) > :not(:first-child) { margin-top: .65rem; }
+.vault-detail-page .vault-detail > div:nth-child(2) > p { line-height: 1.6; }
+.vault-detail-page .vault-detail a { padding-block: .5rem; min-height: 40px; }
+.vault-detail-page .vault-season summary { padding: .7rem .85rem; }
+.vault-detail-page .vault-season summary > span:first-child { width: 36px; height: 36px; }
+.vault-detail-page .vault-season > div { padding: .75rem; }
+.vault-detail-page .vault-season summary + div > :not(:first-child) { margin-top: .75rem; }
+.vault-detail-page .vault-season [id^="episode-"] > div:first-child { padding-block: .2rem; }
+.vault-detail-page .vault-comments { padding: 1rem; }

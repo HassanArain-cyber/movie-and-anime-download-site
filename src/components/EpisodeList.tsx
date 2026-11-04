@@ -172,7 +172,7 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
             {bulkBusy ? `Download next (${bulkResult?.items.filter((item) => item.status === "pending").length || 0} remaining)` : `Download Selected (${selectedEpisodes.length})`}
           </button>
         </div>
-        <p className="text-xs leading-relaxed text-neutral-500">To avoid browser multiple-download blocking, each click starts one queued episode; click Download next until the queue is complete. The browser manages transfer progress. Existing complete-season archives remain available above.</p>
+        <details className="text-xs text-neutral-400"><summary className="min-h-8 cursor-pointer py-2 text-purple-300">How episode downloads work</summary><p className="pb-1 leading-relaxed">To avoid browser multiple-download blocking, each click starts one queued episode; click Download next until the queue is complete. The browser manages transfer progress. Existing complete-season archives remain available above.</p></details>
       </div>
 
       {bulkResult && <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-950 p-3" aria-live="polite">

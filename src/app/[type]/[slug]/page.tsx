@@ -21,7 +21,7 @@ export default async function DetailPage({ params }: PageProps) {
   const typeLabel = item.type === "movie" ? "Movie" : item.type === "anime" ? "Anime" : "Series";
 
   return (
-    <div className="space-y-8">
+    <div className="vault-detail-page space-y-6">
       <Link href={item.type === "movie" ? "/movie" : item.type === "anime" ? "/anime" : "/series"} className="inline-block text-sm text-neutral-400 hover:text-white">← Back to {typeLabel.toLowerCase()}</Link>
       <div className="vault-detail">
         <div className="vault-detail-poster">

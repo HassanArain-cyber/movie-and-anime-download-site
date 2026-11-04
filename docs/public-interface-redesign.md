@@ -14,7 +14,7 @@ The three supplied mobile references informed the near-black surfaces, purple/pi
 
 ## Protected boundaries
 
-No changes to `src/db`, migrations, API routes, storage code, wallpaper component or settings, authentication implementation, admin components, production environment variables, or package dependencies.
+No changes to `src/db`, migrations, API routes, storage code, wallpaper component or settings, authentication implementation, production environment variables, or package dependencies. Existing admin workflows are retained; the later bulk-creation follow-up adds a dedicated admin component and dashboard tab as documented below.
 
 The current database has **no stored rating, age rating, release status, language/dub metadata, or episode thumbnail field**. These are deliberately omitted, not fabricated. Available category, year, title, description, episode duration, and download labels remain sourced from existing records. Sign-in remains admin authentication; no new public account system was introduced.
 
@@ -44,3 +44,12 @@ The session's fixed Arena branch was already identical to the latest production 
 - Production-rendered Chromium checks: mobile hero measured 358px at both 360px and 390px; filter row measured 36px. No horizontal overflow at 360/390/768/1280px on home/detail pages. Screenshots inspected locally.
 - Re-ran TypeScript, ESLint, all 36 unit tests, production build, and the full browser/API E2E suite successfully. Added assertions for compact control heights, single-row alignment, hero height, usable action targets, and the Admin destination. Initial browser runs hit a dev hydration/reload timing race; waiting for network-idle around the test's initial reload resolved it without changing application behavior.
 - No database, API, storage, upload, wallpaper, or unrelated interface changes in this follow-up.
+
+## PR #6 follow-up — menu usability, editorial collection, compact details, bulk creation
+
+- Replaced public native select popups with dependency-free app-owned combobox/listbox menus. Options use 36px minimum rows and a 240px bounded, internally scrolling popup. Menus are portaled, positioned inside the viewport, support keyboard navigation/typeahead/Escape, preserve selected states, and close on outside interaction or page scrolling. Android no longer controls these public filter menus via its oversized native picker.
+- Added an editorial grid: when at least five results exist, the first result spans two columns/two rows with compact supporting posters beside it; subsequent cards remain consistently aligned. Mobile uses four compact columns in that layout, tablet five, desktop six. Smaller collections use three mobile columns. Existing result order, 2:3 poster proportions, containment, lazy loading, error fallbacks, and routes are preserved. The lead result is visual emphasis, not fabricated featured metadata.
+- Reduced spacing around detail descriptions/metadata/actions, season summaries, episode rows, and community sections. Poster dimensions and title typography are unchanged. Lengthy bulk-download instructions remain available in an expandable help disclosure instead of dominating the episode section.
+- Added the dedicated Admin **Bulk Add Episodes** tab. See `docs/bulk-add-episodes.md` for Android instructions, processing/retry behavior, and limitations. Existing individual/range/batch upload tools are preserved.
+- TypeScript, ESLint, 43 unit tests, production build, and full browser/API regression suite pass against disposable local data and mock providers. The extended suite tests a many-category menu, keyboard scrolling and viewport bounds, CDP-emulated touch scrolling without closing the menu, editorial layout, required bulk fields, duplicates, partial failure/retry, two multipart file uploads, and retained checkpoints across admin tab switches.
+- Production-rendered home, detail, open-menu, and bulk-admin screenshots were inspected at 360/390/768/1280px. No horizontal overflow. Physical Android validation and real production artwork review remain recommended; no production data/services were used.

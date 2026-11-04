@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import CompactSelect from "./CompactSelect";
 import type { Category } from "@/lib/types";
 import type { LibrarySort } from "@/lib/library-filters";
 
@@ -35,72 +36,20 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
     return qs ? `${target}?${qs}` : target;
   };
 
-  const selectClass = "vault-select";
   const filtered = Boolean(activeSlug || activeYear || activeSort !== "newest" || baseQuery.type || baseQuery.q);
-
-  return (
-    <div className="vault-filters" aria-label="Library filters">
-      <label className="relative min-w-0">
-        <span className="sr-only">Filter by content type</span>
-        <select aria-label="Filter by content type" className={selectClass} value={baseQuery.type ?? ""} data-active={Boolean(baseQuery.type)} onChange={(event) => router.push(buildHref({ type: event.target.value || undefined }))}>
-          <option value="">Content</option><option value="movie">Movies</option><option value="anime">Anime</option><option value="series">Series</option>
-        </select><Chevron />
-      </label>
-      <label className="relative min-w-0">
-        <span className="sr-only">Filter by tag</span>
-        <select
-          aria-label="Filter by tag"
-          data-active={Boolean(activeSlug)}
-          value={activeSlug ?? ""}
-          onChange={(event) => router.push(buildHref({ category: event.target.value || undefined }))}
-          className={selectClass}
-        >
-          <option value="">Tags</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.slug}>{category.name}</option>
-          ))}
-        </select>
-        <Chevron />
-      </label>
-      <label className="relative min-w-0">
-        <span className="sr-only">Filter by release year</span>
-        <select
-          aria-label="Filter by release year"
-          data-active={Boolean(activeYear)}
-          value={activeYear ?? ""}
-          onChange={(event) => router.push(buildHref({ year: event.target.value ? Number(event.target.value) : undefined }))}
-          className={selectClass}
-        >
-          <option value="">Years</option>
-          {years.map((year) => <option key={year} value={year}>{year}</option>)}
-        </select>
-        <Chevron />
-      </label>
-      <label className="relative min-w-0">
-        <span className="sr-only">Sort library</span>
-        <select
-          aria-label="Sort library"
-          data-active={activeSort !== "newest"}
-          value={activeSort}
-          onChange={(event) => router.push(buildHref({ sort: event.target.value as LibrarySort }))}
-          className={selectClass}
-        >
-          <option value="az">A–Z</option>
-          <option value="za">Z–A</option>
-          <option value="newest">Newest</option>
-          <option value="oldest">Oldest</option>
-        </select>
-        <Chevron />
-      </label>
-      {filtered && <button type="button" className="vault-filter-reset px-2 text-left text-xs font-medium text-purple-300 hover:text-white" onClick={() => router.push("/")}>Reset filters ×</button>}
-    </div>
-  );
-}
-
-function Chevron() {
-  return (
-    <svg aria-hidden="true" className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
-    </svg>
-  );
+  return <div className="vault-filters" aria-label="Library filters">
+    <CompactSelect label="Filter by content type" value={baseQuery.type ?? ""} active={Boolean(baseQuery.type)}
+      options={[{ value: "", label: "Content" }, { value: "movie", label: "Movies" }, { value: "anime", label: "Anime" }, { value: "series", label: "Series" }]}
+      onChange={(type) => router.push(buildHref({ type: type || undefined }))} />
+    <CompactSelect label="Filter by tag" value={activeSlug ?? ""} active={Boolean(activeSlug)}
+      options={[{ value: "", label: "Tags" }, ...categories.map((category) => ({ value: category.slug, label: category.name }))]}
+      onChange={(category) => router.push(buildHref({ category: category || undefined }))} />
+    <CompactSelect label="Filter by release year" value={String(activeYear ?? "")} active={Boolean(activeYear)}
+      options={[{ value: "", label: "Years" }, ...years.map((year) => ({ value: String(year), label: String(year) }))]}
+      onChange={(year) => router.push(buildHref({ year: year ? Number(year) : undefined }))} />
+    <CompactSelect label="Sort library" value={activeSort} active={activeSort !== "newest"}
+      options={[{ value: "az", label: "A–Z" }, { value: "za", label: "Z–A" }, { value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }]}
+      onChange={(sort) => router.push(buildHref({ sort: sort as LibrarySort }))} />
+    {filtered && <button type="button" className="vault-filter-reset px-2 text-left text-xs font-medium text-purple-300 hover:text-white" onClick={() => router.push("/")}>Reset filters ×</button>}
+  </div>;
 }

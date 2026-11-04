@@ -648,28 +648,34 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= w
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
 assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
+async function chooseFilter(control, value) {
+  await control.click();
+  await page.getByRole("listbox").locator(`[role="option"][data-value="${value}"]`).click();
+}
 const tagDropdown = page.getByRole("combobox", { name: "Filter by tag" });
-await tagDropdown.selectOption("legacy");
+await chooseFilter(tagDropdown, "legacy");
 await page.waitForURL((url) => url.searchParams.get("category") === "legacy");
 await page.locator(".grid").getByText("Legacy Movie", { exact: true }).waitFor();
 assert.equal(await page.locator(".grid").getByText("Legacy Anime", { exact: true }).count(), 0, "selected tag should filter out uncategorized titles");
-await tagDropdown.selectOption("");
+await chooseFilter(tagDropdown, "");
 await page.waitForURL((url) => !url.searchParams.has("category"));
 await page.locator(".grid").getByText("Legacy Anime", { exact: true }).waitFor();
 
 const yearDropdown = page.getByRole("combobox", { name: "Filter by release year" });
 const sortDropdown = page.getByRole("combobox", { name: "Sort library" });
-assert.ok(await yearDropdown.locator("option").evaluateAll((options) => options.some((option) => option.value === "2024")));
-assert.ok(await yearDropdown.locator("option").evaluateAll((options) => options.some((option) => option.value === "2023")));
+await yearDropdown.click();
+assert.equal(await page.getByRole("listbox").locator('[data-value="2024"]').count(), 1);
+assert.equal(await page.getByRole("listbox").locator('[data-value="2023"]').count(), 1);
+await page.getByRole("listbox").press("Escape");
 await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "Anime + 2024 + A-Z should filter and sort together");
-await sortDropdown.selectOption("za");
+await chooseFilter(sortDropdown, "za");
 await page.waitForURL((url) => url.searchParams.get("sort") === "za" && url.searchParams.get("type") === "anime" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Zulu ${run}`, `Filter Alpha ${run}`], "Z-A should reverse the title order without dropping other filters");
-await sortDropdown.selectOption("newest");
+await chooseFilter(sortDropdown, "newest");
 await page.waitForURL((url) => !url.searchParams.has("sort") && url.searchParams.get("category") === `filter-${run}`);
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Zulu ${run}`, `Filter Alpha ${run}`], "newest-first should use creation timestamps");
-await sortDropdown.selectOption("oldest");
+await chooseFilter(sortDropdown, "oldest");
 await page.waitForURL((url) => url.searchParams.get("sort") === "oldest");
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "oldest-first should reverse creation order");
 await page.goto(`${base}/?type=movie&year=2023&category=filter-${run}`);
@@ -681,18 +687,20 @@ await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
 const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
 assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
 // The type dropdown must retain compatible filters; reset clears the entire query.
-await page.getByRole("combobox", { name: "Filter by content type" }).selectOption("movie");
+await chooseFilter(page.getByRole("combobox", { name: "Filter by content type" }), "movie");
 await page.waitForURL((url) => url.searchParams.get("type") === "movie" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
 assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-active"), "true");
 await page.getByRole("button", { name: "Reset filters" }).click();
 await page.waitForURL((url) => url.pathname === "/" && url.search === "");
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).inputValue(), "");
+assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-value"), "");
+for (let index = 0; index < 20; index++) ok(await api("/api/categories", { method: "POST", body: { name: `Menu category ${run} ${index}`, slug: `menu-${run}-${index}` } }), 201);
+await page.reload({ waitUntil: "networkidle" });
 for (const width of [360, 390, 768, 1280]) {
   await page.setViewportSize({ width, height: 900 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `library should fit at ${width}px`);
   const compactLayout = await page.evaluate(() => {
     const hero = document.querySelector('.vault-hero');
-    const selects = [...document.querySelectorAll('.vault-filters select')].map((select) => select.getBoundingClientRect());
+    const selects = [...document.querySelectorAll('.vault-filters [role="combobox"]')].map((select) => select.getBoundingClientRect());
     const actions = [...document.querySelectorAll('.vault-hero-actions a')].map((link) => link.getBoundingClientRect());
     return { heroHeight: hero.getBoundingClientRect().height, filterHeights: selects.map((rect) => rect.height), filterTops: selects.map((rect) => rect.top), actionHeights: actions.map((rect) => rect.height) };
   });
@@ -703,7 +711,39 @@ for (const width of [360, 390, 768, 1280]) {
     assert.ok(compactLayout.actionHeights.every((height) => height >= 44), 'hero actions should retain usable tap targets');
   }
   assert.equal(await page.getByRole('link', { name: 'Admin', exact: true }).getAttribute('href'), '/admin');
+  await page.getByRole("combobox", { name: "Filter by tag" }).click();
+  const menuBox = await page.getByRole("listbox").evaluate((menu) => { const r = menu.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height, scrollable: menu.scrollHeight > menu.clientHeight }; });
+  assert.ok(menuBox.left >= 0 && menuBox.right <= width && menuBox.top >= 0 && menuBox.bottom <= 900, 'filter menu stays within viewport');
+  assert.ok(menuBox.height <= 242 && menuBox.scrollable, 'many tags use a bounded scrolling popup');
+  await page.getByRole("listbox").press("End");
+  assert.equal(await page.getByRole("listbox").count(), 1, 'internal scrolling must not close the menu');
+  await page.getByRole("listbox").press("Escape");
+  const posterLayout = await page.locator('.vault-poster-grid').evaluate((grid) => ({ columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length, featured: grid.querySelectorAll('.vault-card-featured').length }));
+  assert.ok(posterLayout.columns >= 4 && posterLayout.featured === 1, 'collection uses a lead poster and compact supporting grid');
 }
+// Real touch input should scroll the app-owned popup rather than close it or scroll the page.
+// Reuse the existing context: the Lambda Chromium single-process build cannot safely close a second context.
+const touchPage = page;
+await touchPage.setViewportSize({ width: 360, height: 800 });
+await touchPage.goto(`${base}/`, { waitUntil: "networkidle" });
+await touchPage.getByRole("combobox", { name: "Filter by tag" }).click();
+const touchMenu = touchPage.getByRole("listbox");
+const touchBounds = await touchMenu.boundingBox();
+const cdp = await context.newCDPSession(touchPage);
+await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+const touchX = touchBounds.x + touchBounds.width / 2;
+const touchY = touchBounds.y + touchBounds.height - 20;
+await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: touchX, y: touchY }] });
+for (let step = 1; step <= 6; step++) {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: touchX, y: touchY - step * 20 }] });
+  await touchPage.waitForTimeout(40);
+}
+await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+await touchPage.waitForFunction(() => document.querySelector('[role="listbox"]')?.scrollTop > 0);
+assert.equal(await touchMenu.count(), 1, "touch-scrolling keeps the menu open");
+await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+await cdp.detach();
+await touchMenu.press("Escape");
 await page.setViewportSize({ width: 1280, height: 900 });
 
 const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
@@ -1136,6 +1176,64 @@ assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection rema
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 await page.goto(`${base}/movie/${movie.slug}`);
 for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
+// Dedicated bulk creation: validation, duplicate numbers, partial failure/retry, and real multi-file R2 upload.
+const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
+const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);
+await page.goto(`${base}/admin`);
+await page.getByRole("button", { name: "Bulk Add Episodes", exact: true }).click();
+await page.getByLabel("Bulk anime or series").selectOption(String(bulkTitle.id));
+await page.getByLabel("Bulk season").selectOption(String(bulkSeason.id));
+const bulkRows = page.getByTestId("bulk-episode-row");
+await page.getByRole("button", { name: "Add Another Episode" }).click();
+await page.getByRole("button", { name: "Save all episodes" }).click();
+await page.getByText("Review the highlighted rows. Nothing new was submitted.").waitFor();
+assert.equal(ok(await api(`/api/media/${bulkTitle.id}`)).seasons[0].episodes.length, 0);
+await bulkRows.nth(0).getByLabel("Episode title", { exact: true }).fill("Bulk one");
+await bulkRows.nth(0).getByLabel("Episode download link").fill("https://example.com/bulk-one.mp4");
+await page.getByRole("button", { name: "Add Another Episode" }).click();
+await bulkRows.nth(1).getByLabel("Episode number", { exact: true }).fill("1");
+await bulkRows.nth(1).getByLabel("Episode title", { exact: true }).fill("Bulk two");
+await bulkRows.nth(1).getByLabel("Episode download link").fill("https://example.com/bulk-two.mp4");
+await page.getByRole("button", { name: "Retry failed episodes" }).click();
+await page.getByText("Duplicate episode number in this batch.").first().waitFor();
+assert.equal(ok(await api(`/api/media/${bulkTitle.id}`)).seasons[0].episodes.length, 0);
+await bulkRows.nth(1).getByLabel("Episode number", { exact: true }).fill("2");
+let failBulkLink = true;
+await page.route('**/api/download-links', async (route) => {
+  if (route.request().method() === 'POST' && route.request().postDataJSON()?.url === 'https://example.com/bulk-two.mp4' && failBulkLink) {
+    failBulkLink = false; return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Simulated link failure' }) });
+  }
+  return route.continue();
+});
+await page.getByRole("button", { name: "Retry failed episodes" }).click();
+await page.getByText('1 / 2 saved · 1 failed', { exact: true }).waitFor();
+assert.equal(ok(await api(`/api/media/${bulkTitle.id}`)).seasons[0].episodes.length, 2, 'partial failure retains created episodes');
+await page.getByRole("button", { name: "Retry failed episodes" }).click();
+await page.getByText('2 / 2 saved · 0 failed', { exact: true }).waitFor();
+let bulkDetails = ok(await api(`/api/media/${bulkTitle.id}`));
+assert.equal(bulkDetails.seasons[0].episodes.length, 2);
+assert.ok(bulkDetails.seasons[0].episodes.every((episode) => episode.downloadLinks.length === 1), 'retry must not duplicate successful episodes or links');
+await page.unroute('**/api/download-links');
+await page.getByLabel('Bulk video files').setInputFiles([
+  { name: 'S01E03.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(2048, 3) },
+  { name: 'S01E04.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(2048, 4) },
+]);
+assert.equal(await bulkRows.nth(2).getByLabel('Episode number', { exact: true }).inputValue(), '3');
+await page.getByRole("button", { name: "Save all episodes" }).click();
+await page.getByText('4 / 4 saved · 0 failed', { exact: true }).waitFor({ timeout: 60000 });
+bulkDetails = ok(await api(`/api/media/${bulkTitle.id}`));
+assert.equal(bulkDetails.seasons[0].episodes.length, 4);
+assert.ok(bulkDetails.seasons[0].episodes.slice(2).every((episode) => episode.downloadLinks.length === 1 && episode.downloadLinks[0].storageProvider === 'r2'));
+await page.getByRole("button", { name: "Add Another Episode" }).click();
+await page.getByRole('button', { name: 'Remove entry 5', exact: true }).click();
+assert.equal(await bulkRows.count(), 4);
+await page.getByRole('button', { name: /^media$/i }).click();
+await page.getByRole('button', { name: 'Bulk Add Episodes', exact: true }).click();
+assert.equal(await bulkRows.count(), 4, 'admin tab switches retain bulk retry checkpoints');
+for (const width of [360, 390, 768, 1280]) {
+  await page.setViewportSize({ width, height: 900 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `bulk admin fits at ${width}px`);
+}
 assert.deepEqual(errors, []);
 await browser.close();
 
