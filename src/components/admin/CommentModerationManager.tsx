@@ -1,5 +1,7 @@
 "use client";
 
+import DeleteAllButton from "./DeleteAllButton";
+
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { commentDepths } from "@/lib/comment-thread";
 
@@ -40,7 +42,9 @@ type Report = {
   seasonNumber: number | null;
 };
 
-export default function CommentModerationManager() {
+export default function CommentModerationManager({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
+  const [deletingAll, setDeletingAll] = useState(false);
+  const bulkBusy = (busy: boolean) => { setDeletingAll(busy); onBusyChange?.(busy); };
   const [reports, setReports] = useState<Report[]>([]);
   const [comments, setComments] = useState<ModeratedComment[]>([]);
   const [view, setView] = useState<"reports" | "comments">("reports");
@@ -60,8 +64,10 @@ export default function CommentModerationManager() {
       if (!response.ok) throw new Error(data.error || "Could not load moderation data.");
       if (view === "comments") setComments(Array.isArray(data.comments) ? data.comments : []);
       else setReports(Array.isArray(data) ? data : []);
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load moderation data.");
+      return false;
     } finally { setLoading(false); }
   }, [status, view]);
 
@@ -89,6 +95,7 @@ export default function CommentModerationManager() {
   }, [status, view]);
 
   const updateStatus = async (report: Report, nextStatus: Report["status"]) => {
+    if (deletingAll || busyId !== null) return;
     setBusyId(report.id); setError(""); setNotice("");
     try {
       const response = await fetch(`/api/admin/comment-reports/${report.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: nextStatus }) });
@@ -101,6 +108,7 @@ export default function CommentModerationManager() {
   };
 
   const toggleHidden = async (commentId: number, isHidden: boolean, busyKey: number) => {
+    if (deletingAll || busyId !== null) return;
     setBusyId(busyKey); setError(""); setNotice("");
     try {
       const response = await fetch(`/api/admin/comments/${commentId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isHidden: !isHidden }) });
@@ -117,6 +125,7 @@ export default function CommentModerationManager() {
 
   const remove = async (commentId: number, busyKey: number) => {
     if (!window.confirm("Delete this comment and its replies/reports? This cannot be undone.")) return;
+    if (deletingAll || busyId !== null) return;
     setBusyId(busyKey); setError(""); setNotice("");
     try {
       const response = await fetch(`/api/admin/comments/${commentId}`, { method: "DELETE" });
@@ -130,7 +139,7 @@ export default function CommentModerationManager() {
   };
 
   return (
-    <section className="space-y-4" aria-labelledby="comment-moderation-heading">
+    <section aria-busy={deletingAll || loading} className="space-y-4" aria-labelledby="comment-moderation-heading">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="comment-moderation-heading" className="text-lg font-semibold text-white">Comment moderation</h2>
@@ -138,18 +147,19 @@ export default function CommentModerationManager() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-neutral-400">View
-            <select aria-label="Moderation view" value={view} onChange={(event) => { setView(event.target.value as "reports" | "comments"); setLoading(true); }} className="ml-2 min-h-10 rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white">
+            <select disabled={deletingAll || busyId !== null} aria-label="Moderation view" value={view} onChange={(event) => { setView(event.target.value as "reports" | "comments"); setLoading(true); }} className="ml-2 min-h-10 rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white">
               <option value="reports">Reported comments</option><option value="comments">All comments</option>
             </select>
           </label>
           {view === "reports" && <label className="text-xs text-neutral-400">Show
-            <select aria-label="Filter reports by status" value={status} onChange={(event) => { setStatus(event.target.value); setLoading(true); }} className="ml-2 min-h-10 rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white">
+            <select disabled={deletingAll || busyId !== null} aria-label="Filter reports by status" value={status} onChange={(event) => { setStatus(event.target.value); setLoading(true); }} className="ml-2 min-h-10 rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white">
               <option value="pending">Pending</option><option value="reviewed">Reviewed</option><option value="resolved">Resolved</option><option value="">All reports</option>
             </select>
           </label>}
-          <button type="button" onClick={() => void load()} disabled={loading} className="min-h-10 rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">Refresh</button>
+          <button type="button" onClick={() => void load()} disabled={loading || deletingAll || busyId !== null} className="min-h-10 rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">Refresh</button>
         </div>
       </div>
+      <DeleteAllButton kind="comments" disabled={loading || busyId !== null} refresh={load} onBusyChange={bulkBusy} />
       {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
       {notice && <p role="status" className="text-sm text-emerald-300">{notice}</p>}
       {loading ? <p role="status" className="rounded-lg border border-neutral-800 p-5 text-sm text-neutral-500">Loading {view === "reports" ? "reports" : "comments"}…</p> : view === "reports" ? reports.length === 0 ? (
@@ -157,16 +167,16 @@ export default function CommentModerationManager() {
       ) : (
         <div className="space-y-3">
           {reports.map((report) => (
-            <ModerationRow key={report.id} id={`report-${report.id}`} body={report.commentBody} hidden={report.isHidden} disabled={busyId === report.id} onToggle={() => void toggleHidden(report.commentId, report.isHidden, report.id)}>
+            <ModerationRow key={report.id} id={`report-${report.id}`} body={report.commentBody} hidden={report.isHidden} disabled={deletingAll || busyId !== null} onToggle={() => void toggleHidden(report.commentId, report.isHidden, report.id)}>
               <div className="flex flex-wrap gap-2 text-xs"><span className="capitalize text-purple-300">{report.reason}</span><span className="capitalize">{report.status}</span>{report.isSpoiler && <span>Spoiler</span>}</div>
               <p className="break-words text-xs text-neutral-400">{report.mediaType} · {report.mediaTitle}{report.episodeId ? ` · Season ${report.seasonNumber} Episode ${report.episodeNumber}${report.episodeTitle ? ` — ${report.episodeTitle}` : ""}` : " · Title comment"}</p>
               <p className="text-xs text-neutral-500">Reported {new Date(report.reportedAt).toLocaleString()} · Posted {new Date(report.commentCreatedAt).toLocaleString()}</p>
               {report.details && <p className="whitespace-pre-wrap break-words text-xs text-neutral-300">Report details: {report.details}</p>}
               <div className="flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-xs text-neutral-400">Report state
-                <select aria-label={`Report status for comment ${report.commentId}`} disabled={busyId === report.id} value={report.status} onChange={(event) => void updateStatus(report, event.target.value as Report["status"])} className="min-h-9 rounded-md border border-neutral-800 bg-neutral-950 px-2 text-neutral-200">
+                <select aria-label={`Report status for comment ${report.commentId}`} disabled={deletingAll || busyId !== null} value={report.status} onChange={(event) => void updateStatus(report, event.target.value as Report["status"])} className="min-h-9 rounded-md border border-neutral-800 bg-neutral-950 px-2 text-neutral-200">
                   <option value="pending">Pending</option><option value="reviewed">Reviewed</option><option value="resolved">Resolved</option>
                 </select>
-              </label><button type="button" onClick={() => void remove(report.commentId, report.id)} disabled={busyId === report.id} className="min-h-9 rounded-md border border-red-900/50 px-3 text-xs text-red-300 disabled:opacity-50">Delete</button></div>
+              </label><button type="button" onClick={() => void remove(report.commentId, report.id)} disabled={deletingAll || busyId !== null} className="min-h-9 rounded-md border border-red-900/50 px-3 text-xs text-red-300 disabled:opacity-50">Delete</button></div>
             </ModerationRow>
           ))}
         </div>
@@ -175,11 +185,11 @@ export default function CommentModerationManager() {
       ) : (
         <div className="space-y-3">
           {comments.map((comment) => (
-            <ModerationRow key={comment.id} id={`comment-${comment.id}`} body={comment.body} hidden={comment.isHidden} disabled={busyId === comment.id} onToggle={() => void toggleHidden(comment.id, comment.isHidden, comment.id)}>
+            <ModerationRow key={comment.id} id={`comment-${comment.id}`} body={comment.body} hidden={comment.isHidden} disabled={deletingAll || busyId !== null} onToggle={() => void toggleHidden(comment.id, comment.isHidden, comment.id)}>
               <div className="flex flex-wrap gap-2 text-xs text-neutral-300"><span>{(depths.get(comment.id) ?? 0) > 0 ? `Reply · level ${depths.get(comment.id)}` : comment.parentId ? "Reply" : "Comment"}</span><span>{comment.reportCount} reports</span>{comment.isSpoiler && <span className="text-amber-300">Spoiler</span>}</div>
               <p className="break-words text-xs text-neutral-400">{comment.mediaType} · {comment.mediaTitle}{comment.episodeId ? ` · Season ${comment.seasonNumber} Episode ${comment.episodeNumber}${comment.episodeTitle ? ` — ${comment.episodeTitle}` : ""}` : " · Title comment"}</p>
               <p className="text-xs text-neutral-500">Posted {new Date(comment.createdAt).toLocaleString()}</p>
-              <button type="button" onClick={() => void remove(comment.id, comment.id)} disabled={busyId === comment.id} className="min-h-9 rounded-md border border-red-900/50 px-3 text-xs text-red-300 disabled:opacity-50">Delete</button>
+              <button type="button" onClick={() => void remove(comment.id, comment.id)} disabled={deletingAll || busyId !== null} className="min-h-9 rounded-md border border-red-900/50 px-3 text-xs text-red-300 disabled:opacity-50">Delete</button>
             </ModerationRow>
           ))}
         </div>

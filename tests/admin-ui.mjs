@@ -7,6 +7,9 @@ import { chromium as playwright } from "playwright-core";
 import chromium, { inflate, setupLambdaEnvironment } from "@sparticuz/chromium";
 
 let nextId = 1, failLink = false;
+let moderationItems = [], requestItems = [], deleteAllError = false, deleteAllRefreshError = false, deleteAllDelay = false;
+let failNextCollectionRead = false;
+
 let failRestoreId = null, failPurgeId = null, failBinRead = false;
 let binItems = [
   { kind: "media", id: 100, mediaId: 100, title: "Deleted movie", mediaTitle: "Deleted movie", type: "movie" },
@@ -24,13 +27,27 @@ const server = createServer(async (req, res) => {
   const json = (data, status = 200) => { res.statusCode = status; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(data)); };
   let body = {};
   try {
-    if (["POST", "PATCH"].includes(req.method)) { let raw = ""; for await (const chunk of req) raw += chunk; body = raw ? JSON.parse(raw) : {}; writes.push({ path: url.pathname, body }); }
+    if (["POST", "PATCH", "DELETE"].includes(req.method)) { let raw = ""; for await (const chunk of req) raw += chunk; body = raw ? JSON.parse(raw) : {}; writes.push({ path: url.pathname, body }); }
     if (url.pathname === "/api/site-settings") return json({ wallpaperUrl: null, wallpaperOverlay: 65, wallpaperBlur: 0 });
     if (url.pathname === "/api/auth/session") return json({ authed: true });
     if (url.pathname === "/api/categories") return json([{ id: 1, name: "Action", slug: "action" }]);
     if (url.pathname === "/api/storage/status") return json({ configured: false, missing: ["test R2 configuration"], maxVideoBytes: 100000, maxImageBytes: 100000, partSizeBytes: 5242880, privateDownloads: true });
-    if (url.pathname === "/api/contact/requests") return json([]);
-    if (url.pathname === "/api/admin/comments") return json(url.searchParams.get("view") === "all" ? { comments: [] } : []);
+    if (["/api/contact/requests", "/api/admin/comments"].includes(url.pathname)) {
+      const comments = url.pathname === "/api/admin/comments";
+      if (req.method === "DELETE") {
+        if (deleteAllDelay) await new Promise((resolve) => setTimeout(resolve, 500));
+        if (deleteAllError) { deleteAllError = false; return json({ error: "Fixture Delete All API error" }, 503); }
+        if (body.confirm !== true) return json({ error: "Confirmation required" }, 400);
+        const deleted = comments ? moderationItems.length : requestItems.length;
+        if (comments) moderationItems = []; else requestItems = [];
+        if (deleteAllRefreshError) { failNextCollectionRead = true; deleteAllRefreshError = false; }
+        return json({ success: true, deleted });
+      }
+      if (failNextCollectionRead) { failNextCollectionRead = false; return json({ error: "Fixture refresh error" }, 503); }
+      // Comments expose at most 200 items; unreported comments may be invisible
+      // in the default report queue. DELETE still removes every fixture record.
+      return json(comments ? url.searchParams.get("view") === "all" ? { comments: moderationItems.slice(0, 200) } : [] : requestItems.slice(0, 200));
+    }
     if (url.pathname === "/api/updates") return json({ following: [], notifications: [], unread: 0 });
     if (url.pathname === "/api/admin/recycle-bin") {
       if (req.method === "GET") {
@@ -331,7 +348,37 @@ try {
   acceptConfirmation = true; await filter("Empty Recycle Bin").click();
   await bin.getByText("Recycle Bin is empty.", { exact: true }).waitFor(); assert.equal(binItems.length, 0);
   assert.equal(await bin.getByTestId("bin-title-folder").count(), 0);
+  // Global Delete All is intentionally not scoped to the visible filter/page.
+  for (const kind of ["comments", "requests"]) {
+    const records = Array.from({ length: 511 }, (_, index) => kind === "comments" ? { id: index + 1, parentId: null, body: `Comment ${index}`, isHidden: index % 2 === 0, isSpoiler: false, reportCount: 0, mediaId: 1, mediaTitle: "Fixture", mediaType: "anime", episodeId: null, createdAt: "2026-11-07T00:00:00Z" } : { id: index + 1, name: `Request ${index}`, requestType: "Anime", message: "Fixture request", createdAt: "2026-11-07T00:00:00Z" });
+    if (kind === "comments") moderationItems = records; else requestItems = records;
+    await adminNav.getByRole("button", { name: kind === "comments" ? "Comment moderation" : "requests", exact: true }).click();
+    const section = page.getByRole("region", { name: kind === "comments" ? "Comment moderation" : "Submitted requests", exact: true });
+    const deleteAll = section.getByRole("button", { name: "Delete All", exact: true });
+    await page.waitForFunction((label) => { const section = document.querySelector(`[aria-labelledby="${label}"]`); const button = [...section.querySelectorAll("button")].find((entry) => entry.textContent === "Delete All"); return button && !button.disabled; }, kind === "comments" ? "comment-moderation-heading" : "requests-heading");
+    for (const width of [320, 360, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${kind} Delete All fits ${width}`); }
+    acceptConfirmation = false; mutationCount = writes.length; await deleteAll.click(); assert.equal(writes.length, mutationCount, "Cancel never sends collection DELETE");
+    assert.deepEqual(confirmations.at(-1), { type: "confirm", message: `Are you sure you want to permanently delete all ${kind}?` });
+    assert.equal((kind === "comments" ? moderationItems : requestItems).length, 511);
+    acceptConfirmation = true; deleteAllError = true;
+    await deleteAll.click(); await section.getByRole("alert").filter({ hasText: "Fixture Delete All API error" }).waitFor();
+    assert.equal((kind === "comments" ? moderationItems : requestItems).length, 511, "API failure retains records");
+    deleteAllDelay = true; deleteAllRefreshError = true;
+    await deleteAll.click();
+    await section.getByRole("status").filter({ hasText: `Deleting all ${kind}…` }).waitFor();
+    assert.equal(await adminNav.getByRole("button", { name: "media", exact: true }).isDisabled(), true, "navigation locks while deleting");
+    assert.equal(await section.getByRole("button", { name: "Deleting…", exact: true }).isDisabled(), true);
+    await section.getByRole("status").filter({ hasText: `Deleted 511 ${kind}.` }).waitFor();
+    await section.getByRole("alert").filter({ hasText: "Deletion completed, but the list could not be refreshed" }).waitFor();
+    assert.equal((kind === "comments" ? moderationItems : requestItems).length, 0, "all pages cleared, not only 200 visible records");
+    deleteAllDelay = false;
+    await section.getByRole("button", { name: "Refresh", exact: true }).click();
+    await section.getByText(kind === "comments" ? "No reports in this queue." : "No requests have been submitted yet.", { exact: true }).waitFor();
+    // A second, empty operation is safe and still refreshes successfully.
+    await deleteAll.click(); await section.getByRole("status").filter({ hasText: `Deleted 0 ${kind}.` }).waitFor();
+    if (kind === "comments") { await section.getByLabel("Moderation view").selectOption("comments"); await section.getByText("No comments to moderate.", { exact: true }).waitFor(); }
+  }
   assert.equal(writes.filter((entry) => entry.path === "/api/media").length, 3);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
-  console.log("Admin fixture browser PASS: All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
+  console.log("Admin fixture browser PASS: Comments/Requests Delete All cancellation/API error/loading/nav lock/511-row full deletion/refresh failure/empty retry; All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
 } finally { await browser?.close(); await new Promise((resolve) => server.close(resolve)); }
