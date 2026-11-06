@@ -252,6 +252,8 @@ try {
         const closedInertImmediately = field.inert && field.getAttribute("aria-hidden") === "true";
         const closingProperties = shell.getAnimations().map((animation) => animation.transitionProperty);
         await finish(); const closed = measure();
+        for (let attempt = 0; attempt < 3; attempt++) { toggle.click(); await new Promise(requestAnimationFrame); toggle.click(); await new Promise(requestAnimationFrame); }
+        await finish();
         return { before, opened, closed, duration, opacity, focusDuringOpen, openingProperties, closingProperties, closedInertImmediately, inputStillMounted: input.isConnected, focusReturned: document.activeElement === toggle };
       });
       assert.equal(motion.focusDuringOpen, true, "input focuses in opening commit, before the transition finishes");
@@ -272,6 +274,56 @@ try {
   await searchToggle.click(); await page.keyboard.press("Escape"); await searchToggle.click();
   await page.keyboard.type("Wizard movie"); assert.equal(await page.getByRole("row").count(), 2);
   await page.keyboard.press("Escape"); assert.equal(await page.getByRole("row").count(), 4);
+  // The real shared public header: purple/blue/red rim, immediate focus,
+  // finite expand/reverse transitions, clean text and a static reduced-motion rim.
+  for (const reducedMotion of ["no-preference", "reduce"]) {
+    await page.emulateMedia({ reducedMotion });
+    for (const width of [320, 360, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const publicMotion = await page.evaluate(async () => {
+        const shell = document.querySelector('[data-testid="public-search-shell"]');
+        const toggle = shell.querySelector('button[aria-label="Open anime search"]');
+        const input = shell.querySelector("input"), field = document.getElementById("public-search-field");
+        const finish = async () => Promise.all(shell.getAnimations({ subtree: true }).filter((animation) => animation.effect?.getTiming().iterations !== Infinity).map((animation) => animation.finished.catch(() => {})));
+        const measure = () => ({ width: shell.getBoundingClientRect().width, headerHeight: document.querySelector("header").getBoundingClientRect().height, mainY: document.querySelector("main").getBoundingClientRect().y });
+        const before = measure(); toggle.click(); await new Promise(requestAnimationFrame);
+        const focusBeforeFinish = document.activeElement === input, properties = shell.getAnimations().map((animation) => animation.transitionProperty);
+        await finish(); const open = measure();
+        const rim = getComputedStyle(shell, "::before");
+        const firstTransform = rim.transform;
+        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) await new Promise((resolve) => setTimeout(resolve, 90));
+        const rotated = firstTransform !== getComputedStyle(shell, "::before").transform;
+        const ring = { rotated, gradient: rim.backgroundImage, playState: rim.animationPlayState, name: rim.animationName, opacity: rim.opacity, glow: getComputedStyle(shell).boxShadow };
+        toggle.click(); await new Promise(requestAnimationFrame);
+        const reverse = shell.getAnimations().map((animation) => animation.transitionProperty);
+        const inactive = field.inert && field.getAttribute("aria-hidden") === "true";
+        await finish(); const closed = measure();
+        for (let attempt = 0; attempt < 3; attempt++) { toggle.click(); await new Promise(requestAnimationFrame); toggle.click(); await new Promise(requestAnimationFrame); }
+        await finish();
+        return { before, open, closed, focusBeforeFinish, properties, reverse, ring, inactive, focusReturned: document.activeElement === toggle, closedRing: getComputedStyle(shell, "::before").opacity };
+      });
+      assert.equal(publicMotion.focusBeforeFinish, true, "public search focuses BEFORE expansion finishes");
+      assert.ok(publicMotion.open.width > publicMotion.before.width); assert.ok(Math.abs(publicMotion.closed.width - publicMotion.before.width) < 1);
+      assert.equal(publicMotion.inactive, true); assert.equal(publicMotion.focusReturned, true);
+      assert.equal(publicMotion.ring.opacity, "1"); assert.equal(publicMotion.closedRing, "0");
+      for (const color of ["rgb(168, 85, 247)", "rgb(59, 130, 246)", "rgb(239, 68, 68)"]) assert.ok(publicMotion.ring.gradient.includes(color), `rim contains ${color}`);
+      assert.notEqual(publicMotion.ring.glow, "none");
+      for (const coordinate of ["headerHeight", "mainY"]) assert.ok(Math.abs(publicMotion.before[coordinate] - publicMotion.open[coordinate]) < 1, "activation must not shift the public header/content");
+      if (reducedMotion === "reduce") { assert.equal(publicMotion.ring.name, "none"); assert.equal(publicMotion.properties.length, 0); assert.equal(publicMotion.reverse.length, 0); }
+      else { assert.equal(publicMotion.ring.rotated, true, "the gradient actually rotates, not just an animation declaration"); assert.equal(publicMotion.ring.playState, "running"); assert.ok(publicMotion.properties.includes("width")); assert.ok(publicMotion.reverse.includes("width")); }
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `public animated search fits ${width}`);
+    }
+  }
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.getByRole("button", { name: "Open anime search", exact: true }).click();
+  const publicInput = page.getByRole("combobox", { name: "Search movies, anime, and series", exact: true });
+  assert.equal(await publicInput.evaluate((element) => document.activeElement === element), true);
+  await page.keyboard.type("Wizard");
+  await page.locator("#search-suggestions").getByRole("link").first().waitFor();
+  await publicInput.press("Escape"); assert.equal(await publicInput.count(), 0);
+  await page.getByRole("button", { name: "Open anime search", exact: true }).click();
+  assert.equal(await publicInput.inputValue(), "Wizard", "closing the public animation preserves the existing query");
+  await publicInput.fill(""); await page.getByRole("button", { name: "Close anime search", exact: true }).click();
   // Density stays scoped to Admin. Wallpaper must keep its original sizing.
   for (const name of ["categories", "requests", "Comment moderation", "File batches"]) {
     await page.getByRole("button", { name, exact: true }).click();
@@ -424,5 +476,5 @@ try {
   }
   assert.equal(writes.filter((entry) => entry.path === "/api/media").length, 3);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
-  console.log("Admin fixture browser PASS: real search expand/reverse transitions, immediate pre-animation focus, no Add Media/table layout jump, reduced-motion, rapid reversal; Comments/Requests Delete All cancellation/API error/loading/nav lock/511-row full deletion/refresh failure/empty retry; All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
+  console.log("Admin fixture browser PASS: public purple/blue/red rotating rim, immediate focus, stable layout, reverse fade and reduced-motion; real search expand/reverse transitions, immediate pre-animation focus, no Add Media/table layout jump, reduced-motion, rapid reversal; Comments/Requests Delete All cancellation/API error/loading/nav lock/511-row full deletion/refresh failure/empty retry; All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
 } finally { await browser?.close(); await new Promise((resolve) => server.close(resolve)); }

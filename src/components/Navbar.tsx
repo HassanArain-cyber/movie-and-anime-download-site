@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import searchStyles from "./PublicSearch.module.css";
 import NotificationBell from "./NotificationBell";
 import RequestContact from "@/components/RequestContact";
 import { isSearchableContentType } from "@/lib/search";
@@ -86,7 +87,14 @@ export default function Navbar() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchToggle = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (searchExpanded) searchInput.current?.focus({ preventScroll: true });
+  }, [searchExpanded]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const closeSearch = () => { setSearchExpanded(false); setSearchOpen(false); searchToggle.current?.focus({ preventScroll: true }); };
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [scrolled, setScrolled] = useState(false);
@@ -333,35 +341,30 @@ export default function Navbar() {
 
         <form ref={searchRef} onSubmit={handleSearch} role="search" className="relative order-1 ml-0 w-full max-w-none flex-none basis-full lg:order-none lg:ml-auto lg:max-w-xs lg:flex-1 lg:basis-auto">
           <div className="relative">
+            <div className={searchStyles.shell} data-open={searchExpanded} data-testid="public-search-shell">
+              <button ref={searchToggle} type="button" aria-label="Open anime search" title="Search movies, anime, and series" aria-expanded={searchExpanded} aria-controls="public-search-field" onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)} className={searchStyles.toggle}>
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
+              </button>
+              <div id="public-search-field" className={searchStyles.field} inert={!searchExpanded} aria-hidden={!searchExpanded}>
             <input
+              ref={searchInput}
               type="search"
               placeholder="Search…"
               value={query}
               onChange={(event) => handleQueryChange(event.target.value)}
               onFocus={() => { if (query.trim()) setSearchOpen(true); }}
-              onKeyDown={(event) => { if (event.key === "Escape") setSearchOpen(false); }}
+              onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }}
               autoComplete="off"
               aria-label="Search movies, anime, and series"
               role="combobox"
               aria-autocomplete="list"
               aria-expanded={searchOpen && Boolean(query.trim())}
               aria-controls="search-suggestions"
-              className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-1.5 pl-8 text-sm text-white placeholder-neutral-500 outline-none focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700"
+              className={searchStyles.input}
             />
-            <svg
-              aria-hidden="true"
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+                <button type="button" aria-label="Close anime search" title="Close search" onClick={closeSearch} className={searchStyles.close}><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+              </div>
+            </div>
             {searchOpen && query.trim() && (
               <div
                 id="search-suggestions"

@@ -749,6 +749,7 @@ await page.setViewportSize({ width: 1280, height: 900 });
 const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
 const suggestions = page.locator("#search-suggestions");
 await page.goto(`${base}/?type=anime`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Juju");
 await suggestions.getByText(`Jujutsu Kaisen ${run}`, { exact: true }).waitFor();
 const desktopSearchLayout = await suggestions.evaluate((dropdown) => {
@@ -769,6 +770,7 @@ const animeSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) 
 assert.ok(animeSuggestionHrefs.length > 0 && animeSuggestionHrefs.every((href) => href?.startsWith("/anime/")), "selected Anime filter must scope every live suggestion");
 await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${base}/?type=movie`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Juju");
 await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
 const mobileSuggestionBounds = await suggestions.boundingBox();
@@ -777,6 +779,7 @@ const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) 
 assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("To You, in 2000 Years");
 const episodeAnchor = suggestions.locator('a[href*="#episode-"]');
 await episodeAnchor.waitFor();
@@ -792,8 +795,10 @@ await episodeAnchor.click();
 await page.waitForURL((url) => url.pathname === `/anime/attack-on-titan-${run}` && /^#episode-\d+$/.test(url.hash));
 await page.locator(new URL(page.url()).hash).waitFor();
 await page.goto(`${base}/`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("NoSuchVaultTitle");
 await suggestions.getByText(/No matching results found/).waitFor();
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("");
 await searchBox.pressSequentially("Juju", { delay: 35 });
 await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
@@ -804,6 +809,7 @@ await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*A
 await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
 await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
 
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Legacy");
 await searchBox.press("Enter");
 await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && url.searchParams.get("type") === "anime");
