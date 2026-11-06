@@ -27,7 +27,7 @@ Permanent delete and Empty Bin use concise Cancel/OK dialogs, without asking the
 
 Admin section tabs stay sticky below the existing public header. Their top offset follows the public header’s measured height at each responsive breakpoint; the tabs retain their normal layout footprint. Switching from a deeply scrolled section reveals the new section below the sticky tabs. Existing busy-operation navigation locks remain in place.
 
-Media Library filtering starts as a search icon. Opening it mounts and immediately focuses the input in the same interaction, including keyboard activation. The close button or Escape clears the filter, closes the input, and returns focus to the icon. Title/type filtering and the existing media-section filters are otherwise unchanged.
+Media Library filtering starts as a search icon. Opening it immediately focuses the already-mounted input in the same interaction, including keyboard activation. Its shell expands/slides with a subtle fade and reverses on close, without moving Add Media or the table. Focus never waits for an animation timer. Closed controls are inert and hidden from accessibility navigation; reduced-motion disables transitions. The close button or Escape clears the filter, closes the input, and returns focus to the icon. Title/type filtering and the existing media-section filters are otherwise unchanged.
 
 ## R2 safety
 

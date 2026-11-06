@@ -228,6 +228,50 @@ try {
     await page.getByRole("button", { name: "Close media search", exact: true }).click();
     assert.equal(await search.count(), 0); assert.equal(await toggle.getAttribute("aria-expanded"), "false");
   }
+  // Verify actual opening/reverse transitions, not just a CSS class name.
+  // Focus is sampled BEFORE awaiting animations; motion must never gate typing.
+  for (const reducedMotion of ["no-preference", "reduce"]) {
+    await page.emulateMedia({ reducedMotion });
+    for (const width of [320, 360, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const motion = await page.evaluate(async () => {
+        const shell = document.querySelector('[data-testid="media-search-shell"]');
+        const toggle = shell.querySelector('button[aria-label="Search media"]');
+        const input = shell.querySelector("input");
+        const field = document.getElementById("admin-media-search");
+        const add = [...document.querySelectorAll("button")].find((element) => element.textContent === "+ Add media");
+        const measure = () => ({ addX: add.getBoundingClientRect().x, addY: add.getBoundingClientRect().y, tableY: document.querySelector("table").getBoundingClientRect().y, width: shell.getBoundingClientRect().width });
+        const finish = async () => { await Promise.all(shell.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => {}))); };
+        await finish(); const before = measure();
+        toggle.click(); await new Promise(requestAnimationFrame);
+        const focusDuringOpen = document.activeElement === input;
+        const openingProperties = shell.getAnimations().map((animation) => animation.transitionProperty);
+        const duration = getComputedStyle(shell).transitionDuration;
+        await finish(); const opened = measure(); const opacity = getComputedStyle(field).opacity;
+        toggle.click(); await new Promise(requestAnimationFrame);
+        const closedInertImmediately = field.inert && field.getAttribute("aria-hidden") === "true";
+        const closingProperties = shell.getAnimations().map((animation) => animation.transitionProperty);
+        await finish(); const closed = measure();
+        return { before, opened, closed, duration, opacity, focusDuringOpen, openingProperties, closingProperties, closedInertImmediately, inputStillMounted: input.isConnected, focusReturned: document.activeElement === toggle };
+      });
+      assert.equal(motion.focusDuringOpen, true, "input focuses in opening commit, before the transition finishes");
+      assert.ok(motion.opened.width > motion.before.width, `search expands at ${width}`);
+      assert.ok(Math.abs(motion.closed.width - motion.before.width) < 1, "closing reverses to the icon width");
+      assert.equal(motion.opacity, "1"); assert.equal(motion.closedInertImmediately, true);
+      assert.equal(motion.inputStillMounted, true, "do not unmount before a closing transition can run");
+      assert.equal(motion.focusReturned, true);
+      for (const coordinate of ["addX", "addY", "tableY"]) { assert.ok(Math.abs(motion.before[coordinate] - motion.opened[coordinate]) < 1, `no layout jump: ${coordinate}`); assert.ok(Math.abs(motion.before[coordinate] - motion.closed[coordinate]) < 1); }
+      if (reducedMotion === "reduce") { assert.equal(motion.duration, "0s"); assert.equal(motion.openingProperties.length, 0); assert.equal(motion.closingProperties.length, 0); }
+      else { assert.ok(motion.openingProperties.includes("width"), "real width transition on open"); assert.ok(motion.closingProperties.includes("width"), "real width transition on close"); }
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `animated search fits ${width}`);
+    }
+  }
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  // Rapid reversal must keep focus and input value usable, without delayed timers.
+  const searchToggle = page.getByRole("button", { name: "Search media", exact: true });
+  await searchToggle.click(); await page.keyboard.press("Escape"); await searchToggle.click();
+  await page.keyboard.type("Wizard movie"); assert.equal(await page.getByRole("row").count(), 2);
+  await page.keyboard.press("Escape"); assert.equal(await page.getByRole("row").count(), 4);
   // Density stays scoped to Admin. Wallpaper must keep its original sizing.
   for (const name of ["categories", "requests", "Comment moderation", "File batches"]) {
     await page.getByRole("button", { name, exact: true }).click();
@@ -380,5 +424,5 @@ try {
   }
   assert.equal(writes.filter((entry) => entry.path === "/api/media").length, 3);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
-  console.log("Admin fixture browser PASS: Comments/Requests Delete All cancellation/API error/loading/nav lock/511-row full deletion/refresh failure/empty retry; All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
+  console.log("Admin fixture browser PASS: real search expand/reverse transitions, immediate pre-animation focus, no Add Media/table layout jump, reduced-motion, rapid reversal; Comments/Requests Delete All cancellation/API error/loading/nav lock/511-row full deletion/refresh failure/empty retry; All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
 } finally { await browser?.close(); await new Promise((resolve) => server.close(resolve)); }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import styles from "./MediaSearch.module.css";
 import MediaForm from "./MediaForm";
 import MediaEditor from "./MediaEditor";
 import type { Media, Category, MediaType } from "@/lib/types";
@@ -13,7 +14,12 @@ export default function MediaManager({ onBusyChange }: { onBusyChange?: (busy: b
   const [kind, setKind] = useState<MediaType | "">("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchToggle = useRef<HTMLButtonElement>(null);
-  const focusSearch = useCallback((node: HTMLInputElement | null) => { node?.focus(); }, []);
+  const searchInput = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    // Focus in the opening commit, not after the CSS transition or a timer.
+    // The input is already mounted; inert/visibility are removed before focus.
+    if (searchOpen) searchInput.current?.focus({ preventScroll: true });
+  }, [searchOpen]);
   const closeSearch = () => { setSearchOpen(false); setFilter(""); searchToggle.current?.focus(); };
   const [filter, setFilter] = useState("");
   const [err, setErr] = useState("");
@@ -69,10 +75,17 @@ export default function MediaManager({ onBusyChange }: { onBusyChange?: (busy: b
           {([ ["", "All media"], ["movie", "Movies"], ["anime", "Anime"], ["series", "Series"] ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={`min-h-9 rounded-md border px-2 py-1 text-xs ${kind === value ? "border-purple-500/50 bg-purple-500/15 text-purple-200" : "border-neutral-800 text-neutral-400"}`}>{label}<span className="ml-1 text-[11px] text-neutral-500">{items.filter((item) => !value || item.type === value).length}</span></button>)}
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <button ref={searchToggle} type="button" aria-label="Search media" title="Search media" aria-expanded={searchOpen} aria-controls={searchOpen ? "admin-media-search" : undefined} onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)} className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 text-neutral-300 hover:text-purple-200"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg></button>
-        {searchOpen && <div id="admin-media-search" className="flex min-w-0 flex-1 items-center gap-1"><input ref={focusSearch} type="search" aria-label="Filter media by title or type" value={filter} onChange={(event) => setFilter(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }} placeholder="Filter by title or type…" className="min-h-9 w-full min-w-0 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-sm text-white outline-none focus:border-purple-500" /><button type="button" aria-label="Close media search" title="Close search and clear filter" onClick={closeSearch} className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 text-neutral-400 hover:text-white"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div>}
-        <button type="button" onClick={() => setCreating(true)} className={`${!searchOpen ? "ml-auto" : ""} min-h-9 shrink-0 rounded-md bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500`}>+ Add media</button>
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className={styles.shell} data-open={searchOpen} data-testid="media-search-shell">
+            <button ref={searchToggle} type="button" aria-label="Search media" title="Search media" aria-expanded={searchOpen} aria-controls="admin-media-search" onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)} className={styles.toggle}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg></button>
+            <div id="admin-media-search" className={styles.field} inert={!searchOpen} aria-hidden={!searchOpen}>
+              <input ref={searchInput} type="search" aria-label="Filter media by title or type" value={filter} onChange={(event) => setFilter(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }} placeholder="Filter by title or type…" className={styles.input} />
+              <button type="button" aria-label="Close media search" title="Close search and clear filter" onClick={closeSearch} className={styles.close}><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+            </div>
+          </div>
+        </div>
+        <button type="button" onClick={() => setCreating(true)} className="min-h-9 shrink-0 rounded-md bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500">+ Add media</button>
       </div>
       {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
       {loading ? <p className="p-4 text-sm text-neutral-500">Loading…</p> : (
