@@ -30,7 +30,7 @@ export default function NotificationBell() {
       {!data && !error && <p className="p-3 text-sm text-neutral-400">Loading…</p>}
       {data && !data.notifications.length && <p className="p-3 text-sm text-neutral-400">No episode alerts yet. Follow an anime or series to get started.</p>}
       <div className="space-y-1">{data?.notifications.slice(0, 6).map((item) => <NotificationItem key={item.id} item={item} onOpen={() => { if (ref.current) ref.current.open = false; }} />)}</div>
-      <div className="mt-2 flex flex-wrap gap-4 border-t border-neutral-800 p-2 text-xs text-purple-300"><Link href="/notifications" onClick={() => { if (ref.current) ref.current.open = false; }}>All notifications</Link><Link href="/following" onClick={() => { if (ref.current) ref.current.open = false; }}>Following &amp; preferences</Link></div>
+      <div className="mt-2 flex flex-wrap gap-4 border-t border-neutral-800 p-2 text-xs text-purple-300"><Link href="/notifications" onClick={() => { if (ref.current) ref.current.open = false; }}>All notifications</Link><Link href="/following" onClick={() => { if (ref.current) ref.current.open = false; }}>Following</Link></div>
     </section>
   </details>;
 }

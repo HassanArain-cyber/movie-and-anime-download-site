@@ -97,9 +97,9 @@ Rollback: redeploy the previous application commit without dropping the new colu
 
 ## Followed titles and episode alerts
 
-Anime/series detail pages support anonymous browser-local Follow, a Following page, notification bell/history, and optional standard encrypted VAPID Web Push. New alerts are automatic on the **first usable episode link**, not placeholders or additional qualities. Push permission requires an explicit Enable click; disabling push retains follows/history. No public account or paid notification service is needed.
+Anime/series detail pages support anonymous browser-local Follow/Unfollow, five watch statuses (Plan to Watch, Watching, Continue, On-Hold, Watched), one compact Following page, and an in-site notification bell/history. New alerts are automatic on the **first usable episode link**, not placeholders or additional qualities. All five statuses receive in-site updates. No public account, browser push, external episode notification channel, or paid notification service is used.
 
-Apply additive migration `0007` before release. Push needs stable VAPID/encryption keys plus authenticated retry scheduling; in-site alerts work without push configuration. See [setup, security, scheduling, exact tests and platform limits](docs/anime-notifications.md). Production rollout/key setup and physical Android receipt are separate operator acceptance steps.
+The unapplied additive migration `0007` defines the four in-site notification/follow tables and status constraint. It must be explicitly reviewed/applied before a release; builds do not migrate databases. See [behavior, security, retries and verification limits](docs/anime-notifications.md). No migration or deployment is authorized by these source changes.
 
 ## Tests
 
@@ -110,7 +110,7 @@ npm test
 npm run build
 ```
 
-End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub, and a local browser-push transport. They do **not** contact Cloudflare, Resend, or real push providers. The CI runner starts/stops the mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
+End-to-end tests use a disposable PostgreSQL-compatible test database, a local S3-compatible mock, and a local Resend stub. They do **not** contact Cloudflare, Resend, or external episode notification providers. The CI runner starts/stops the mocks and the app, seeds legacy fixtures, and refuses non-loopback database/app/provider targets:
 
 ```bash
 # Terminal 1: a fresh disposable real PostgreSQL instance (required for concurrent

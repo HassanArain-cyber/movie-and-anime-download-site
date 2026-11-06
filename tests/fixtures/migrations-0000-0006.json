@@ -1,0 +1,61 @@
+{
+  "commit": "5e7b92abbed48f93c7f0ea00016ec9dcfccf099a",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793511643169,
+      "tag": "0000_existing_schema",
+      "breakpoints": true,
+      "sha256": "a6df4f96dd9c941b4d05b098fe3e6f43e1f7029a3f04cd7b3a4c506b623d45ae"
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793512872497,
+      "tag": "0001_r2_storage",
+      "breakpoints": true,
+      "sha256": "f02d1b855b98f4078d96ffd80a4c98c656a1052d78bed8bcb9c81474ada890cb"
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793522364964,
+      "tag": "0002_auth_rate_limits",
+      "breakpoints": true,
+      "sha256": "3b8a1a341efd789384dfb1e12838ae0abd5bba17761a3804b823c6e768ec4710"
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793529555040,
+      "tag": "0003_upload_operation_lease",
+      "breakpoints": true,
+      "sha256": "5d6fc9fad489c385dc8ce379c7dcd13b9da81b7d2fd030836f2119fe0114c43b"
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793595062622,
+      "tag": "0004_site_wallpaper",
+      "breakpoints": true,
+      "sha256": "f7431445d99a3ec4c4fb2dee24c7c55f51b98e38c227a4343cc721259da6d4db"
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793616734911,
+      "tag": "0005_contact_requests",
+      "breakpoints": true,
+      "sha256": "494e85d7d5de19757d6596db2ec55d6e8d8ef6007af538be270031376ae55a6f"
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793711657492,
+      "tag": "0006_comments",
+      "breakpoints": true,
+      "sha256": "bc29fc4bd38759e55cd85e968c5ef39cacc955d1a3b581373ae590a2f9c1e252"
+    }
+  ]
+}

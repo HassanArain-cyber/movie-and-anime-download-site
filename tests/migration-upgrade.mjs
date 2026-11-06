@@ -45,10 +45,23 @@ assert.deepEqual((await pool.query(`SELECT id,media_id,season_number,name FROM s
 assert.deepEqual((await pool.query(`SELECT id,media_id,season_id,episode_number,title,duration FROM episodes ORDER BY id`)).rows, episodesBefore.rows);
 const columns = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='download_links'`);
 for (const name of ["season_id", "quality", "storage_provider", "object_key", "size_bytes"]) assert.ok(columns.rows.some((row) => row.column_name === name));
-for (const table of ["comments", "comment_likes", "comment_reports", "subscribers", "anime_follows", "episode_publications", "episode_notifications", "push_subscriptions", "push_deliveries"]) {
+for (const table of ["comments", "comment_likes", "comment_reports", "subscribers", "anime_follows", "episode_publications", "episode_notifications"]) {
   const exists = await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`]);
   assert.equal(exists.rows[0].relation, table, `${table} should be added by migrations`);
 }
+for (const table of ["push_subscriptions", "push_deliveries"]) {
+  assert.equal((await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`])).rows[0].relation, null);
+}
+const statusSubscriber = "9".repeat(64);
+await pool.query("INSERT INTO subscribers (id) VALUES ($1)", [statusSubscriber]);
+await pool.query("INSERT INTO anime_follows (subscriber_id,media_id) VALUES ($1,$2)", [statusSubscriber, anime.rows[0].id]);
+assert.equal((await pool.query("SELECT watch_status FROM anime_follows WHERE subscriber_id=$1", [statusSubscriber])).rows[0].watch_status, "plan_to_watch");
+for (const status of ["plan_to_watch", "watching", "continue", "on_hold", "watched"]) {
+  await pool.query("UPDATE anime_follows SET watch_status=$2 WHERE subscriber_id=$1", [statusSubscriber, status]);
+}
+await assert.rejects(pool.query("UPDATE anime_follows SET watch_status='invalid' WHERE subscriber_id=$1", [statusSubscriber]), /check constraint/i);
+await assert.rejects(pool.query("UPDATE anime_follows SET watch_status=NULL WHERE subscriber_id=$1", [statusSubscriber]), /not-null constraint/i);
+await pool.query("DELETE FROM subscribers WHERE id=$1", [statusSubscriber]);
 for (const table of ["media", "episodes"]) {
   const commentFlag = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name=$1 AND column_name='comments_enabled'", [table]);
   assert.equal(commentFlag.rowCount, 1, `${table}.comments_enabled should be added`);

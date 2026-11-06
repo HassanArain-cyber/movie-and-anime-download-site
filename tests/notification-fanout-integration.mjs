@@ -18,8 +18,6 @@ async function fixture(size) {
   fixtures.push({ mediaId: media.id, ids });
   await pool.query("INSERT INTO subscribers (id) SELECT unnest($1::varchar[])", [ids]);
   await pool.query("INSERT INTO anime_follows (subscriber_id,media_id) SELECT unnest($1::varchar[]),$2", [ids, media.id]);
-  // A job for every recipient proves atomic notification/outbox checkpointing.
-  await pool.query("INSERT INTO push_subscriptions (subscriber_id,endpoint_hash,encrypted) SELECT id,id,'test-only-not-a-real-subscription' FROM subscribers WHERE id=ANY($1::varchar[])", [ids]);
   const season = (await pool.query("INSERT INTO seasons (media_id,season_number) VALUES ($1,1) RETURNING id", [media.id])).rows[0];
   const episode = (await pool.query("INSERT INTO episodes (media_id,season_id,episode_number) VALUES ($1,$2,1) RETURNING id", [media.id, season.id])).rows[0];
   await pool.query("INSERT INTO download_links (episode_id,url) VALUES ($1,'https://example.com/fanout')", [episode.id]);
@@ -28,8 +26,7 @@ async function fixture(size) {
 async function state(id) {
   const result = await pool.query(`SELECT p.processed_at,
     (SELECT count(*)::int FROM episode_notifications n WHERE n.episode_id=p.episode_id) AS notifications,
-    (SELECT count(DISTINCT subscriber_id)::int FROM episode_notifications n WHERE n.episode_id=p.episode_id) AS recipients,
-    (SELECT count(*)::int FROM push_deliveries d JOIN episode_notifications n ON n.id=d.notification_id WHERE n.episode_id=p.episode_id) AS jobs
+    (SELECT count(DISTINCT subscriber_id)::int FROM episode_notifications n WHERE n.episode_id=p.episode_id) AS recipients
     FROM episode_publications p WHERE p.episode_id=$1`, [id]);
   return result.rows[0];
 }
@@ -46,7 +43,6 @@ async function complete(id, count) {
   const actual = await state(id);
   assert.equal(actual.notifications, count);
   assert.equal(actual.recipients, count, "one notification per distinct follower");
-  assert.equal(actual.jobs, count, "one durable push job per notification/subscription");
   assert.ok(actual.processed_at, "only a fully drained event is completed");
 }
 try {
@@ -68,7 +64,7 @@ try {
   let gated = false;
   const pausedPool = intercept(async (client, ...args) => {
     const result = await client.query(...args);
-    if (!gated && args[0].includes("INSERT INTO push_deliveries")) { gated = true; entered(); await gate; }
+    if (!gated && args[0].includes("UPDATE episode_publications p SET processed_at")) { gated = true; entered(); await gate; }
     return result;
   });
   const owner = drainFanout(pausedPool, until());
@@ -86,9 +82,9 @@ try {
   const partial = await fixture(1001);
   let page = 0;
   const failingPool = intercept(async (client, ...args) => {
-    if (args[0].includes("INSERT INTO push_deliveries") && ++page === 2) {
+    if (args[0].includes("UPDATE episode_publications p SET processed_at") && ++page === 2) {
       // Real SQL failure after the second page's notification insert: PG aborts
-      // this transaction, so the page/outbox/completion must all roll back.
+      // this transaction, so the page/completion must all roll back.
       await client.query("SELECT 1/0");
     }
     return client.query(...args);
@@ -96,7 +92,6 @@ try {
   await assert.rejects(drainFanout(failingPool, until()), /division by zero/);
   const checkpoint = await state(partial);
   assert.equal(checkpoint.notifications, 500, "first page remains durably committed");
-  assert.equal(checkpoint.jobs, 500, "failed page leaves no orphan notification/jobs");
   assert.equal(checkpoint.processed_at, null, "failed page must remain retryable");
   assert.equal(await drainFanout(pool, until()), 501);
   await complete(partial, 1001);
@@ -113,8 +108,6 @@ try {
   await pool.query("UPDATE episode_publications SET published_at=date_trunc('milliseconds',clock_timestamp())+interval '999 microseconds' WHERE episode_id=$1", [precise]);
   await pool.query(`UPDATE anime_follows f SET created_at=date_trunc('milliseconds',p.published_at)+interval '500 microseconds'
     FROM episode_publications p WHERE p.episode_id=$1 AND f.media_id=p.media_id`, [precise]);
-  await pool.query(`UPDATE push_subscriptions s SET created_at=date_trunc('milliseconds',p.published_at)+interval '500 microseconds'
-    FROM anime_follows f JOIN episode_publications p ON p.media_id=f.media_id WHERE p.episode_id=$1 AND s.subscriber_id=f.subscriber_id`, [precise]);
   assert.equal(await drainFanout(pool, until()), 511);
   await complete(precise, 511);
   const expired = await fixture(511);
@@ -122,7 +115,7 @@ try {
   assert.equal((await state(expired)).processed_at, null, "deadline exhaustion leaves durable work");
   assert.equal(await drainFanout(pool, until()), 511);
   await complete(expired, 511);
-  console.log("Fanout integration PASS: exact 500/1000 boundaries, 1501 recipients, deterministic overlapping 511 workers, page-two SQL rollback/resume, exactly-once notification/jobs, batch budget/deadline recovery and microsecond-precision eligibility.");
+  console.log("Fanout integration PASS: exact 500/1000 boundaries, 1501 recipients, deterministic overlapping 511 workers, page-two SQL rollback/resume, exactly-once notifications, batch budget/deadline recovery and microsecond-precision eligibility.");
 } finally {
   for (const item of fixtures) {
     await pool.query("DELETE FROM media WHERE id=$1", [item.mediaId]);

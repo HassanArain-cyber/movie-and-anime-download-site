@@ -1,113 +1,182 @@
-# Followed anime/series and episode notifications
+# Following, watch statuses and in-site episode updates
 
-## Scope and release safety
+## Scope
 
-This is an additive feature on top of the existing Next.js App Router, PostgreSQL/Drizzle, password-protected Admin and vanilla PWA worker. No public login, Firebase, paid notification service, R2/public-bucket change, wallpaper change or comment-session change is introduced. `web-push` implements standard VAPID and encrypted Web Push. A browser vendor's free push endpoint is the transport, including Chromium's FCM endpoint; this does **not** require a Firebase project or Firebase SDK.
+Anime/series detail pages support anonymous Follow/Unfollow, a compact Following
+page, and an in-site notification bell/history. No public account is introduced.
+There is no browser push, VAPID, permission request, email/SMS episode delivery,
+external notification transport, or subscription storage. Existing contact-email,
+Admin, R2, wallpaper, comments and download workflows are unrelated and retained.
 
-This branch does not merge or deploy production, apply a remote migration, configure remote secrets or send a real device push. A normal branch push may cause the repository's existing Vercel **Preview** automation. Production release remains an operator decision.
+The existing PWA manifest, icons, installation, worker registration, static cache
+and offline fallback remain. Only push/notification-click worker handlers have
+been removed. Updates are visible inside the website while online; there is no
+promise of alerts while the website is closed or disconnected.
 
-## User workflow
+## Exactly one watch status
 
-1. Open any **anime or series** detail and select **Follow**. The state and follower count update. Repeat clicks/retries cannot duplicate a follow.
-2. **Following** lists up to 500 saved titles in this browser, with detail links, unfollow controls and a new-episode indicator. Movies deliberately have no Follow control.
-3. **Following → Notification preferences → Enable browser push** explicitly requests browser permission. Loading a page or following a title never requests it.
-4. Publishing an episode's **first usable episode-level download link** creates a durable publication event. An empty episode/season/placeholder, a media/season-level link, another quality, a link edit, or deletion/re-addition does not republish it.
-5. The notification bell shows unread count and recent alerts. **All notifications** provides a bounded, paginated history, individual read-on-click and mark-all-read. Each alert includes real title, season, episode number/title and the exact detail-page `#episode-ID` link. Opening that link also expands the episode and its season.
-6. Disabling push revokes the server subscription before browser unsubscribe. It does not unregister the PWA, unfollow titles, or erase notification history. Unfollowing blocks future alerts and cancels queued push for the title; existing history remains.
+Each `(subscriber_id, media_id)` follow row has one non-null `watch_status`:
 
-### Anonymous identity / privacy
-
-`vault_subscriber` is a separate, host-only, HttpOnly, SameSite=Lax cookie, Secure in production, with a one-year lifetime. Its 256-bit random bearer value is never returned in JSON; only its domain-separated SHA-256 digest is persisted. It does not reuse or change comment/admin cookies. Browser Web Locks serialize first-load initialization in supporting browsers. No email, name, public account or device fingerprint is collected. This is browser-local identity, not cross-device synchronization or recoverable account storage: clearing site data, private browsing, expiry or changing browser/origin loses access to those follows/history. Shared-browser users share the same identity.
-
-Subscriber APIs scope every operation to that cookie and reject cross-site origins. Mutation JSON bodies and encryption keys are validated/bounded; database-backed quotas apply (240 reads / 10 minutes, 120 general mutations / 10 minutes, 20 push changes / 10 minutes). Initial identities are limited to 30/hour per trusted IP and 2,000/hour globally. IP quota keys are HMACs, not raw IPs. The existing trusted-IP-header configuration is reused; do not trust a spoofable client-supplied forwarding header. There is a 500-title/browser cap.
-
-All inbox/follow/preferences responses are private/no-store. Push endpoints/keys are AES-256-GCM encrypted at rest with a versioned authenticated envelope; an endpoint digest enforces uniqueness. Only the owning identity can disable/update it; another identity cannot claim the same endpoint. No endpoint, browser auth key, private VAPID key, subscriber cookie, provider response body or ciphertext is returned/logged. The public VAPID key is intentionally public. Endpoint validation permits HTTPS/standard port only for the supported Chromium, Mozilla, Apple and Windows browser push services; it rejects arbitrary/private endpoints, credentials, fragments and malformed P-256 points, preventing this public API from becoming an SSRF proxy.
-
-## Required configuration
-
-In-site follows/notifications need the existing `DATABASE_URL` and `ADMIN_PASSWORD` (at least eight characters), plus migration `0007`. Push is optional: missing/invalid push configuration disables its Enable control, **not** in-site history. See `.env.example`.
-
-Generate a VAPID pair once, locally:
-
-```sh
-npx web-push generate-vapid-keys --json
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
-node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-```
-
-Set **server-only** environment variables (never `NEXT_PUBLIC_`):
-
-| Variable | Value |
+| Stored value | Label |
 | --- | --- |
-| `WEB_PUSH_PUBLIC_KEY` | Generated `publicKey` (returned by the private configuration API for PushManager) |
-| `WEB_PUSH_PRIVATE_KEY` | Matching generated `privateKey`; only the server uses it |
-| `WEB_PUSH_SUBJECT` | Your real `mailto:owner@domain` or HTTPS contact URL |
-| `PUSH_SUBSCRIPTION_SECRET` | Second command's output: exactly 32 random bytes, canonical base64 |
-| `CRON_SECRET` | Third command's output: at least 32 random characters |
-| `NOTIFICATION_RATE_LIMIT_SECRET` | Optional independent random HMAC key; otherwise existing `ADMIN_PASSWORD` |
+| `plan_to_watch` | Plan to Watch |
+| `watching` | Watching |
+| `continue` | Continue |
+| `on_hold` | On-Hold |
+| `watched` | Watched |
 
-Keep these stable across serverless instances/redeployments. Validate configuration with a matching VAPID pair, not just syntactically similar keys. Do not commit generated secrets. Keep Preview and Production database/keys isolated. Set the existing `APP_ORIGIN` to the real public HTTPS origin if required by your reverse proxy.
+New follows default to Plan to Watch. Continue is manually selected, not an
+inferred playback/episode-progress tracker. A database CHECK and API validation
+restrict values. PATCH `/api/follows` with `{mediaId, watchStatus}` updates only
+the owning subscriber's existing follow; it does not change `created_at`, create
+a missing follow, reset read history or publish notifications. Repeated Follow
+requests do not reset an existing status. Unfollow is a separate DELETE action.
+All five statuses remain eligible for episode updates.
 
-After review, apply to the **intended** database before releasing code:
+The single `/following` page has All plus five wrapping status filters/counts,
+compact cards and a status selector. No separate status pages are created.
 
-```sh
-npm ci
-npm run db:migrate
-npm run build
-```
+## Anonymous identity and security
 
-`0007_anime_notifications.sql` creates six new tables and indexes, backfills **already published** episodes as processed (no historical spam), and installs a first-link INSERT/UPDATE trigger on `download_links`. It does not rewrite existing media, episodes, links, uploads, settings, comments or storage. Installation locks link writes briefly to serialize backfill/trigger creation; schedule a low-traffic migration. Drizzle's migration transaction keeps it atomic. Do not use `db:push`, re-run individual SQL fragments or change old migrations. The generated schema snapshot/journal accompany the migration.
+A random 256-bit HttpOnly, SameSite=Lax browser cookie identifies the subscriber;
+only its SHA-256 digest is stored. Secure cookies are used on HTTPS. This is
+independent of Admin/comment sessions. Clearing site data loses this anonymous
+identity; there is no account recovery or cross-device synchronization.
 
-### Publication, fanout and delivery architecture
+Follow and notification writes retain same-origin/CSRF checks and quotas. A
+subscriber row lock serializes follow writes and the 500-title limit. APIs scope
+all operations to the current subscriber. Inbox/follow responses are private and
+no-store; service-worker API/Admin cache exclusions remain unchanged.
 
-- The tiny database trigger writes one publication marker per episode, in the same transaction as its first usable link. It snapshots the title/episode metadata and relative episode URL. It never calls a network service or fans out to followers. Existing external HTTP(S), Telegram/magnet, legacy upload and valid attached private-R2 links are supported. R2 multipart completion alone is not publication: the existing validated attachment route must save the episode link.
-- Existing link POST/PATCH responses schedule a best-effort `next/server after()` worker. Publication returns without waiting for network delivery. Regular `/api/updates` traffic also resumes pending work after its response.
-- Durable worker transactions claim one publication page with `FOR UPDATE SKIP LOCKED`, insert up to 500 recipients, and atomically commit its notifications/push jobs. Each invocation drains up to 20 pages within the shared deadline, resuming remaining work on later invocations. Committed notification rows are the durable pagination checkpoint (no OFFSET or separately advanced cursor). An empty locked selection is rechecked against pending events with a bounded 25–250ms yield; it is not mistaken for an empty queue. Completion explicitly verifies that no eligible follower is missing, including exact 500/1000 boundaries. Eligibility stays in PostgreSQL to preserve microseconds. Only titles followed **before publication** qualify; following a title later never generates historical alerts. An unfollow/re-follow has a new follow timestamp.
-- Notification uniqueness is `(subscriber_id, episode_id)`. Notification creation and eligible push-job insertion commit together. Push requires a subscription enabled before the publication, so enabling push never blasts old unread alerts.
-- Unique `(notification_id, subscription_id)` jobs use database leases with random ownership tokens; a crashed worker's lease expires after two minutes. Up to ten deliveries run concurrently with eight-second transport timeouts, bounded to 200 attempts and an approximately 18-second processing budget per invocation (an in-progress batch can extend that by up to eight seconds). Routes allow 30 seconds. Unfinished work stays durable.
-- `404/410` deletes the exact expired subscription and its jobs. Network errors, `408`, `429` and `5xx` retry with delays 30, 60, 120, 240, 480, 960, 1920 seconds, capped at one hour; stop after eight attempts. Other `4xx` become failed jobs for explicit repair/retry. Disable removes jobs; unfollow cancels queued jobs and delivery rechecks ownership/follow immediately before sending. A request already handed to a push provider cannot be recalled.
-- Publishing/adding another quality cannot duplicate in-site notifications or jobs. **Exactly-once delivery over an external network is impossible** after an ambiguous timeout/crash following successful provider acceptance. Retries are at-least-once in that case. A stable provider Topic and service-worker notification tag/`renotify:false` collapse outstanding repeats; do not claim that every OS can never redisplay a previously dismissed notification.
-- Worker diagnostics contain only safe codes. No push transport details are exposed to anonymous callers. Old expired rate-limit buckets are removed in bounded batches.
+## Unapplied migration 0007
 
-### Automatic retries / free scheduling
+This PR's unapplied `0007_anime_notifications.sql` defines four new tables:
+`subscribers`, `anime_follows`, `episode_publications`, `episode_notifications`.
+It includes the watch-status default/check; the two push-specific tables are not
+created. No separate 0008 migration is added. The 0007 snapshot matches the revised
+schema; the journal entry stays at index 7. Existing earlier migrations are unchanged.
 
-`vercel.json` adds one daily cron at `00:00 UTC`, compatible with the daily Hobby scheduling restriction. Vercel production cron supplies `Authorization: Bearer $CRON_SECRET`. Preview deployments do **not** get scheduled cron. The route fails closed if the secret is missing/too short. Normal first delivery runs automatically after publication; the daily cron is a durable safety net, **not** a promise of minute-level background retry latency.
+The SQL is additive: no DROP, TRUNCATE, DELETE FROM, destructive ALTER or updates
+to existing content rows. It creates six cascading FKs on new tables, four explicit
+indexes, and the publication function/trigger. An INSERT SELECT backfills the new
+publication table, marking legacy episodes processed so they do not generate
+historical notifications. A SHARE ROW EXCLUSIVE lock on `download_links` serializes
+installation/backfill with link writes; publishing can briefly wait on that lock.
 
-For prompt unattended recovery or larger backlogs, configure an existing trusted/free scheduler to call this authenticated endpoint every few minutes. No paid push service or Vercel plan upgrade is required by the implementation, but deployment/provider quotas still apply. A daily-only cron can be insufficient for a large backlog: each invocation is deliberately bounded. In-site visits also drain work, but do not substitute visitor traffic for a reliable scheduler when timely recovery matters.
+The temporary Preview migration hook, durable-attempt latch code, hook tests and
+hook review document have been completely removed. `npm run build` is just
+`next build`. There is **no automatic migration mechanism**. No claim schema is
+created by application/build code. Preview/Production migration execution and deployment require a
+separate authorized operation. Migration tests ran only on isolated synthetic databases.
 
-```sh
-curl --fail --silent --show-error \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  "https://YOUR-HOST/api/internal/notifications"
-```
+Because 0007 was deliberately revised before application, do not apply it over a
+database where the old 0007 was already recorded or modify migration history to
+force it. Any disposable database with the old schema needs a separately approved
+recreation or reconciliation; no reset/migration is part of this implementation.
 
-The JSON reports created notifications, delivery attempts and configuration/backlog status. Pending jobs with a future retry time are **not** immediately eligible; do not tight-loop to bypass backoff. No public/manual initial-notify action exists. The password-authenticated, same-origin Admin session can POST `{}` to the same route to resume work; after fixing configuration it can POST `{"retryFailed":true}` to requeue at most 200 terminal failures. This retries existing jobs, not creating new notifications. It never restores disabled/expired subscriptions. Diagnose aggregate state privately with `SELECT state, count(*) FROM push_deliveries GROUP BY state;`—do not expose subscription tables or job logs publicly.
+## Publication, fanout, deduplication and retry
 
-If VAPID keys or the subscription-encryption secret are rotated/lost, existing browser subscriptions may require **Repair browser subscription** (or Disable then Enable). Keep backups of the stable secrets. A key change is not a reason to erase follows/history. Do not run the test transport preload or set its test flags in a deployed environment.
+The first usable link for an anime/series episode creates a publication in the
+same transaction as the link. Placeholders do not publish. Additional qualities,
+link edits and removing/re-adding links cannot republish an episode. Private R2
+metadata remains a usable-link source without exposing a bucket or private URL.
 
-## Browser and PWA limits
+A publication row is the durable in-site work queue. Fanout uses FOR UPDATE SKIP
+LOCKED and pages of 500 recipients. Eligibility compares follow/publication
+creation timestamps inside PostgreSQL, preserving microsecond precision. The
+unique `(subscriber_id, episode_id)` notification rows form the durable cursor;
+no OFFSET or independently advanced recipient checkpoint is used.
 
-Use HTTPS (loopback is a development exception). Supported Android Chrome/Firefox browsers can receive standard Web Push while the site is closed; no open tab is required. The browser/OS push service must still be running and connected. Browser force-stop, disabled notifications, battery/data restrictions, power-off and vendor delays can prevent or delay receipt. On iOS/iPadOS 16.4+, Web Push requires the installed Home Screen web app and a permission gesture. Desktop support varies. No paid service can remove those platform limits.
+Each page's notification inserts and completion checkpoint commit atomically.
+A failed page rolls back, retaining earlier committed pages; retry selects only
+missing recipients. A publication becomes processed only when no eligible
+recipient remains. Concurrent workers yield/recheck when another worker holds
+the only pending publication instead of declaring the queue empty. Work is
+bounded by an approximately 18-second deadline and 20 batches per invocation;
+unprocessed publications survive deadline/batch exhaustion and process failure.
 
-The existing `public/sw.js` install/activate/fetch handlers, cache version, static/offline cache, API/admin exclusions, manifest, icons and production registration remain intact; push and notification-click handlers are appended. A push click validates a same-origin anime/series episode URL, marks only the current browser's notification read, navigates/focuses a public tab or opens one, and leaves an Admin editing tab intact. Offline clicks still use the existing offline fallback. No notification permission prompt is triggered by installation.
+Publication routes schedule best-effort processing after the response. Online
+visits also resume pending work, with updates refreshed on focus/visibility and
+approximately every minute while visible. These are not external notifications.
+The authenticated internal retry endpoint remains for durable queue recovery:
+GET `/api/internal/notifications` requires an existing >=32-character CRON_SECRET;
+Admin-authenticated same-origin POST `{}` resumes the same queue. Neither route
+creates arbitrary publications or sends external messages. Responses report
+`notifications` and `pending`, not push delivery state. There is no push-job retry
+or `retryFailed` mechanism anymore.
 
-## Verification (2026-11-04)
+This PR declares a daily internal retry cron in `vercel.json`; the declaration
+was retained during the in-site-only simplification. No Vercel project or environment
+settings were changed during verification. Preview does not receive Vercel Production cron scheduling.
+Without an authorized scheduler, delayed work may resume on a later online visit
+or authorized internal retry. Timely unattended recovery is not guaranteed by
+visitor traffic or daily scheduling alone.
 
-- `npm run typecheck`: PASS.
-- `npm run lint`: PASS.
-- `npm test`: **54/54 PASS** (48 existing + six notification tests). New tests validate service-host/P-256 rejection, authenticated subscription encryption/tampering, matching key configuration, real `aes128gcm` encrypt/decrypt and ES256 VAPID signature/audience, bounded retry policy and SW display/click/cache-handler preservation.
-- Fresh disposable **real PostgreSQL** migration upgrade + repeat migration: PASS. Legacy rows/URLs remain unchanged; all new tables exist; legacy publication is processed without notifications.
-- `npm run test:e2e:ci`: PASS, including the complete prior browser/API/R2/contact/comments/admin suite and new `tests/notifications-e2e.mjs`. A deterministic real-PostgreSQL fanout regression also covers 500/1000 exact boundaries, 1501 recipients, overlapping workers holding the first 500-row transaction, actual page-two SQL failure/rollback followed by retry (notifications and push jobs), bounded-work/deadline recovery, and sub-millisecond eligibility. The original 511-follower assertion remains and additionally verifies distinct recipients and zero omitted eligible follows. New suite covers secure independent identities, persisted/concurrent follows, CSRF and ownership, first-link/placeholder/second-quality/edit/removal/re-add/concurrent dedup, repaired invalid link and private-R2 marker, 511-follower resumed fanout, paginated/read history, real encrypted push request intercepted only at the test transport, 503 retry, concurrent workers, live/expired crash-lease recovery, queued unfollow cancellation, 410 cleanup, final-failure Admin replay, push-disable/history and unfollow, anime and series, explicit-click-only permission, browser bell → expanded exact episode, and 360/390/768/1280px no-overflow checks.
-- `npm run build`: PASS (production compilation, TypeScript and static generation).
-- `PWA_BASE_URL=http://127.0.0.1:3000 npm run test:pwa` against `next start`: PASS. Manifest/installability, icons, SW activation/update, static-only caching, subscriber/auth API cache exclusion, Admin online and offline fallback retained.
-- `npm audit --omit=dev --audit-level=high`: zero production vulnerabilities. `npm audit --audit-level=high`: PASS threshold; 20 development-tool moderate advisories remain. No forced/breaking unrelated dependency update was made.
+## Verification results
 
-Tests refuse remote database/app targets. The runner generates disposable VAPID/encryption/cron secrets and intercepts only its named fake FCM endpoint through a Node test preload: validation, signing, payload encryption, job creation and failure handling remain real. Browser permission/PushManager are mocked to test the gesture and UI, not to claim a headless browser enrolled with an actual vendor. Unit SW handlers execute in a simulated worker. **Physical Android closed-browser receipt, real vendor acceptance and real device notification tap remain a manual acceptance test** after authorized HTTPS/key setup. Nothing was sent to a real push endpoint.
+The approved isolated PostgreSQL 16.14 and browser verification completed on
+2026-11-06. See [the consolidated report](pr7-verification-report-2026-11-06.md)
+for provenance and limitations.
 
-Manual acceptance: on a supported Android device follow a title → Enable browser push → close the site → publish one placeholder (no alert) → attach its first link (one OS alert/in-site unread) → tap it (correct expanded episode/read state) → add another quality (no new alert) → unfollow (future episode silent) → re-follow, disable push and publish (in-site alert only, history retained). Repeat on desktop; verify denied/unsupported permission states and OS restrictions honestly.
+- Legacy migration upgrade and genuine staged 0006 → 0007 upgrade: **PASS**,
+  including existing-row preservation, status CHECK/default validation, legacy
+  backfill without historical alerts, and no-op migration reruns.
+- Real PostgreSQL fanout: **PASS**, including exact 500/1000 boundaries, 1501
+  recipients, deterministic overlapping 511 workers, page-two SQL rollback/retry,
+  exactly-once notification rows, budgets/deadlines and microsecond eligibility.
+- Application regression E2E: **PASS**, including Admin, comments, nested replies,
+  moderation, contact, private mock R2 uploads/downloads, ranges/batches/qualities,
+  legacy content, search and responsive UI.
+- Notification API/browser E2E: **PASS**, including five statuses, subscriber
+  isolation, follow/unfollow, deduplication, 511 recipients, scoped read history,
+  bell-to-episode navigation and 360/390/768/1280px layouts.
+- Production build, including TypeScript checking: **PASS**.
+- Production-mode PWA smoke: **PASS**, including manifest/icons, worker
+  registration/update, static-only caching, API/Admin cache exclusions and offline
+  fallback. This is browser automation, not physical Android installation testing.
 
-## PR #7 fanout failure investigation
+Earlier database-free checks passed 59/59 units, standalone typecheck/lint and the
+fixture-based Following UI checks. Those fixture/unit results are separate from
+the later real database/API/browser evidence. Standalone unit/lint/typecheck
+commands were not repeated during the final remaining-only integration pass.
 
-The CI failure at 500/511 was reproduced against the original code with a deliberately held first-page transaction: both retry invocations returned `[0, 0]` because `SKIP LOCKED` skipped the only pending event; the first invocation then committed 500 and stopped. The event remained unprocessed, so these were durable queued recipients, not lost rows, but no invocation continued to the remaining 11 before the assertion. Increasing a limit or sleeping in/weakening the E2E test would hide this race, not fix it. The implementation now drains multiple committed pages and cooperates with locked work within its bounded deadline. No migration or duplicate-prevention relaxation was required.
+The successful integration run used a verified private jail, synthetic databases
+and local R2/Resend mocks. Optional tool IPC and Next.js version/upgrade checks
+were suppressed only in that disposable verification environment, without opening
+network access or weakening the guard. No dependency transformation, jail-only
+Next configuration override, runner, rootfs, log or screenshot is published in
+this PR. Normal Next.js configuration/dependencies are preserved.
 
-Each page retains the publication row lock until notification, outbox and completion changes commit together. A real PostgreSQL division-by-zero injected on page two proves its inserts roll back while page one's 500 notifications/jobs remain committed; retry creates only the remaining 501 of 1001. Tests also verify exact boundaries, 1501 recipients, two overlapping retry workers, deadline/batch exhaustion and precise timestamp eligibility. The existing encrypted-push retry, crash lease, expired subscription, unfollow and browser/API regressions are still executed unchanged.
+No Production/Preview database or real provider was accessed. Before applying
+0007 to Preview, separately verify its migration history and ensure the older
+0007 variant has not already been applied. Never rewrite history to force this
+revised migration. This report does not authorize deployment or merging.
+
+## Included regression tests
+
+- `tests/migration-upgrade.mjs`: legacy preservation, new tables, status validation,
+  backfill and reruns; no push tables.
+- `tests/staged-0006-upgrade.mjs` and
+  `tests/fixtures/migrations-0000-0006.json`: genuine Drizzle 0000–0006 history,
+  0007-only upgrade, row/schema/history preservation and reruns. The test is
+  self-contained and retains its strict namespace/attestation and synthetic-target
+  checks; it requires a verified isolated runner and is not a Preview/Production
+  migration command.
+- `tests/watch-status.test.ts`: status labels, schema/snapshot/DDL consistency,
+  follow route validation/isolation and absence of push/automatic migrations.
+- `tests/notification-fanout.test.ts` and
+  `tests/notification-fanout-integration.mjs`: protocol-fake and real PostgreSQL
+  batching/concurrency/failure/retry coverage respectively.
+- `tests/notifications-e2e.mjs`, `tests/run-e2e.mjs`: real notification/API/browser
+  workflows using synthetic local services.
+- `tests/pwa-service-worker.test.ts`, `tests/pwa-smoke.mjs`: simulated worker and
+  production-browser PWA checks respectively.
+- `tests/following-ui.mjs`: static-build/in-memory-API fixture browser checks;
+  `npm run test:following-ui` requires a successful build and is not database
+  integration evidence.
+
+Push-specific UI, API, crypto/transport helpers, delivery tables, dependencies,
+environment settings, worker handlers and push-only tests have been removed.
+The application contains no permission request, external episode-delivery channel
+or automatic migration hook. Disposable verification tooling and evidence remain
+local and are deliberately excluded from the commit.

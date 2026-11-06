@@ -1,5 +1,6 @@
 import {
   pgTable,
+  check,
   serial,
   text,
   integer,
@@ -12,7 +13,7 @@ import {
   primaryKey,
   foreignKey,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // Existing tables and columns are retained. R2 additions are nullable so old
 // records keep their original IDs, URLs, labels, and relationships.
@@ -215,10 +216,11 @@ export const subscribers = pgTable("subscribers", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export const animeFollows = pgTable("anime_follows", {
+  watchStatus: text("watch_status").notNull().default("plan_to_watch"),
   subscriberId: varchar("subscriber_id", { length: 64 }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
   mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.subscriberId, t.mediaId] }), index("anime_follows_media_idx").on(t.mediaId, t.subscriberId)]);
+}, (t) => [primaryKey({ columns: [t.subscriberId, t.mediaId] }), index("anime_follows_media_idx").on(t.mediaId, t.subscriberId), check("anime_follows_watch_status_check", sql`${sql.identifier("watch_status")} IN ('plan_to_watch', 'watching', 'continue', 'on_hold', 'watched')`)]);
 export const episodePublications = pgTable("episode_publications", {
   episodeId: integer("episode_id").primaryKey().references(() => episodes.id, { onDelete: "cascade" }),
   mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
@@ -237,21 +239,3 @@ export const episodeNotifications = pgTable("episode_notifications", {
   readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex("episode_notifications_subscriber_episode_unique").on(t.subscriberId, t.episodeId), index("episode_notifications_inbox_idx").on(t.subscriberId, t.id)]);
-export const pushSubscriptions = pgTable("push_subscriptions", {
-  id: serial("id").primaryKey(),
-  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().unique().references(() => subscribers.id, { onDelete: "cascade" }),
-  endpointHash: varchar("endpoint_hash", { length: 64 }).notNull().unique(),
-  encrypted: text("encrypted").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-export const pushDeliveries = pgTable("push_deliveries", {
-  id: serial("id").primaryKey(),
-  notificationId: integer("notification_id").notNull().references(() => episodeNotifications.id, { onDelete: "cascade" }),
-  subscriptionId: integer("subscription_id").notNull().references(() => pushSubscriptions.id, { onDelete: "cascade" }),
-  attempts: integer("attempts").notNull().default(0),
-  state: varchar("state", { length: 16 }).notNull().default("pending"),
-  nextAttempt: timestamp("next_attempt", { withTimezone: true }).notNull().defaultNow(),
-  leaseUntil: timestamp("lease_until", { withTimezone: true }),
-  leaseToken: varchar("lease_token", { length: 36 }),
-  lastStatus: integer("last_status"),
-}, (t) => [uniqueIndex("push_deliveries_notification_subscription_unique").on(t.notificationId, t.subscriptionId), index("push_deliveries_due_idx").on(t.state, t.nextAttempt)]);

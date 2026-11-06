@@ -1,4 +1,6 @@
 CREATE TABLE "anime_follows" (
+	"watch_status" text DEFAULT 'plan_to_watch' NOT NULL,
+	CONSTRAINT "anime_follows_watch_status_check" CHECK ("watch_status" IN ('plan_to_watch', 'watching', 'continue', 'on_hold', 'watched')),
 	"subscriber_id" varchar(64) NOT NULL,
 	"media_id" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -25,28 +27,6 @@ CREATE TABLE "episode_publications" (
 	"processed_at" timestamp with time zone
 );
 --> statement-breakpoint
-CREATE TABLE "push_deliveries" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"notification_id" integer NOT NULL,
-	"subscription_id" integer NOT NULL,
-	"attempts" integer DEFAULT 0 NOT NULL,
-	"state" varchar(16) DEFAULT 'pending' NOT NULL,
-	"next_attempt" timestamp with time zone DEFAULT now() NOT NULL,
-	"lease_until" timestamp with time zone,
-	"lease_token" varchar(36),
-	"last_status" integer
-);
---> statement-breakpoint
-CREATE TABLE "push_subscriptions" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"subscriber_id" varchar(64) NOT NULL,
-	"endpoint_hash" varchar(64) NOT NULL,
-	"encrypted" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "push_subscriptions_subscriber_id_unique" UNIQUE("subscriber_id"),
-	CONSTRAINT "push_subscriptions_endpoint_hash_unique" UNIQUE("endpoint_hash")
-);
---> statement-breakpoint
 CREATE TABLE "subscribers" (
 	"id" varchar(64) PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -58,15 +38,10 @@ ALTER TABLE "episode_notifications" ADD CONSTRAINT "episode_notifications_subscr
 ALTER TABLE "episode_notifications" ADD CONSTRAINT "episode_notifications_episode_id_episode_publications_episode_id_fk" FOREIGN KEY ("episode_id") REFERENCES "public"."episode_publications"("episode_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "episode_publications" ADD CONSTRAINT "episode_publications_episode_id_episodes_id_fk" FOREIGN KEY ("episode_id") REFERENCES "public"."episodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "episode_publications" ADD CONSTRAINT "episode_publications_media_id_media_id_fk" FOREIGN KEY ("media_id") REFERENCES "public"."media"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "push_deliveries" ADD CONSTRAINT "push_deliveries_notification_id_episode_notifications_id_fk" FOREIGN KEY ("notification_id") REFERENCES "public"."episode_notifications"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "push_deliveries" ADD CONSTRAINT "push_deliveries_subscription_id_push_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."push_subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "push_subscriptions" ADD CONSTRAINT "push_subscriptions_subscriber_id_subscribers_id_fk" FOREIGN KEY ("subscriber_id") REFERENCES "public"."subscribers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "anime_follows_media_idx" ON "anime_follows" USING btree ("media_id","subscriber_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "episode_notifications_subscriber_episode_unique" ON "episode_notifications" USING btree ("subscriber_id","episode_id");--> statement-breakpoint
 CREATE INDEX "episode_notifications_inbox_idx" ON "episode_notifications" USING btree ("subscriber_id","id");--> statement-breakpoint
 CREATE INDEX "episode_publications_pending_idx" ON "episode_publications" USING btree ("processed_at","published_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "push_deliveries_notification_subscription_unique" ON "push_deliveries" USING btree ("notification_id","subscription_id");--> statement-breakpoint
-CREATE INDEX "push_deliveries_due_idx" ON "push_deliveries" USING btree ("state","next_attempt");--> statement-breakpoint
 -- Serialize installation/backfill with link writes. Legacy published episodes
 -- are deliberately marked processed: enabling this feature must not spam history.
 LOCK TABLE download_links IN SHARE ROW EXCLUSIVE MODE;

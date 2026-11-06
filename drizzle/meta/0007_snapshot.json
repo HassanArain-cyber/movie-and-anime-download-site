@@ -26,6 +26,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "watch_status": {
+          "name": "watch_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'plan_to_watch'"
         }
       },
       "indexes": {
@@ -90,7 +97,12 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "anime_follows_watch_status_check": {
+          "name": "anime_follows_watch_status_check",
+          "value": "\"watch_status\" IN ('plan_to_watch', 'watching', 'continue', 'on_hold', 'watched')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.auth_rate_limits": {
@@ -1187,219 +1199,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "slug"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.push_deliveries": {
-      "name": "push_deliveries",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "notification_id": {
-          "name": "notification_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "subscription_id": {
-          "name": "subscription_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "state": {
-          "name": "state",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "next_attempt": {
-          "name": "next_attempt",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "lease_until": {
-          "name": "lease_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "lease_token": {
-          "name": "lease_token",
-          "type": "varchar(36)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_status": {
-          "name": "last_status",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "push_deliveries_notification_subscription_unique": {
-          "name": "push_deliveries_notification_subscription_unique",
-          "columns": [
-            {
-              "expression": "notification_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subscription_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "push_deliveries_due_idx": {
-          "name": "push_deliveries_due_idx",
-          "columns": [
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_attempt",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "push_deliveries_notification_id_episode_notifications_id_fk": {
-          "name": "push_deliveries_notification_id_episode_notifications_id_fk",
-          "tableFrom": "push_deliveries",
-          "tableTo": "episode_notifications",
-          "columnsFrom": [
-            "notification_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "push_deliveries_subscription_id_push_subscriptions_id_fk": {
-          "name": "push_deliveries_subscription_id_push_subscriptions_id_fk",
-          "tableFrom": "push_deliveries",
-          "tableTo": "push_subscriptions",
-          "columnsFrom": [
-            "subscription_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.push_subscriptions": {
-      "name": "push_subscriptions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "subscriber_id": {
-          "name": "subscriber_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "endpoint_hash": {
-          "name": "endpoint_hash",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "encrypted": {
-          "name": "encrypted",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "push_subscriptions_subscriber_id_subscribers_id_fk": {
-          "name": "push_subscriptions_subscriber_id_subscribers_id_fk",
-          "tableFrom": "push_subscriptions",
-          "tableTo": "subscribers",
-          "columnsFrom": [
-            "subscriber_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "push_subscriptions_subscriber_id_unique": {
-          "name": "push_subscriptions_subscriber_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "subscriber_id"
-          ]
-        },
-        "push_subscriptions_endpoint_hash_unique": {
-          "name": "push_subscriptions_endpoint_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "endpoint_hash"
           ]
         }
       },
