@@ -63,9 +63,26 @@ assertLoopback(env.RESEND_API_URL, "RESEND_API_URL");
 await mkdir("test-results", { recursive: true });
 const children = [];
 async function run(command, args, runEnv = env) {
-  const child = spawn(command, args, { env: runEnv, stdio: "inherit" });
-  const [code] = await once(child, "exit");
-  if (code !== 0) throw new Error(`${command} ${args.join(" ")} exited ${code}`);
+  const child = spawn(command, args, { env: runEnv, stdio: ["ignore", "inherit", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+    stderr = (stderr + chunk.toString()).slice(-12000);
+  });
+  const [code] = await once(child, "close");
+  if (code !== 0) {
+    // Keep the original failure/exit behavior. Surface the bounded diagnostic in
+    // check annotations too, when downloadable Actions logs are inaccessible.
+    if (process.env.GITHUB_ACTIONS === "true" && stderr) {
+      const diagnostic = stderr
+        .replace(/\x1b\[[0-9;]*m/g, "")
+        .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted database URL]")
+        .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|re_[A-Za-z0-9_-]+)\b/g, "[redacted token]")
+        .replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+      console.error(`::error title=Disposable browser/API test failure::${diagnostic}`);
+    }
+    throw new Error(`${command} ${args.join(" ")} exited ${code}`);
+  }
 }
 async function start(name, command, args) {
   const log = path.join("test-results", `${name}.log`);
