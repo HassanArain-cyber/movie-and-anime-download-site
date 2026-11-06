@@ -111,8 +111,22 @@ try {
     WHERE p.episode_id=$1 AND f.created_at<=p.published_at AND NOT EXISTS (SELECT 1 FROM episode_notifications n WHERE n.subscriber_id=f.subscriber_id AND n.episode_id=p.episode_id)`, [ep40.id])).rows[0].count, 0, "no eligible follower is omitted");
   assert.ok((await pool.query("SELECT processed_at FROM episode_publications WHERE episode_id=$1", [ep40.id])).rows[0].processed_at);
   await pool.query("DELETE FROM subscribers WHERE id=ANY($1::varchar[])", [subscriberIds]);
-  const movie = ok(await admin("/api/media", "POST", { type: "movie", title: `No follow movie ${run}`, slug: `no-follow-movie-${run}` }), 201);
-  assert.equal((await b("/api/follows", "POST", { mediaId: movie.id })).res.status, 400);
+  const movie = ok(await admin("/api/media", "POST", { type: "movie", title: `Follow movie ${run}`, slug: `follow-movie-${run}` }), 201);
+  ok(await b("/api/follows", "POST", { mediaId: movie.id }));
+  const movieFollow = (await b("/api/updates")).data.following.find((title) => title.id === movie.id);
+  assert.equal(movieFollow.type, "movie"); assert.equal(movieFollow.watchStatus, "plan_to_watch");
+  for (const watchStatus of ["plan_to_watch", "watching", "continue", "on_hold", "watched"]) {
+    ok(await b("/api/follows", "PATCH", { mediaId: movie.id, watchStatus }));
+    assert.equal((await b("/api/updates")).data.following.find((title) => title.id === movie.id).watchStatus, watchStatus);
+  }
+  assert.equal((await a("/api/follows", "PATCH", { mediaId: movie.id, watchStatus: "watching" })).res.status, 404);
+  assert.equal((await b("/api/follows", "PATCH", { mediaId: movie.id, watchStatus: "invalid" })).res.status, 400);
+  ok(await b("/api/follows", "POST", { mediaId: movie.id }));
+  assert.equal((await b("/api/updates")).data.following.find((title) => title.id === movie.id).watchStatus, "watched");
+  ok(await admin("/api/download-links", "POST", { mediaId: movie.id, url: "https://example.com/movie", label: "LongMovieDownloadLabelWithoutSpaces", quality: "2160p", fileSize: "20 GB" }), 201);
+  assert.equal((await pool.query("SELECT 1 FROM episode_publications WHERE media_id=$1", [movie.id])).rowCount, 0, "movie downloads do not publish episode alerts");
+  ok(await b("/api/follows", "DELETE", { mediaId: movie.id }));
+  assert.ok(!(await b("/api/updates")).data.following.some((title) => title.id === movie.id));
   const series = ok(await admin("/api/media", "POST", { type: "series", title: `Follow series ${run}`, slug: `follow-series-${run}` }), 201);
   ok(await b("/api/follows", "POST", { mediaId: series.id }));
   const seriesSeason = ok(await admin("/api/seasons", "POST", { mediaId: series.id, seasonNumber: 1 }), 201);
@@ -145,13 +159,37 @@ try {
   await page.locator(`#episode-${ep6.id} button[aria-expanded="true"]`).waitFor();
   await page.goto(`${base}/following`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Unfollow", exact: true }).click(); await page.getByText("You are not following anything yet.", { exact: false }).waitFor();
-  for (const width of [360, 390, 768, 1280]) {
+  await page.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "+ Follow", exact: true }).click();
+  await page.getByRole("button", { name: "Unfollow", exact: true }).waitFor();
+  assert.equal(await page.getByText("Follow for new episode alerts. No account needed.", { exact: true }).count(), 0);
+  for (const status of ["plan_to_watch", "watching", "continue", "on_hold", "watched"]) {
+    await page.getByLabel("Watch status", { exact: true }).selectOption(status);
+    await page.waitForFunction(() => !document.querySelector('select[aria-label="Watch status"]')?.disabled);
+  }
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.getByLabel("Watch status", { exact: true }).inputValue(), "watched");
+  await page.goto(`${base}/following`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Watched (1)", exact: true }).click();
+  assert.equal(await page.locator(`article a[href="/movie/${movie.slug}"]`).count(), 2);
+  await page.getByRole("button", { name: "Unfollow", exact: true }).click();
+  await page.getByText("You are not following anything yet.", { exact: false }).waitFor();
+  for (const width of [320, 360, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ["/following", "/notifications", `/anime/${media.slug}#episode-${ep6.id}`]) {
+    for (const route of ["/following", "/notifications", `/movie/${movie.slug}`, `/anime/${media.slug}#episode-${ep6.id}`]) {
       await page.goto(`${base}${route}`, { waitUntil: "networkidle" });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${route} overflow at ${width}`);
+      if (route === `/movie/${movie.slug}`) {
+        const link = page.locator('a[href="https://example.com/movie"]');
+        assert.equal(await link.count(), 1);
+        assert.equal(await link.evaluate((el) => {
+          const box = el.getBoundingClientRect(), card = el.closest("section").getBoundingClientRect();
+          return box.left >= card.left && box.right <= card.right;
+        }), true, `movie download stays inside quality card at ${width}`);
+        await page.getByRole("heading", { name: "4K (2160p)", exact: true }).waitFor();
+      }
       if (route.includes("#episode-")) await page.screenshot({ path: `test-results/notification-detail-${width}.png` });
     }
   }
-  console.log("Notification E2E PASS: five status persistence/validation/isolation, anonymous follows, publication/quality/concurrency dedup, 511 recipients, scoped/paginated read history, unfollow, filters, bell click and responsive 360/390/768/1280px.");
+  console.log("Movie follow/all-status/reload/unfollow and movie download overflow E2E PASS; Notification E2E PASS: five status persistence/validation/isolation, anonymous follows, publication/quality/concurrency dedup, 511 recipients, scoped/paginated read history, unfollow, filters, bell click and responsive 320/360/390/768/1280px.");
 } finally { await browser?.close(); await pool.end(); }

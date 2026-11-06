@@ -43,9 +43,9 @@ type ThreadActions = {
   apiRequest: ApiRequest;
 };
 
-const controlClass = "w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700";
+const controlClass = "w-full rounded-md border border-neutral-800 bg-neutral-950 px-2.5 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-700 focus:ring-1 focus:ring-neutral-700";
 const iconClass = "h-4 w-4 shrink-0";
-const actionButtonClass = "inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-md border border-neutral-800 px-2.5 py-1.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-600";
+const actionButtonClass = "inline-flex min-h-9 min-w-9 items-center justify-center gap-1 rounded-md border border-neutral-800 px-2 py-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-600";
 
 export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
   const [items, setItems] = useState<PublicComment[]>([]);
@@ -181,18 +181,18 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
   };
 
   return (
-    <section className="vault-comments min-w-0 space-y-5 rounded-2xl border border-white/10 bg-neutral-950/70 p-4 sm:p-6" aria-label={episodeId === undefined ? "Title comments" : "Episode comments"}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className="vault-comments min-w-0 space-y-2 rounded-xl border border-white/10 bg-neutral-950/70 p-3 sm:p-4" aria-label={episodeId === undefined ? "Title comments" : "Episode comments"}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-white">
+          <h2 className="text-base font-semibold text-white">
             {episodeId === undefined ? "Community comments" : "Episode discussion"} <span className="ml-1 text-sm font-normal text-neutral-500">({count})</span>
           </h2>
           <p className="mt-1 text-xs text-neutral-500">{episodeId === undefined ? "Comments about this title" : "Comments for this episode only"}</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="min-h-10 rounded-md border border-neutral-800 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">Refresh</button>
+        <button type="button" onClick={() => void load()} disabled={loading} className="min-h-9 rounded-md border border-neutral-800 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">Refresh</button>
       </div>
 
-      <p className="rounded-md bg-neutral-900/70 px-3 py-2 text-xs leading-relaxed text-neutral-500">
+      <p className="rounded-md bg-neutral-900/70 px-2.5 py-1.5 text-xs leading-relaxed text-neutral-500">
         Keep discussion respectful and on-topic. No harassment, spam, illegal links, or personal information. Mark spoilers and report concerns. You can reply to any comment or reply.
       </p>
 
@@ -200,17 +200,17 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
       {notice && <p role="status" className="text-sm text-emerald-300">{notice}</p>}
 
       {loading ? (
-        <p role="status" className="rounded-md border border-neutral-800 p-4 text-sm text-neutral-500">Loading comments…</p>
+        <p role="status" className="rounded-md border border-neutral-800 p-3 text-sm text-neutral-500">Loading comments…</p>
       ) : items.length === 0 ? (
-        <p className="rounded-md border border-dashed border-neutral-800 p-5 text-center text-sm text-neutral-500">No comments yet. Start a respectful discussion.</p>
+        <p className="rounded-md border border-dashed border-neutral-800 p-3 text-center text-sm text-neutral-500">No comments yet. Start a respectful discussion.</p>
       ) : (
-        <div className="min-w-0 space-y-3">
+        <div className="min-w-0 space-y-2">
           {tree.map((node) => <CommentNode key={node.id} node={node} actions={actions} />)}
         </div>
       )}
 
       {enabled ? (
-        <form onSubmit={submitComment} className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 sm:p-4">
+        <form onSubmit={submitComment} className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2.5 sm:p-3">
           <label htmlFor={composerId} className="sr-only">Write a comment</label>
           <textarea
             id={composerId}
@@ -218,20 +218,20 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
             onChange={(event) => setDraft(event.target.value)}
             maxLength={2000}
             minLength={2}
-            rows={3}
+            rows={2}
             required
             placeholder="Share a respectful comment…"
             className={controlClass}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex min-h-10 items-center gap-2 text-xs text-neutral-400">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex min-h-9 items-center gap-2 text-xs text-neutral-400">
               <input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} className="h-4 w-4 accent-violet-500" />
               Contains spoilers
             </label>
             <span className="text-xs text-neutral-600">{draft.length}/2000</span>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-11 rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-9 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
               {submitting ? "Posting…" : "Post comment"}
             </button>
             <span className="text-xs text-neutral-600">Comments are anonymous; no name or email is collected.</span>
@@ -261,10 +261,10 @@ function CommentNode({ node, actions }: { node: ThreadedComment<PublicComment>; 
       data-depth={node.depth}
       className={`min-w-0 ${node.depth === 0 ? "rounded-lg border border-neutral-800 bg-neutral-900/60" : "rounded-md bg-neutral-950/70"}`}
     >
-      <div className={`min-w-0 px-3 py-3 ${node.depth === 0 ? "sm:px-4" : ""}`}>
+      <div className={`min-w-0 px-2.5 py-2 ${node.depth === 0 ? "sm:px-3" : ""}`}>
         {node.depth > MAX_INDENT_DEPTH && <p className="mb-2 text-[11px] text-neutral-500">Reply · level {node.depth}</p>}
         <CommentBody comment={node} />
-        <div data-actions-for={node.id} data-testid="comment-action-bar" className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <div data-actions-for={node.id} data-testid="comment-action-bar" className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
           <time data-testid="comment-metadata" dateTime={node.createdAt} className="min-w-0 text-[11px] text-neutral-500">
             {formatCommentTimestamp(node.createdAt)}
           </time>
@@ -307,7 +307,7 @@ function CommentNode({ node, actions }: { node: ThreadedComment<PublicComment>; 
         {actions.enabled && actions.replyingTo === node.id && <ReplyComposer parentId={node.id} depth={node.depth} inputId={`reply-body-${actions.mediaId}-${actions.episodeId ?? "title"}-${node.id}`} actions={actions} />}
       </div>
       {node.replies.length > 0 && (
-        <div className={`mt-3 min-w-0 space-y-3 ${indentClass}`} aria-label="Replies">
+        <div className={`mt-2 min-w-0 space-y-2 ${indentClass}`} aria-label="Replies">
           {node.replies.map((reply) => <CommentNode key={reply.id} node={reply} actions={actions} />)}
         </div>
       )}
@@ -328,8 +328,8 @@ function ReportForm({ commentId, actions }: { commentId: number; actions: Thread
       </label>
       <textarea value={actions.reportDetails} onChange={(event) => actions.setReportDetails(event.target.value)} maxLength={500} rows={2} placeholder="Optional details (max 500 characters)" className={controlClass} />
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => actions.onReportSubmit(commentId)} className="min-h-10 rounded-md border border-red-900/50 px-3 py-2 text-xs text-red-300 hover:bg-red-950/40">Send report</button>
-        <button type="button" onClick={() => actions.onReportToggle(commentId)} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
+        <button type="button" onClick={() => actions.onReportSubmit(commentId)} className="min-h-9 rounded-md border border-red-900/50 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-950/40">Send report</button>
+        <button type="button" onClick={() => actions.onReportToggle(commentId)} className="min-h-9 rounded-md px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
       </div>
     </div>
   );
@@ -390,10 +390,10 @@ function ReplyComposer({ parentId, depth, inputId, actions }: { parentId: number
       </div>
       {replyError && <p role="alert" className="text-xs text-red-300">{replyError}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-10 rounded-md bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="submit" disabled={submitting || draft.trim().length < 2} className="min-h-9 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
           {submitting ? "Posting…" : "Post reply"}
         </button>
-        <button type="button" onClick={actions.onReplyCancel} className="min-h-10 rounded-md px-3 py-2 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
+        <button type="button" onClick={actions.onReplyCancel} className="min-h-9 rounded-md px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">Cancel</button>
       </div>
       <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Website<input name="website" value={honeypot} onChange={(event) => setHoneypot(event.target.value)} autoComplete="off" tabIndex={-1} /></label>
     </form>

@@ -244,7 +244,7 @@ export default function Navbar() {
           : "border-transparent bg-black/40"
       }`}
     >
-      <div className="vault-nav mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-3 lg:flex-nowrap sm:px-6">
+      <div className="vault-nav mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-2 lg:flex-nowrap sm:px-6">
         <div
           ref={brandIconPickerRef}
           onKeyDown={(event) => { if (event.key === "Escape") setBrandIconPickerOpen(false); }}
@@ -291,7 +291,7 @@ export default function Navbar() {
                     aria-label={`Use ${label} icon`}
                     aria-pressed={brandIcon === id}
                     onClick={() => selectBrandIcon(id)}
-                    className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
+                    className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
                       brandIcon === id
                         ? "border-purple-500/60 bg-purple-500/10 text-white"
                         : "border-transparent text-neutral-400 hover:border-neutral-800 hover:bg-neutral-900 hover:text-white"
@@ -462,13 +462,13 @@ export default function Navbar() {
       data-testid="page-scroll-toggle"
       title={nearTop ? "Scroll to bottom" : "Scroll to top"}
       onClick={() => scrollPage(nearTop)}
-      className="fixed z-40 flex h-12 w-12 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-purple-500 hover:bg-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+      className="fixed z-40 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-purple-500 hover:bg-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
       style={{
         right: "calc(1rem + env(safe-area-inset-right, 0px))",
         bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))",
       }}
     >
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         {nearTop ? (
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m0 0 7-7m-7 7-7-7" />
         ) : (

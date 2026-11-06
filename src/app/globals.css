@@ -130,4 +130,4 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-detail-page .vault-season > div { padding: .75rem; }
 .vault-detail-page .vault-season summary + div > :not(:first-child) { margin-top: .75rem; }
 .vault-detail-page .vault-season [id^="episode-"] > div:first-child { padding-block: .2rem; }
-.vault-detail-page .vault-comments { padding: 1rem; }
+.vault-detail-page .vault-comments { padding: .75rem; }

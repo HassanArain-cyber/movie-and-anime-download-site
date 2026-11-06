@@ -6,10 +6,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium as playwright } from "playwright-core";
 import chromium, { inflate, setupLambdaEnvironment } from "@sparticuz/chromium";
+import { compactLayoutFixture } from "./compact-layout-fixture.mjs";
 
 const statuses = ["plan_to_watch", "watching", "continue", "on_hold", "watched"];
-let following = statuses.map((watchStatus, i) => ({ id: i + 1, title: `Fixture anime ${i + 1}`, slug: `fixture-${i + 1}`, type: "anime", posterUrl: null, hasNew: i === 0, watchStatus }));
-const notification = { id: 1, mediaId: 1, title: "Fixture anime 1", episodeNumber: 2, episodeTitle: "New episode", seasonNumber: 1, url: "/anime/fixture-1#episode-2", readAt: null, createdAt: "2026-11-05T00:00:00.000Z" };
+let following = statuses.map((watchStatus, i) => ({ id: i + 1, title: `Fixture ${i === 0 ? "movie" : i === 1 ? "series" : "anime"} ${i + 1}`, slug: `fixture-${i + 1}`, type: i === 0 ? "movie" : i === 1 ? "series" : "anime", posterUrl: null, hasNew: i === 1, watchStatus }));
+const notification = { id: 1, mediaId: 1, title: "Fixture movie 1", episodeNumber: 2, episodeTitle: "New episode", seasonNumber: 1, url: "/anime/fixture-1#episode-2", readAt: null, createdAt: "2026-11-05T00:00:00.000Z" };
 const writes = [], unexpected = [];
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
@@ -30,6 +31,13 @@ const server = createServer(async (req, res) => {
       return json({ notifications: [notification], hasMore: false });
     }
     if (url.pathname.startsWith("/api/")) { unexpected.push(url.pathname); res.statusCode = 404; return json({ error: "No fixture" }); }
+    if (url.pathname === "/compact-layout") {
+      const html = await readFile(".next/server/app/following.html", "utf8");
+      const styles = html.match(/<link[^>]*rel="stylesheet"[^>]*>/g)?.join("") || "";
+      assert.ok(styles, "built stylesheet is required for real layout measurements");
+      res.setHeader("Content-Type", "text/html");
+      return res.end(compactLayoutFixture(styles));
+    }
     let file;
     if (["/", "/following", "/notifications"].includes(url.pathname)) file = `.next/server/app/${url.pathname === "/notifications" ? "notifications" : "following"}.html`;
     else if (url.pathname.startsWith("/_next/static/")) file = `.next/static/${url.pathname.slice("/_next/static/".length)}`;
@@ -68,30 +76,63 @@ try {
     assert.equal(await page.locator("article").count(), 1);
   }
   await page.getByRole("button", { name: "All (5)", exact: true }).click();
-  const first = page.locator("article").filter({ hasText: "Fixture anime 1" });
+  const first = page.locator("article").filter({ hasText: "Fixture movie 1" });
+  assert.equal(await first.locator('a[href="/movie/fixture-1"]').count(), 2);
+  assert.equal(await page.locator('article a[href="/series/fixture-2"]').count(), 2);
+  assert.equal(await first.getByText("New episodes", { exact: true }).count(), 0);
+  for (const status of statuses) {
+    await first.getByLabel("Watch status", { exact: true }).selectOption(status);
+    await page.waitForFunction((value) => document.querySelector('article select')?.value === value && !document.querySelector('article select')?.disabled, status);
+    assert.equal(following.find((item) => item.id === 1).watchStatus, status);
+  }
   await first.getByLabel("Watch status", { exact: true }).selectOption("watching");
   await page.getByRole("button", { name: "Watching (2)", exact: true }).waitFor();
   await page.reload({ waitUntil: "networkidle" });
-  assert.equal(await page.locator("article").filter({ hasText: "Fixture anime 1" }).getByLabel("Watch status", { exact: true }).inputValue(), "watching");
+  assert.equal(await page.locator("article").filter({ hasText: "Fixture movie 1" }).getByLabel("Watch status", { exact: true }).inputValue(), "watching");
   await page.getByRole("button", { name: "Plan to Watch (0)", exact: true }).click();
   await page.getByText("No titles with this status yet.").waitFor();
   await page.getByRole("button", { name: "All (5)", exact: true }).click();
-  await page.locator("article").filter({ hasText: "Fixture anime 1" }).getByRole("button", { name: "Unfollow", exact: true }).click();
+  await page.locator("article").filter({ hasText: "Fixture movie 1" }).getByRole("button", { name: "Unfollow", exact: true }).click();
   await page.getByRole("button", { name: "All (4)", exact: true }).waitFor();
   assert.equal(following.length, 4);
   await page.getByLabel("Notifications, 1 unread", { exact: true }).click();
   await page.getByRole("button", { name: "Mark all read", exact: true }).click();
   await page.getByLabel("Notifications", { exact: true }).waitFor();
   assert.ok(notification.readAt);
-  for (const width of [360, 390, 768, 1280]) {
+  for (const width of [320, 360, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ["/following", "/notifications"]) {
-      await page.goto(`${base}${route}`, { waitUntil: "networkidle" });
+    for (const route of ["/following", "/notifications", "/compact-layout"]) {
+      const response = await page.goto(`${base}${route}`, { waitUntil: "networkidle" });
+      assert.equal(response.status(), 200, `${route} must render successfully`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${route} overflow at ${width}`);
+      if (route === "/compact-layout") {
+        assert.equal(await page.locator('[data-testid="comment-node"]').count(), 12, "nested replies remain visible");
+        assert.equal(await page.locator('textarea[rows="2"]').count(), 1, "compact comment form");
+        assert.equal(await page.locator('a[download][href="/api/download?id=2"]').count(), 1, "private R2 download route stays opaque");
+        assert.equal(await page.locator('a[target="_blank"][rel="noopener noreferrer"]').count(), 1, "external download behavior preserved");
+        for (const link of await page.locator('main a').all()) {
+          assert.equal(await link.evaluate((el) => {
+            const box = el.getBoundingClientRect(), card = el.closest("section").getBoundingClientRect();
+            return box.left >= card.left && box.right <= card.right;
+          }), true, `download stays inside quality card at ${width}`);
+        }
+        const refresh = await page.getByRole("button", { name: "Refresh", exact: true }).boundingBox();
+        assert.equal(refresh.height, 36);
+      }
+      if (route === "/following") {
+        const filters = page.getByRole("group", { name: "Filter by watch status" }).getByRole("button");
+        for (const button of await filters.all()) {
+          const box = await button.boundingBox(); assert.ok(box.height >= 36 && box.height <= 40, "compact filters retain 36px tap height");
+        }
+        const poster = await page.locator('article > a').first().boundingBox();
+        assert.ok(poster.width <= 64 && Math.abs(poster.height / poster.width - 1.5) < 0.03, "small poster preserves 2:3 ratio");
+        const bell = await page.getByLabel("Notifications", { exact: true }).boundingBox();
+        assert.equal(bell.width, 36); assert.equal(bell.height, 36);
+      }
     }
   }
   assert.equal(await page.evaluate(() => window.permissionRequests), 0);
-  assert.deepEqual(writes.map((write) => write.method), ["PATCH", "DELETE"]);
+  assert.deepEqual(writes.map((write) => write.method), [...statuses.map(() => "PATCH"), "PATCH", "DELETE"]);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
   // Real service-worker lifecycle/static caching/offline, on fixture pages only.
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
@@ -110,7 +151,7 @@ try {
   await context.setOffline(true);
   await page.goto(`${base}/following`, { waitUntil: "domcontentloaded" });
   assert.match(await page.locator("body").innerText(), /offline/i);
-  console.log("Database-free browser PASS: five filters, saved status/reload, empty filter, unfollow, bell mark-read, no permission/external calls, no overflow at 360/390/768/1280px; real SW activation/static caching, manifest/icons and offline fallback on fixture pages. Live API/database integration is NOT tested.");
+  console.log("Database-free browser PASS: mixed movie/anime/series library, all five movie statuses/reload, filters/unfollow/bell, compact tap targets/poster ratio, long download labels/private R2 hrefs, compact comments/12 reply levels, no overflow at 320/360/390/768/1280px; SW/cache/offline unchanged. Live API/database integration is NOT tested.");
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));

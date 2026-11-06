@@ -1,7 +1,7 @@
 import { pool } from "@/db";
 import { ApiError, positiveId, readJson } from "@/lib/validation";
 import { notificationError, subscriber, notificationRateLimit, privateJson } from "@/lib/notifications/session";
-import { isWatchStatus } from "@/lib/watch-status";
+import { isFollowableContentType, isWatchStatus } from "@/lib/watch-status";
 async function change(req: Request, action: "follow" | "unfollow" | "status") {
   try {
     const session = await subscriber(req);
@@ -17,7 +17,7 @@ async function change(req: Request, action: "follow" | "unfollow" | "status") {
       await client.query("SELECT id FROM subscribers WHERE id=$1 FOR UPDATE", [session.id]);
       const found = await client.query("SELECT type FROM media WHERE id=$1", [id]);
       if (!found.rowCount) throw new ApiError(404, "Title not found");
-      if (action !== "unfollow" && !["anime", "series"].includes(found.rows[0].type)) throw new ApiError(400, "Only anime and series can be followed");
+      if (action !== "unfollow" && !isFollowableContentType(found.rows[0].type)) throw new ApiError(400, "Only movies, anime and series can be followed");
       if (action === "unfollow") {
         await client.query("DELETE FROM anime_follows WHERE subscriber_id=$1 AND media_id=$2", [session.id, id]);
       } else if (action === "status") {

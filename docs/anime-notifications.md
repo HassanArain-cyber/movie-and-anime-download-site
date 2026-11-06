@@ -2,7 +2,7 @@
 
 ## Scope
 
-Anime/series detail pages support anonymous Follow/Unfollow, a compact Following
+Movie, anime and series detail pages support anonymous Follow/Unfollow, a compact Following
 page, and an in-site notification bell/history. No public account is introduced.
 There is no browser push, VAPID, permission request, email/SMS episode delivery,
 external notification transport, or subscription storage. Existing contact-email,
@@ -24,6 +24,11 @@ Each `(subscriber_id, media_id)` follow row has one non-null `watch_status`:
 | `continue` | Continue |
 | `on_hold` | On-Hold |
 | `watched` | Watched |
+
+Movies use the same five manual statuses and appear alongside anime/series on
+Following. Movie follows do not create episode alerts; episode publication remains
+limited to anime/series. The existing follow table/500-title cap is shared across
+all three types, with no database change needed.
 
 New follows default to Plan to Watch. Continue is manually selected, not an
 inferred playback/episode-progress tracker. A database CHECK and API validation
