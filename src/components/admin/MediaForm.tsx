@@ -3,10 +3,14 @@
 import { useState } from "react";
 import type { Category } from "@/lib/types";
 import ImageUploader from "./ImageUploader";
+import MediaWizard from "./MediaWizard";
+import type { MediaType } from "@/lib/types";
 
 interface Props {
   categories: Category[];
   editing?: any;
+  initialType?: MediaType;
+  onBusyChange?: (busy: boolean) => void;
   onCancel: () => void;
   onSaved: (item: any) => void;
 }
@@ -17,7 +21,11 @@ const TYPES = [
   { value: "series", label: "TV Series" },
 ];
 
-export default function MediaForm({ categories, editing, onCancel, onSaved }: Props) {
+export default function MediaForm(props: Props) {
+  return props.editing ? <DetailsForm {...props} /> : <MediaWizard categories={props.categories} initialType={props.initialType} onCancel={props.onCancel} onSaved={props.onSaved} onBusyChange={props.onBusyChange} />;
+}
+
+function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
   const [type, setType] = useState(editing?.type || "movie");
   const [title, setTitle] = useState(editing?.title || "");
   const [description, setDescription] = useState(editing?.description || "");

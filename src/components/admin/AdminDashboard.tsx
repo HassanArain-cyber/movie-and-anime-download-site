@@ -46,18 +46,18 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             onClick={() => { if (t === "bulk") setBulkOpened(true); if (t === "links") setLinksOpened(true); setTab(t); }}
             className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium capitalize ${
               tab === t
-                ? "border-red-500 text-white"
+                ? t === "appearance" ? "border-red-500 text-white" : "border-purple-500 text-white"
                 : "border-transparent text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            {t === "links" ? "Bulk Add Links" : t === "bulk" ? "Bulk Add Episodes" : t === "moderation" ? "Comment moderation" : t}
+            {t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t}
           </button>
         ))}
       </div>
 
       {linksOpened && <div hidden={tab !== "links"}><BulkEpisodeLinks onBusyChange={setBulkBusy} /></div>}
       {bulkOpened && <div hidden={tab !== "bulk"}><BulkAddEpisodes onBusyChange={setBulkBusy} /></div>}
-      {tab === "bulk" || tab === "links" ? null : tab === "media" ? <MediaManager /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : tab === "requests" ? <ContactRequestsManager /> : <CommentModerationManager />}
+      {tab === "bulk" || tab === "links" ? null : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : tab === "requests" ? <ContactRequestsManager /> : <CommentModerationManager />}
     </div>
   );
 }

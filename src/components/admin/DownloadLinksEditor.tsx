@@ -14,7 +14,7 @@ interface Props {
   kind?: "video" | "archive";
 }
 
-const inputClass = "rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700";
+const inputClass = "min-h-11 min-w-0 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700";
 
 export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, links, onChange, kind = "video" }: Props) {
   const [label, setLabel] = useState("");
@@ -125,7 +125,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
           return (
             <div key={link.id} className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-900 p-3 ring-1 ring-neutral-800">
               <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs font-medium text-neutral-200">{link.label || "Download"}</span>
-              {linkQuality && <span className="rounded bg-red-950/60 px-2 py-0.5 text-xs text-red-300">{qualityDisplay(linkQuality)}</span>}
+              {linkQuality && <span className="rounded bg-purple-950/60 px-2 py-0.5 text-xs text-purple-300">{qualityDisplay(linkQuality)}</span>}
               <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase text-neutral-400">{getProviderLabel(provider)}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-400" title={link.url}>{provider === "r2" ? link.objectKey || link.url : link.url}</span>
               {link.fileSize && <span className="text-xs text-neutral-500">{link.fileSize}</span>}
@@ -143,12 +143,14 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
               {QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}
             </select>
           </label>
+          <details open={editingId !== null} className="min-w-0 sm:col-span-2"><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">Optional label &amp; file size</summary><div className="grid gap-2 sm:grid-cols-2">
           <label className="space-y-1 text-xs text-neutral-400">Label
             <input type="text" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. 1080p WEB-DL" maxLength={50} className={`${inputClass} mt-1 w-full`} />
           </label>
           <label className="space-y-1 text-xs text-neutral-400">File size
             <input type="text" value={fileSize} onChange={(event) => setFileSize(event.target.value)} placeholder="Auto-filled for R2" maxLength={30} className={`${inputClass} mt-1 w-full`} />
           </label>
+          </div></details>
         </div>
 
         <div className="rounded-md border border-dashed border-neutral-700 bg-neutral-950 p-3">
@@ -161,7 +163,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
             <span className="text-xs text-neutral-500">{kind === "archive" ? "ZIP, RAR, 7z" : "MP4, WebM, MKV, MOV, AVI, M4V"} · direct to private R2</span>
           </div>
           <input ref={fileRef} type="file" accept={accept} hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void startUpload(file); event.target.value = ""; }} />
-          {uploading && <div className="mt-2 h-1.5 overflow-hidden rounded bg-neutral-800"><div className="h-full bg-red-500 transition-all" style={{ width: `${progress}%` }} /></div>}
+          {uploading && <div className="mt-2 h-1.5 overflow-hidden rounded bg-neutral-800"><div className="h-full bg-purple-500 transition-all" style={{ width: `${progress}%` }} /></div>}
           {completed && <p className="mt-2 text-xs text-green-400">Uploaded and verified in R2: {completed.fileName} ({formatBytes(completed.sizeBytes)}). Save the link to attach it.</p>}
           {storage && !storage.configured && <p className="mt-2 text-xs text-yellow-400">R2 uploads are disabled until the server sets: {storage.missing.join(", ")}. You can still add Telegram/external links.</p>}
         </div>
@@ -175,7 +177,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
         {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
         <div className="flex justify-end gap-2">
           {editingId && <button type="button" onClick={reset} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 hover:text-white">Cancel</button>}
-          <button type="submit" disabled={saving || uploading || (!completed && !url.trim() && !editingStored)} className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50">
+          <button type="submit" disabled={saving || uploading || (!completed && !url.trim() && !editingStored)} className="min-h-11 rounded-md bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
             {saving ? "Saving…" : editingId ? "Update link" : "Add link"}
           </button>
         </div>
