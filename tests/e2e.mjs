@@ -1157,7 +1157,7 @@ await page.getByRole("button", { name: "Next", exact: true }).click();
 await page.getByLabel("First season #", { exact: true }).fill("1");
 await page.getByRole("button", { name: "Create & Continue" }).click();
 await page.getByText("Individual editing & files", { exact: true }).click();
-await page.getByRole("button", { name: /^Season 1/ }).click();
+await page.getByTestId("individual-episode-editor").getByRole("button", { name: /Season 1/ }).click();
 await page.getByText("Create a complete season").waitFor();
 await page.getByLabel("Count").fill("3");
 await page.getByRole("button", { name: "Create episodes" }).click();

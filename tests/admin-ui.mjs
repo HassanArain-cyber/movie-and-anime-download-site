@@ -107,6 +107,9 @@ try {
     await page.getByRole("button", { name: "Create & Continue", exact: true }).click();
     await page.getByLabel("Link batch season", { exact: true }).waitFor();
     assert.equal(items.at(-1).seasons.length, 1);
+    await page.getByText("Individual editing & files", { exact: true }).click();
+    await page.getByTestId("individual-episode-editor").getByRole("button", { name: /Season 1/ }).click();
+    await page.getByText("Create a complete season", { exact: true }).waitFor();
     await page.getByRole("button", { name: "← Back to media", exact: true }).click();
   }
   await page.getByRole("button", { name: "Episodes", exact: true }).click();
