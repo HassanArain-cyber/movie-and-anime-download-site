@@ -128,6 +128,8 @@ try {
         assert.ok(poster.width <= 64 && Math.abs(poster.height / poster.width - 1.5) < 0.03, "small poster preserves 2:3 ratio");
         const bell = await page.getByLabel("Notifications", { exact: true }).boundingBox();
         assert.equal(bell.width, 36); assert.equal(bell.height, 36);
+        const scroll = await page.getByTestId("page-scroll-toggle").boundingBox();
+        assert.equal(scroll.width, 44); assert.equal(scroll.height, 44, "floating scroll retains its existing minimum tap target");
       }
     }
   }

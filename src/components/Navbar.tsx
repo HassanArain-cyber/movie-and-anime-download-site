@@ -462,7 +462,7 @@ export default function Navbar() {
       data-testid="page-scroll-toggle"
       title={nearTop ? "Scroll to bottom" : "Scroll to top"}
       onClick={() => scrollPage(nearTop)}
-      className="fixed z-40 flex h-10 w-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-purple-500 hover:bg-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+      className="fixed z-40 flex h-11 w-11 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-100 shadow-xl backdrop-blur transition hover:border-purple-500 hover:bg-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
       style={{
         right: "calc(1rem + env(safe-area-inset-right, 0px))",
         bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))",
