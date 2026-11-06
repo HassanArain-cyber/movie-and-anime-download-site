@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./AdminCompact.module.css";
 import RecycleBin from "./RecycleBin";
 import BulkEpisodeLinks from "./BulkEpisodeLinks";
 import BulkAddEpisodes from "./BulkAddEpisodes";
@@ -24,7 +25,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={tab === "appearance" ? "space-y-6" : `${styles.compact} space-y-3`}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
@@ -45,7 +46,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             key={t}
             disabled={bulkBusy}
             onClick={() => { if (t === "bulk") setBulkOpened(true); if (t === "links") setLinksOpened(true); setTab(t); }}
-            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium capitalize ${
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 ${tab === "appearance" ? "px-4 py-2 text-sm" : "min-h-9 px-2 py-1.5 text-xs"} font-medium capitalize ${
               tab === t
                 ? t === "appearance" ? "border-red-500 text-white" : "border-purple-500 text-white"
                 : "border-transparent text-neutral-500 hover:text-neutral-300"

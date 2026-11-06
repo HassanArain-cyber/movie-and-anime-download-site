@@ -15,6 +15,14 @@ An authorized operator must install **only the new 0008 migration**, once, on th
 - The Episodes tool supports each-row Delete, checkboxes, range selection (e.g. 13–22), selected deletion (up to 500 at a time), and confirmed Delete All for the selected season. Moving all is atomic, including seasons larger than 500.
 - Permanent deletion is a separate authenticated action, only for an already deleted record, with typed confirmation identifying its kind and ID. Purging a parent deliberately removes its database subtree and dependent relationships. Empty Bin requires `EMPTY RECYCLE BIN` and permanently removes all marked subtrees. These actions cannot be undone.
 
+## Compact Admin presentation
+
+The bin has All, Titles (including seasons), and Episodes filters. Episodes are grouped by stable media/season IDs, never by parsing display titles. Both title and season folders start collapsed; episode action rows are mounted only while both folders are expanded. Counts include all paginated metadata, not just the first 100 items.
+
+Season-level Restore All explicitly restores that season’s individually marked episodes through the existing restore endpoint. It is disabled if a parent is deleted. Requests run sequentially, show progress, stop on the first error, and refresh remaining items so a retry does not re-submit already restored episodes. This convenience operation is **not one atomic batch transaction**: completed restores remain completed if a later request fails. Parent rules are rechecked server-side for each episode. No other season or unselected child is restored.
+
+Permanent delete and Empty Bin retain their existing typed confirmations. Failed bin refreshes keep the current display but disable mutations until a successful refresh. The density stylesheet is scoped to Admin and removed entirely on Appearance; Wallpaper keeps its original layout and uploader. No database or storage lifecycle redesign is involved.
+
 ## R2 safety
 
 No bin action—including permanent record deletion or Empty Bin—calls physical object deletion or removes independent `r2_uploads` history. Objects remain private; active downloads still require short-lived signed URLs. Already-issued signed URLs retain their existing expiry. Moving content to the bin prevents issuance of new download URLs. Physical object cleanup is intentionally outside this feature and requires a separate explicitly confirmed storage process.

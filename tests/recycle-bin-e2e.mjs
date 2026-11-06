@@ -30,8 +30,8 @@ try {
   const title = ok(await admin("/api/media", "POST", { type: "series", title: key }), 201);
   const season = ok(await admin("/api/seasons", "POST", { mediaId: title.id, seasonNumber: 1 }), 201);
   ok(await admin("/api/episodes/batch", "POST", { seasonId: season.id, start: 1, count: 22 }), 201);
-  let details = ok(await admin(`/api/media/${title.id}`));
-  const ids = details.seasons[0].episodes.map((episode) => episode.id), extra = ids.slice(12), episode = ids[12];
+  const details = ok(await admin(`/api/media/${title.id}`));
+  const ids = details.seasons[0].episodes.map((episode) => episode.id), episode = ids[12];
   const external = ok(await admin("/api/download-links", "POST", { mediaId: title.id, seasonId: season.id, episodeId: episode, quality: "720p", url: "https://example.com/recover-me" }), 201);
   // A real multipart object in the local S3-compatible provider mock.
   const bytes = Buffer.alloc(6 * 1024 * 1024, 13);
@@ -90,9 +90,12 @@ try {
   assert.equal((await anon(`/api/download?id=${privateLink.id}`)).response.status, 404);
   assert.equal((await anon(`/api/comments?mediaId=${title.id}&episodeId=${episode}`)).response.status, 404);
   await page.getByRole("button", { name: "Recycle Bin", exact: true }).click();
+  await page.getByRole("button", { name: `${key} 10 deleted episodes`, exact: true }).click();
+  await page.getByRole("button", { name: "Season 1 10 deleted", exact: true }).click();
   await page.getByRole("button", { name: new RegExp(`^Restore ${key}.*Episode 13(?: ·|$)`) }).click();
   await page.getByText(/Restored. Independently deleted children/).waitFor();
-  for (const id of extra.slice(1)) await restore("episode", id);
+  await page.getByRole("button", { name: `Restore all deleted episodes in ${key}, Season 1`, exact: true }).click();
+  await page.getByText("Restored 9 episodes. Other seasons and independently deleted items were not changed.", { exact: true }).waitFor();
   assert.deepEqual(ok(await admin(`/api/media/${title.id}`)).seasons[0].episodes.map((entry) => entry.id), ids);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM comment_likes WHERE comment_id=$1", [parent])).rows[0].n, 1);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM comment_reports WHERE comment_id=$1", [parent])).rows[0].n, 1);
@@ -113,7 +116,14 @@ try {
   ok(await admin(`/api/seasons/${season.id}`, "DELETE"));
   assert.equal((await admin("/api/admin/recycle-bin", "POST", { action: "restore", kind: "episode", id: ids[21] })).response.status, 409);
   assert.equal(ok(await admin(`/api/media/${title.id}`)).seasons.length, 0);
+  await page.getByRole("button", { name: "Recycle Bin", exact: true }).click();
+  await page.getByRole("button", { name: `${key} 1 deleted episode`, exact: true }).click();
+  await page.getByRole("button", { name: "Season 1 1 deleted", exact: true }).click();
+  const restoreSeasonEpisodes = page.getByRole("button", { name: `Restore all deleted episodes in ${key}, Season 1`, exact: true });
+  assert.equal(await restoreSeasonEpisodes.isDisabled(), true, "UI respects deleted parent season");
   await restore("season", season.id);
+  await page.getByRole("button", { name: "Refresh bin", exact: true }).click();
+  await page.waitForFunction(() => { const button = [...document.querySelectorAll("button")].find((entry) => entry.textContent === "Restore All"); return button && !button.disabled; });
   assert.equal(ok(await admin(`/api/media/${title.id}`)).seasons[0].episodes.length, 21);
   ok(await admin(`/api/media/${title.id}`, "DELETE"));
   assert.equal((await anon(`/api/media/${title.id}`)).response.status, 404);
@@ -158,7 +168,9 @@ try {
   ok(await admin("/api/admin/recycle-bin", "POST", { action: "empty", confirmation: "EMPTY RECYCLE BIN" }));
   assert.equal(ok(await admin("/api/admin/recycle-bin")).total, 0);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM media WHERE id=ANY($1::int[])", [[animeMovie.id, liveMovie.id, anime.id]])).rows[0].n, 0);
-  for (const width of [320, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
+  await page.getByRole("button", { name: "Refresh bin", exact: true }).click();
+  await page.getByText("Recycle Bin is empty.", { exact: true }).waitFor();
+  for (const width of [320, 360, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
   assert.deepEqual(pageErrors, []);
   console.log("Recycle E2E PASS: 13–22 correction, single/selected/all deletion, parent/child restore, original IDs/links/11 comment levels/likes/reports/follows preserved, purge/empty confirmations, actual private multipart mock R2 object and audit retained, anime-movie classification isolated from regular Movies.");
 } finally { await browser?.close(); await pool.end(); }

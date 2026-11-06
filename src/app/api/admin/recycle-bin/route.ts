@@ -11,6 +11,11 @@ export async function GET(req: Request) {
     const offset = Math.min(1000000, Math.floor(Math.max(0, Number(new URL(req.url).searchParams.get("offset")) || 0)));
     const result = await pool.query(`SELECT cs.kind,cs.content_id AS id,cs.deleted_at AS "deletedAt",CASE WHEN cs.kind='media' AND cs.is_anime_movie THEN 'anime movie' ELSE COALESCE(m.type,pm.type) END AS type,
       CASE cs.kind WHEN 'media' THEN m.title WHEN 'season' THEN pm.title || ' · Season ' || s.season_number ELSE pm.title || ' · Season ' || es.season_number || ' · Episode ' || e.episode_number || COALESCE(' · ' || e.title,'') END AS title,
+      COALESCE(m.id,pm.id) AS "mediaId",COALESCE(m.title,pm.title) AS "mediaTitle",
+      COALESCE(s.id,e.season_id) AS "seasonId",COALESCE(s.season_number,es.season_number) AS "seasonNumber",
+      e.episode_number AS "episodeNumber",e.title AS "episodeTitle",
+      (EXISTS (SELECT 1 FROM content_state parent_state WHERE parent_state.kind='media' AND parent_state.content_id=pm.id AND parent_state.deleted_at IS NOT NULL)
+       OR EXISTS (SELECT 1 FROM content_state parent_state WHERE parent_state.kind='season' AND parent_state.content_id=e.season_id AND parent_state.deleted_at IS NOT NULL)) AS "parentDeleted",
       count(*) OVER()::int AS total
       FROM content_state cs LEFT JOIN media m ON cs.kind='media' AND m.id=cs.content_id
       LEFT JOIN seasons s ON cs.kind='season' AND s.id=cs.content_id LEFT JOIN episodes e ON cs.kind='episode' AND e.id=cs.content_id
