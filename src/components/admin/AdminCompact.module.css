@@ -38,3 +38,14 @@
 @media (min-width: 640px) {
   .compact :global(.sm\:p-4) { padding: 0.75rem; }
 }
+
+/* Keeps its normal layout footprint and follows the live public header height. */
+.navigation {
+  position: sticky;
+  top: var(--admin-nav-top, 0px);
+  z-index: 30;
+  background: rgb(10 10 10 / 96%);
+  backdrop-filter: blur(12px);
+  scrollbar-width: thin;
+  box-shadow: 0 1px 0 rgb(168 85 247 / 12%);
+}

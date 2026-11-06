@@ -48,7 +48,13 @@ export default function RecycleBin({ onBusyChange }: { onBusyChange: (value: boo
   const action = async (operation: "restore" | "purge" | "empty", item?: BinItem, season?: BinSeason) => {
     if (lock.current || loading || stale) return;
     const confirmation = operation === "empty" ? "EMPTY RECYCLE BIN" : item ? `DELETE PERMANENTLY ${item.kind}:${item.id}` : "";
-    if (operation !== "restore" && prompt(`This permanently deletes database content, including children, comments and links. It cannot be undone. Physical R2 files are retained. Type ${confirmation} to continue.`) !== confirmation) return;
+    if (operation !== "restore") {
+      const target = item?.kind === "episode" ? "episode" : item?.kind === "season" ? "season" : "title";
+      const message = operation === "empty"
+        ? "Are you sure you want to permanently empty the Recycle Bin? This action cannot be undone."
+        : `Are you sure you want to permanently delete this ${target}? This action cannot be undone.`;
+      if (!confirm(message)) return;
+    }
     if (season && !confirm(`Restore all ${season.items.length} deleted episodes in ${season.items[0].mediaTitle}, Season ${season.number ?? "unknown"}? Parents must be active. Only these explicitly selected episodes will be restored.`)) return;
     lock.current = true; setBusy(true); onBusyChange(true); setError(""); setNotice(""); let restored = 0;
     try {

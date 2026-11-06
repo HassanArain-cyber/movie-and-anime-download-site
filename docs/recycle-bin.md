@@ -13,7 +13,7 @@ An authorized operator must install **only the new 0008 migration**, once, on th
 - Restore the title, then an independently deleted season, then independently deleted episodes. Child restore under a deleted parent returns 409 without mutation. Restoring a parent does not revive independently deleted children.
 - Existing episode/season numbers remain reserved while in the bin. Restore those entries or deliberately permanently delete them before reusing their numbers.
 - The Episodes tool supports each-row Delete, checkboxes, range selection (e.g. 13–22), selected deletion (up to 500 at a time), and confirmed Delete All for the selected season. Moving all is atomic, including seasons larger than 500.
-- Permanent deletion is a separate authenticated action, only for an already deleted record, with typed confirmation identifying its kind and ID. Purging a parent deliberately removes its database subtree and dependent relationships. Empty Bin requires `EMPTY RECYCLE BIN` and permanently removes all marked subtrees. These actions cannot be undone.
+- Permanent deletion is a separate authenticated action, only for an already deleted record, with a clear Cancel/OK confirmation in the Admin UI. The client supplies the existing kind/ID confirmation payload after OK; the backend validation is unchanged. Purging a parent deliberately removes its database subtree and dependent relationships. Empty Bin uses a separate Cancel/OK dialog and supplies the existing `EMPTY RECYCLE BIN` API confirmation after OK and permanently removes all marked subtrees. These actions cannot be undone.
 
 ## Compact Admin presentation
 
@@ -21,7 +21,13 @@ The bin has All, Titles (including seasons), and Episodes filters. Episodes are 
 
 Season-level Restore All explicitly restores that season’s individually marked episodes through the existing restore endpoint. It is disabled if a parent is deleted. Requests run sequentially, show progress, stop on the first error, and refresh remaining items so a retry does not re-submit already restored episodes. This convenience operation is **not one atomic batch transaction**: completed restores remain completed if a later request fails. Parent rules are rechecked server-side for each episode. No other season or unselected child is restored.
 
-Permanent delete and Empty Bin retain their existing typed confirmations. Failed bin refreshes keep the current display but disable mutations until a successful refresh. The density stylesheet is scoped to Admin and removed entirely on Appearance; Wallpaper keeps its original layout and uploader. No database or storage lifecycle redesign is involved.
+Permanent delete and Empty Bin use concise Cancel/OK dialogs, without asking the user to type. Their existing server confirmation payloads and error handling remain unchanged. Failed bin refreshes keep the current display but disable mutations until a successful refresh. The density stylesheet is scoped to Admin and removed entirely on Appearance; Wallpaper keeps its original layout and uploader. No database or storage lifecycle redesign is involved.
+
+## Admin navigation and search
+
+Admin section tabs stay sticky below the existing public header. Their top offset follows the public header’s measured height at each responsive breakpoint; the tabs retain their normal layout footprint. Switching from a deeply scrolled section reveals the new section below the sticky tabs. Existing busy-operation navigation locks remain in place.
+
+Media Library filtering starts as a search icon. Opening it mounts and immediately focuses the input in the same interaction, including keyboard activation. The close button or Escape clears the filter, closes the input, and returns focus to the icon. Title/type filtering and the existing media-section filters are otherwise unchanged.
 
 ## R2 safety
 

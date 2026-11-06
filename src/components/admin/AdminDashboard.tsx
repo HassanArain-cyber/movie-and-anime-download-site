@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import styles from "./AdminCompact.module.css";
 import RecycleBin from "./RecycleBin";
 import BulkEpisodeLinks from "./BulkEpisodeLinks";
@@ -18,6 +18,28 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [bulkOpened, setBulkOpened] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("media");
+
+  const navigation = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const previousTab = useRef(tab);
+  useLayoutEffect(() => {
+    const header = document.querySelector("header"), element = navigation.current;
+    if (!element) return;
+    const measure = () => element.style.setProperty("--admin-nav-top", `${header?.getBoundingClientRect().height ?? 0}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (header) observer.observe(header);
+    window.addEventListener("resize", measure);
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+  useEffect(() => {
+    if (previousTab.current === tab) return;
+    previousTab.current = tab;
+    const content = panel.current?.getBoundingClientRect(), nav = navigation.current?.getBoundingClientRect();
+    // When switching from a deeply scrolled section, reveal the new section
+    // below the sticky tabs instead of leaving its first controls off-screen.
+    if (content && nav && content.top < nav.bottom) window.scrollBy({ top: content.top - nav.bottom - 8, behavior: "instant" });
+  }, [tab]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -40,11 +62,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-neutral-800">
+      <div ref={navigation} role="navigation" aria-label="Admin sections" className={`${styles.navigation} flex gap-1 overflow-x-auto border-b border-neutral-800`}>
         {(["media", "links", "bulk", "categories", "appearance", "requests", "moderation", "recycle"] as Tab[]).map((t) => (
           <button
             key={t}
             disabled={bulkBusy}
+            aria-current={tab === t ? "page" : undefined}
             onClick={() => { if (t === "bulk") setBulkOpened(true); if (t === "links") setLinksOpened(true); setTab(t); }}
             className={`-mb-px shrink-0 whitespace-nowrap border-b-2 ${tab === "appearance" ? "px-4 py-2 text-sm" : "min-h-9 px-2 py-1.5 text-xs"} font-medium capitalize ${
               tab === t
@@ -57,9 +80,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </div>
 
+      <div ref={panel} className="min-w-0">
       {linksOpened && <div hidden={tab !== "links"}><BulkEpisodeLinks onBusyChange={setBulkBusy} /></div>}
       {bulkOpened && <div hidden={tab !== "bulk"}><BulkAddEpisodes onBusyChange={setBulkBusy} /></div>}
       {tab === "bulk" || tab === "links" ? null : tab === "recycle" ? <RecycleBin onBusyChange={setBulkBusy} /> : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : tab === "requests" ? <ContactRequestsManager /> : <CommentModerationManager />}
+      </div>
     </div>
   );
 }

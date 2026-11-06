@@ -7,7 +7,7 @@ import { chromium as playwright } from "playwright-core";
 import chromium, { inflate, setupLambdaEnvironment } from "@sparticuz/chromium";
 
 let nextId = 1, failLink = false;
-let failRestoreId = null, failBinRead = false;
+let failRestoreId = null, failPurgeId = null, failBinRead = false;
 let binItems = [
   { kind: "media", id: 100, mediaId: 100, title: "Deleted movie", mediaTitle: "Deleted movie", type: "movie" },
   { kind: "media", id: 500, mediaId: 500, title: "Deleted anime", mediaTitle: "Deleted anime", type: "anime" },
@@ -47,6 +47,7 @@ const server = createServer(async (req, res) => {
         if (item.kind === "media") binItems.filter((entry) => entry.mediaId === item.id).forEach((entry) => { entry.parentDeleted = false; });
         if (item.kind === "season") binItems.filter((entry) => entry.seasonId === item.id).forEach((entry) => { entry.parentDeleted = false; });
       } else if (body.action !== "purge" || body.confirmation !== `DELETE PERMANENTLY ${item.kind}:${item.id}`) return json({ error: "Confirmation required" }, 400);
+      if (body.action === "purge" && item.id === failPurgeId) { failPurgeId = null; return json({ error: "Fixture purge failed" }, 503); }
       binItems = binItems.filter((entry) => entry !== item); return json({ success: true });
     }
     if (url.pathname === "/api/media") {
@@ -191,6 +192,25 @@ try {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `library fits at ${width}`);
   }
+  // Search starts as an icon, and opening it must immediately focus the input.
+  for (const width of [320, 360, 390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(await page.getByRole("searchbox", { name: "Filter media by title or type" }).count(), 0);
+    const toggle = page.getByRole("button", { name: "Search media", exact: true });
+    if (width === 390) { await toggle.focus(); await page.keyboard.press("Enter"); } else await toggle.click();
+    const search = page.getByRole("searchbox", { name: "Filter media by title or type" });
+    assert.equal(await search.evaluate((element) => element === document.activeElement), true, "one action opens AND focuses search");
+    await page.keyboard.type("Wizard movie");
+    assert.equal(await page.getByRole("row").count(), 2, "title filtering still works without a second click");
+    await search.press("Escape");
+    assert.equal(await search.count(), 0); assert.equal(await toggle.evaluate((element) => element === document.activeElement), true);
+    assert.equal(await page.getByRole("row").count(), 4, "closing clears filter and restores library");
+    await toggle.click(); await page.keyboard.type("anime");
+    assert.equal(await page.getByRole("row").count(), 2, "type filtering is preserved");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `open search fits ${width}`);
+    await page.getByRole("button", { name: "Close media search", exact: true }).click();
+    assert.equal(await search.count(), 0); assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+  }
   // Density stays scoped to Admin. Wallpaper must keep its original sizing.
   for (const name of ["categories", "requests", "Comment moderation", "File batches"]) {
     await page.getByRole("button", { name, exact: true }).click();
@@ -254,24 +274,64 @@ try {
   await filter("Attack on Titan 110 deleted episodes").click(); // collapse existing title
   await filter("Attack on Titan 110 deleted episodes").click();
   await filter("Season 1 110 deleted").click();
-  page.off("dialog", automaticDialog); let promptReply;
-  page.on("dialog", (dialog) => dialog.type() === "prompt" ? promptReply === undefined ? dialog.dismiss() : dialog.accept(promptReply) : dialog.accept());
+  page.off("dialog", automaticDialog); let acceptConfirmation = false;
+  const confirmations = [];
+  page.on("dialog", (dialog) => { confirmations.push({ type: dialog.type(), message: dialog.message() }); return acceptConfirmation ? dialog.accept() : dialog.dismiss(); });
   const deleteEpisode = bin.getByRole("button", { name: "Permanently delete Attack on Titan · Season 1 · Episode 1", exact: true });
   let mutationCount = writes.length;
-  await deleteEpisode.click(); assert.equal(writes.length, mutationCount, "cancelled purge never sends mutation");
-  promptReply = "wrong"; await deleteEpisode.click(); assert.equal(writes.length, mutationCount, "wrong purge confirmation never sends mutation");
-  promptReply = "DELETE PERMANENTLY episode:21001"; await deleteEpisode.click();
+  await deleteEpisode.click(); assert.equal(writes.length, mutationCount, "Cancel purge never sends mutation");
+  assert.deepEqual(confirmations.at(-1), { type: "confirm", message: "Are you sure you want to permanently delete this episode? This action cannot be undone." });
+  acceptConfirmation = true; failPurgeId = 21001;
+  await deleteEpisode.click(); await bin.getByRole("alert").filter({ hasText: "Fixture purge failed" }).waitFor();
+  assert.ok(binItems.some((item) => item.id === 21001), "failed permanent deletion retains the row and exposes API error");
+  await deleteEpisode.click();
   await filter("Attack on Titan 109 deleted episodes").waitFor(); assert.ok(!binItems.some((item) => item.id === 21001));
-  for (const width of [320, 360, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `expanded bin fits ${width}`); }
+  // Scroll a long section, switch directly from sticky tabs, then return.
+  const adminNav = page.getByRole("navigation", { name: "Admin sections", exact: true });
+  for (const width of [320, 360, 390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const titleFolder = filter("Attack on Titan 109 deleted episodes");
+    if (await titleFolder.getAttribute("aria-expanded") === "false") await titleFolder.click();
+    const seasonFolder = filter("Season 1 109 deleted");
+    if (await seasonFolder.getAttribute("aria-expanded") === "false") await seasonFolder.click();
+    await page.evaluate(async () => { window.scrollTo({ top: document.documentElement.scrollHeight / 2, behavior: "instant" }); await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
+    assert.ok(await page.evaluate(() => scrollY) > 200, "test must actually scroll a long Admin section");
+    const navBox = await adminNav.boundingBox(), headerBox = await page.locator("header").boundingBox();
+    assert.ok(Math.abs(navBox.y - (headerBox.y + headerBox.height)) <= 2, `sticky Admin tabs clear the public header at ${width}`);
+    assert.ok(navBox.y + navBox.height < 900, "Admin tabs stay visible");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `expanded bin fits ${width}`);
+    await adminNav.getByRole("button", { name: "requests", exact: true }).click();
+    const requestsHeading = page.getByRole("heading", { name: "Submitted requests", exact: true });
+    await requestsHeading.waitFor();
+    assert.equal(await adminNav.getByRole("button", { name: "requests", exact: true }).getAttribute("aria-current"), "page");
+    const headingBox = await requestsHeading.boundingBox(), switchedNav = await adminNav.boundingBox();
+    assert.ok(headingBox.y >= switchedNav.y + switchedNav.height - 1, "new section starts below sticky navigation, not behind it");
+    await adminNav.getByRole("button", { name: "Recycle Bin", exact: true }).click();
+    await filter("Attack on Titan 109 deleted episodes").waitFor();
+  }
+  // The same concise dialog covers seasons and titles; payloads stay unchanged.
+  binItems.push({ kind: "season", id: 302, mediaId: 300, mediaTitle: "Another Anime", seasonId: 302, seasonNumber: 2, type: "anime", title: "Another Anime · Season 2", deletedAt: "2026-11-07T00:00:00Z" });
+  await filter("Refresh bin").click(); await filter("Titles 3").click();
+  const deleteSeason = bin.getByRole("button", { name: "Permanently delete Another Anime · Season 2", exact: true });
+  acceptConfirmation = false; mutationCount = writes.length; await deleteSeason.click(); assert.equal(writes.length, mutationCount);
+  assert.deepEqual(confirmations.at(-1), { type: "confirm", message: "Are you sure you want to permanently delete this season? This action cannot be undone." });
+  acceptConfirmation = true; await deleteSeason.click(); await filter("Titles 2").waitFor();
+  assert.equal(writes.at(-1).body.confirmation, "DELETE PERMANENTLY season:302");
+  const deleteTitle = bin.getByRole("button", { name: "Permanently delete Deleted movie", exact: true });
+  acceptConfirmation = false; mutationCount = writes.length; await deleteTitle.click(); assert.equal(writes.length, mutationCount);
+  assert.deepEqual(confirmations.at(-1), { type: "confirm", message: "Are you sure you want to permanently delete this title? This action cannot be undone." });
+  acceptConfirmation = true; await deleteTitle.click(); await filter("Titles 1").waitFor();
+  assert.equal(writes.at(-1).body.confirmation, "DELETE PERMANENTLY media:100");
   failBinRead = true; await filter("Refresh bin").click(); await bin.getByRole("alert").filter({ hasText: "Fixture bin read failed" }).waitFor();
   assert.equal(await filter("Empty Recycle Bin").isDisabled(), true, "stale metadata cannot drive mutations");
   await filter("Refresh bin").click(); await page.waitForFunction(() => !document.querySelector('section[aria-label="Recycle Bin"]').getAttribute("aria-busy")?.includes("true"));
-  mutationCount = writes.length; promptReply = "wrong"; await filter("Empty Recycle Bin").click(); assert.equal(writes.length, mutationCount);
-  promptReply = undefined; await filter("Empty Recycle Bin").click(); assert.equal(writes.length, mutationCount);
-  promptReply = "EMPTY RECYCLE BIN"; await filter("Empty Recycle Bin").click();
+  mutationCount = writes.length; acceptConfirmation = false;
+  await filter("Empty Recycle Bin").click(); assert.equal(writes.length, mutationCount, "Cancel empty bin never sends mutation");
+  assert.deepEqual(confirmations.at(-1), { type: "confirm", message: "Are you sure you want to permanently empty the Recycle Bin? This action cannot be undone." });
+  acceptConfirmation = true; await filter("Empty Recycle Bin").click();
   await bin.getByText("Recycle Bin is empty.", { exact: true }).waitFor(); assert.equal(binItems.length, 0);
   assert.equal(await bin.getByTestId("bin-title-folder").count(), 0);
   assert.equal(writes.filter((entry) => entry.path === "/api/media").length, 3);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
-  console.log("Admin fixture browser PASS: All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, typed empty confirmation, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
+  console.log("Admin fixture browser PASS: All/Titles/Episodes bin filters, 127-item paged grouping, unmounted collapsed rows, parent-aware/partial-failure season restore, individual restore/purge, Cancel/OK purge/empty confirmations with unchanged payloads and error handling, sticky section switching and one-tap focused search at 320–1280px, Wallpaper density isolation, compact category/request/moderation/file-batch layouts; movie/anime/series wizard, validation/back navigation, partial-save retry, editing, inline season creation, 1–24 range/duplicate protection, quality saves/failure/retry/non-overwrite, responsive 320–1280px. No live DB/R2 evidence; real R2 remains covered by disposable CI mocks.");
 } finally { await browser?.close(); await new Promise((resolve) => server.close(resolve)); }
