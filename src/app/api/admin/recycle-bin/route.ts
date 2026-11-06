@@ -9,14 +9,16 @@ export async function GET(req: Request) {
   try {
     if (!await lifecycleReady()) return NextResponse.json({ ready: false, items: [], total: 0 });
     const offset = Math.min(1000000, Math.floor(Math.max(0, Number(new URL(req.url).searchParams.get("offset")) || 0)));
-    const result = await pool.query(`SELECT cs.kind,cs.content_id AS id,cs.deleted_at AS "deletedAt",COALESCE(m.type,pm.type) AS type,
-      CASE cs.kind WHEN 'media' THEN m.title WHEN 'season' THEN pm.title || ' · Season ' || s.season_number ELSE pm.title || ' · Episode ' || e.episode_number || COALESCE(' · ' || e.title,'') END AS title,
+    const result = await pool.query(`SELECT cs.kind,cs.content_id AS id,cs.deleted_at AS "deletedAt",CASE WHEN cs.kind='media' AND cs.is_anime_movie THEN 'anime movie' ELSE COALESCE(m.type,pm.type) END AS type,
+      CASE cs.kind WHEN 'media' THEN m.title WHEN 'season' THEN pm.title || ' · Season ' || s.season_number ELSE pm.title || ' · Season ' || es.season_number || ' · Episode ' || e.episode_number || COALESCE(' · ' || e.title,'') END AS title,
       count(*) OVER()::int AS total
       FROM content_state cs LEFT JOIN media m ON cs.kind='media' AND m.id=cs.content_id
       LEFT JOIN seasons s ON cs.kind='season' AND s.id=cs.content_id LEFT JOIN episodes e ON cs.kind='episode' AND e.id=cs.content_id
+      LEFT JOIN seasons es ON cs.kind='episode' AND es.id=e.season_id
       LEFT JOIN media pm ON pm.id=COALESCE(s.media_id,e.media_id)
       WHERE cs.deleted_at IS NOT NULL ORDER BY cs.deleted_at DESC,cs.kind,cs.content_id LIMIT 100 OFFSET $1`, [offset]);
-    return NextResponse.json({ ready: true, items: result.rows, total: result.rows[0]?.total ?? 0 });
+    const count = await pool.query("SELECT count(*)::int AS total FROM content_state WHERE deleted_at IS NOT NULL");
+    return NextResponse.json({ ready: true, items: result.rows, total: count.rows[0]?.total ?? 0 });
   } catch (error) { return errorResponse(error); }
 }
 export async function POST(req: Request) {

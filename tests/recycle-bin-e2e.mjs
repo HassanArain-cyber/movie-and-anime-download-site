@@ -90,7 +90,7 @@ try {
   assert.equal((await anon(`/api/download?id=${privateLink.id}`)).response.status, 404);
   assert.equal((await anon(`/api/comments?mediaId=${title.id}&episodeId=${episode}`)).response.status, 404);
   await page.getByRole("button", { name: "Recycle Bin", exact: true }).click();
-  await page.getByRole("button", { name: new RegExp(`^Restore ${key} · Episode 13`) }).click();
+  await page.getByRole("button", { name: new RegExp(`^Restore ${key}.*Episode 13(?: ·|$)`) }).click();
   await page.getByText(/Restored. Independently deleted children/).waitFor();
   for (const id of extra.slice(1)) await restore("episode", id);
   assert.deepEqual(ok(await admin(`/api/media/${title.id}`)).seasons[0].episodes.map((entry) => entry.id), ids);

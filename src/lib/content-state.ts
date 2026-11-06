@@ -20,18 +20,18 @@ export function activeRaw(kind: ContentKind, id: string, ready: boolean): string
   if (!ready) return "TRUE";
   const own = `NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='${kind}' AND cs.content_id=${id} AND cs.deleted_at IS NOT NULL)`;
   if (kind === "media") return own;
-  const media = kind === "season" ? `(SELECT p.media_id FROM seasons p WHERE p.id=${id})` : `(SELECT p.media_id FROM episodes p WHERE p.id=${id})`;
+  const media = kind === "season" ? `(SELECT lifecycle_parent.media_id FROM seasons lifecycle_parent WHERE lifecycle_parent.id=${id})` : `(SELECT lifecycle_parent.media_id FROM episodes lifecycle_parent WHERE lifecycle_parent.id=${id})`;
   const parent = `NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='media' AND cs.content_id=${media} AND cs.deleted_at IS NOT NULL)`;
-  const season = kind === "episode" ? ` AND NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='season' AND cs.content_id=(SELECT p.season_id FROM episodes p WHERE p.id=${id}) AND cs.deleted_at IS NOT NULL)` : "";
+  const season = kind === "episode" ? ` AND NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='season' AND cs.content_id=(SELECT lifecycle_parent.season_id FROM episodes lifecycle_parent WHERE lifecycle_parent.id=${id}) AND cs.deleted_at IS NOT NULL)` : "";
   return `(${own} AND ${parent}${season})`;
 }
 export async function activeContent(kind: ContentKind, id: SQLWrapper | number) {
   if (!await lifecycleReady()) return sql`true`;
   const own = sql`NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind=${kind} AND cs.content_id=${id} AND cs.deleted_at IS NOT NULL)`;
   if (kind === "media") return own;
-  const parentMedia = kind === "season" ? sql`(SELECT p.media_id FROM seasons p WHERE p.id=${id})` : sql`(SELECT p.media_id FROM episodes p WHERE p.id=${id})`;
+  const parentMedia = kind === "season" ? sql`(SELECT lifecycle_parent.media_id FROM seasons lifecycle_parent WHERE lifecycle_parent.id=${id})` : sql`(SELECT lifecycle_parent.media_id FROM episodes lifecycle_parent WHERE lifecycle_parent.id=${id})`;
   const media = sql`NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='media' AND cs.content_id=${parentMedia} AND cs.deleted_at IS NOT NULL)`;
-  return kind === "season" ? sql`(${own} AND ${media})` : sql`(${own} AND ${media} AND NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='season' AND cs.content_id=(SELECT p.season_id FROM episodes p WHERE p.id=${id}) AND cs.deleted_at IS NOT NULL))`;
+  return kind === "season" ? sql`(${own} AND ${media})` : sql`(${own} AND ${media} AND NOT EXISTS (SELECT 1 FROM content_state cs WHERE cs.kind='season' AND cs.content_id=(SELECT lifecycle_parent.season_id FROM episodes lifecycle_parent WHERE lifecycle_parent.id=${id}) AND cs.deleted_at IS NOT NULL))`;
 }
 export async function assertActiveContent(kind: ContentKind, id: number) {
   if (!await lifecycleReady()) return;

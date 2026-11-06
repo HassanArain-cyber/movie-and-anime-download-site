@@ -32,9 +32,12 @@ test("before 0008, reads do not reference missing tables and new lifecycle write
 test("active episode predicates check independent deletion plus both ancestors", async () => {
   const { api, calls } = fixture(true), dialect = new PgDialect();
   const result = dialect.sqlToQuery(await api.activeContent("episode", 13) as drizzle.SQL);
-  for (const expression of ["deleted_at IS NOT NULL", "cs.kind='media'", "cs.kind='season'", "p.season_id", "p.media_id"]) assert.ok(result.sql.includes(expression));
+  for (const expression of ["deleted_at IS NOT NULL", "cs.kind='media'", "cs.kind='season'", "lifecycle_parent.season_id", "lifecycle_parent.media_id"]) assert.ok(result.sql.includes(expression));
   await assert.rejects(api.assertActiveContent("episode", 13), (error: unknown) => (error as { status: number }).status === 404);
   assert.ok(calls[1].includes("cs.kind='episode'"));
+  const raw = await api.activeRaw("episode", "p.episode_id", true) as string;
+  assert.ok(raw.includes("lifecycle_parent.id=p.episode_id"), "notification publication alias p must stay correlated to the outer query");
+  assert.doesNotMatch(raw, /FROM episodes p\b|FROM seasons p\b/, "inner aliases must not shadow the publication alias");
 });
 test("0008 is strictly additive and exactly matches the generated latest snapshot", async () => {
   const previous = JSON.parse(read("drizzle/meta/0007_snapshot.json")), saved = JSON.parse(read("drizzle/meta/0008_snapshot.json"));
