@@ -110,6 +110,11 @@ try {
     await page.getByText("Individual editing & files", { exact: true }).click();
     await page.getByTestId("individual-episode-editor").getByRole("button", { name: /Season 1/ }).click();
     await page.getByText("Create a complete season", { exact: true }).waitFor();
+    const individual = page.getByTestId("individual-episode-editor");
+    await individual.getByLabel("Count", { exact: true }).fill("3");
+    await individual.getByRole("button", { name: "Create episodes", exact: true }).click();
+    await individual.getByText("Episode 1", { exact: true }).waitFor();
+    assert.equal(items.at(-1).seasons[0].episodes.length, 3);
     await page.getByRole("button", { name: "← Back to media", exact: true }).click();
   }
   await page.getByRole("button", { name: "Episodes", exact: true }).click();
@@ -145,6 +150,12 @@ try {
   for (const width of [320, 360, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `episode workspace fits at ${width}`);
+    const saveButton = page.getByRole("button", { name: "Save All", exact: true });
+    await saveButton.scrollIntoViewIfNeeded();
+    assert.equal(await saveButton.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return el.contains(document.elementFromPoint(box.right - 8, box.top + box.height / 2));
+    }), true, "Save All must not be covered by the public floating scroll control");
   }
   await page.getByRole("button", { name: "media", exact: true }).click();
   for (const width of [320, 390, 1280]) {

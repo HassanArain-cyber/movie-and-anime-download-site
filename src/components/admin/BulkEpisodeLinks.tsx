@@ -33,6 +33,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
   const [notice, setNotice] = useState("");
   const [operation, setOperation] = useState<"selection" | "range" | "links">("selection");
   const [progress, setProgress] = useState("");
+  const seasonForm = useRef<HTMLDetailsElement>(null);
   const lock = useRef(false);
   const loadGeneration = useRef(0);
   const season = details?.seasons?.find((entry) => entry.id === Number(seasonId));
@@ -88,7 +89,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
     setSeasonBusy(true); setOperation("selection");
     try {
       const created = await request<{ id: number }>("/api/seasons", post({ mediaId: details.id, seasonNumber: Number(newSeasonNumber), name: newSeasonName.trim() || null }));
-      await refresh(); setSeasonId(String(created.id)); setNewSeasonNumber(String(Number(newSeasonNumber) + 1)); setNewSeasonName(""); setNotice("Season created. Enter the episode range below.");
+      await refresh(); if (seasonForm.current) seasonForm.current.open = false; setSeasonId(String(created.id)); setNewSeasonNumber(String(Number(newSeasonNumber) + 1)); setNewSeasonName(""); setNotice("Season created. Enter the episode range below.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create season.");
       await refresh().catch(() => undefined);
@@ -152,7 +153,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
     </div>
     {operation === "selection" && feedback}
     {loading && <p role="status" className="text-sm text-neutral-400">Loading…</p>}
-    {details && <details open={!details.seasons?.length} className="rounded-xl border border-neutral-800 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">+ Create a season</summary><form onSubmit={createSeason} className="grid gap-2 pb-3 sm:grid-cols-[7rem_minmax(0,1fr)_auto]"><label className="text-xs text-neutral-400">New season #<input aria-label="New season number" type="number" min={1} max={10000} required value={newSeasonNumber} disabled={busy} onChange={(event) => setNewSeasonNumber(event.target.value)} className={`${control} mt-1`} /></label><label className="min-w-0 text-xs text-neutral-400">Name (optional)<input value={newSeasonName} disabled={busy} maxLength={255} onChange={(event) => setNewSeasonName(event.target.value)} placeholder="e.g. Season 2" className={`${control} mt-1`} /></label><button type="submit" disabled={busy} className="min-h-11 self-end rounded-lg border border-purple-500/40 px-3 text-sm text-purple-200 disabled:opacity-40">{seasonBusy ? "Creating…" : "Create season"}</button></form></details>}
+    {details && <details ref={seasonForm} open={!details.seasons?.length} className="rounded-xl border border-neutral-800 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">+ Create a season</summary><form onSubmit={createSeason} className="grid gap-2 pb-3 sm:grid-cols-[7rem_minmax(0,1fr)_auto]"><label className="text-xs text-neutral-400">New season #<input aria-label="New season number" type="number" min={1} max={10000} required value={newSeasonNumber} disabled={busy} onChange={(event) => setNewSeasonNumber(event.target.value)} className={`${control} mt-1`} /></label><label className="min-w-0 text-xs text-neutral-400">Name (optional)<input value={newSeasonName} disabled={busy} maxLength={255} onChange={(event) => setNewSeasonName(event.target.value)} placeholder="e.g. Season 2" className={`${control} mt-1`} /></label><button type="submit" disabled={busy} className="min-h-11 self-end rounded-lg border border-purple-500/40 px-3 text-sm text-purple-200 disabled:opacity-40">{seasonBusy ? "Creating…" : "Create season"}</button></form></details>}
     <div className="space-y-3 rounded-xl border border-neutral-800 p-3">
       <h3 className="text-sm font-semibold">1. Generate your episode range</h3>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-[8rem_8rem_auto] sm:items-end">
@@ -178,7 +179,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
           </tr>;
         })}</tbody></table>}
       </div>
-      <div className="sticky bottom-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-700 bg-neutral-950/95 p-2 shadow-lg"><p aria-live="polite" className="text-xs text-neutral-400">{episodes.filter((episode) => drafts[keyFor(episode.id)]?.trim() && !qualityLinks(episode, quality).length && results[keyFor(episode.id)]?.state !== "saved").length} pending · {episodes.filter((episode) => results[keyFor(episode.id)]?.state === "error").length} failed</p><button type="button" onClick={() => void saveLinks()} disabled={busy || !episodes.length} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold disabled:opacity-40">{busy ? "Processing…" : "Save All"}</button></div>
+      <div className="sticky bottom-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-700 bg-neutral-950/95 p-2 pr-16 shadow-lg"><p aria-live="polite" className="text-xs text-neutral-400">{episodes.filter((episode) => drafts[keyFor(episode.id)]?.trim() && !qualityLinks(episode, quality).length && results[keyFor(episode.id)]?.state !== "saved").length} pending · {episodes.filter((episode) => results[keyFor(episode.id)]?.state === "error").length} failed</p><button type="button" onClick={() => void saveLinks()} disabled={busy || !episodes.length} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold disabled:opacity-40">{busy ? "Processing…" : "Save All"}</button></div>
       {operation === "links" && feedback}
     </div>
 

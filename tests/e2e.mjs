@@ -1157,11 +1157,11 @@ await page.getByRole("button", { name: "Next", exact: true }).click();
 await page.getByLabel("First season #", { exact: true }).fill("1");
 await page.getByRole("button", { name: "Create & Continue" }).click();
 await page.getByText("Individual editing & files", { exact: true }).click();
-await page.getByTestId("individual-episode-editor").getByRole("button", { name: /Season 1/ }).click();
+const individualEditor = page.getByTestId("individual-episode-editor");
+await individualEditor.getByRole("button", { name: /Season 1/ }).click();
 await page.getByText("Create a complete season").waitFor();
 await page.getByLabel("Count").fill("3");
-await page.getByRole("button", { name: "Create episodes" }).click();
-const individualEditor = page.getByTestId("individual-episode-editor");
+await individualEditor.getByRole("button", { name: "Create episodes", exact: true }).click();
 await individualEditor.getByText("Episode 1", { exact: true }).waitFor();
 // A single batch may contain multiple qualities for the same episode.
 await page.locator('input[type="file"][multiple]').setInputFiles([
