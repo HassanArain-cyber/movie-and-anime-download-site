@@ -13,7 +13,7 @@ test("exactly five watch statuses are accepted, with the approved labels", () =>
   for (const { value } of WATCH_STATUSES) assert.equal(isWatchStatus(value), true);
   for (const value of [undefined, null, 1, {}, [], "", "Watching", "completed", "watching ", ["watching", "watched"]]) assert.equal(isWatchStatus(value), false);
 });
-test("unapplied 0007 SQL/snapshot agree with generated schema and unqualified status constraint", async () => {
+test("historical 0007 SQL/snapshot agree with generated schema and unqualified status constraint", async () => {
   const sql = read("drizzle/0007_anime_notifications.sql");
   const snapshot = JSON.parse(read("drizzle/meta/0007_snapshot.json"));
   const names = ["anime_follows", "episode_notifications", "episode_publications", "subscribers"];
@@ -27,7 +27,8 @@ test("unapplied 0007 SQL/snapshot agree with generated schema and unqualified st
   const expression = `"watch_status" IN ('plan_to_watch', 'watching', 'continue', 'on_hold', 'watched')`;
   assert.equal(follows.checkConstraints.anime_follows_watch_status_check.value, expression);
   // Pure in-memory generation only: no db/index import, config, CLI, writes or DB.
-  const fresh = generateDrizzleJson(schema);
+  const { contentState: _newLifecycleTable, ...historicSchema } = schema;
+  const fresh = generateDrizzleJson(historicSchema);
   const normalized = JSON.parse(JSON.stringify(fresh));
   const saved = JSON.parse(JSON.stringify(snapshot));
   for (const key of ["id", "prevId"]) { delete normalized[key]; delete saved[key]; }
@@ -37,7 +38,7 @@ test("unapplied 0007 SQL/snapshot agree with generated schema and unqualified st
   assert.deepEqual(follows.compositePrimaryKeys.anime_follows_subscriber_id_media_id_pk.columns, ["subscriber_id", "media_id"]);
   for (const { value } of WATCH_STATUSES) assert.ok(sql.includes(`'${value}'`));
   assert.doesNotMatch(sql, /push_subscriptions|push_deliveries|\bDROP\b|\bTRUNCATE\b|DELETE FROM/);
-  assert.equal(JSON.parse(read("drizzle/meta/_journal.json")).entries.length, 8);
+  assert.equal(JSON.parse(read("drizzle/meta/_journal.json")).entries.length, 9);
 });
 test("build stays migration-free and episode notifications are in-site only", () => {
   const pkg = JSON.parse(read("package.json"));
@@ -70,6 +71,7 @@ function routeFixture(contentType = "anime") {
     return { rows: [], rowCount: 1 };
   };
   const imports: Record<string, unknown> = {
+    "@/lib/content-state": { assertActiveContent: async () => {} },
     "@/db": { pool: { query, connect: async () => ({ query, release: () => {} }) } },
     "@/lib/validation": { ApiError, readJson: async (req: { body: unknown }) => req.body, positiveId: (id: number) => { if (!Number.isInteger(id) || id < 1) throw new ApiError(400, "Invalid id"); return id; } },
     "@/lib/watch-status": { isWatchStatus, isFollowableContentType },

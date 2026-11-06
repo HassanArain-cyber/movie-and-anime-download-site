@@ -1,3 +1,5 @@
+import { assertActiveContent } from "@/lib/content-state";
+import { moveToBin } from "@/lib/recycle-bin";
 import { NextResponse } from "next/server";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
@@ -12,6 +14,7 @@ export async function PATCH(req: Request, { params }: Context) {
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
+    await assertActiveContent("episode", id);
     const body = await readJson(req);
     const [existing] = await db.select().from(episodes).where(eq(episodes.id, id)).limit(1);
     if (!existing) throw new ApiError(404, "Episode not found");
@@ -25,6 +28,7 @@ export async function PATCH(req: Request, { params }: Context) {
     }
     if ("seasonId" in body) {
       const seasonId = positiveId(body.seasonId, "seasonId");
+      await assertActiveContent("season", seasonId);
       const [season] = await db.select().from(seasons).where(and(eq(seasons.id, seasonId), eq(seasons.mediaId, existing.mediaId))).limit(1);
       if (!season) throw new ApiError(400, "Season does not belong to this media item");
       updates.seasonId = seasonId;
@@ -43,8 +47,7 @@ export async function DELETE(req: Request, { params }: Context) {
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
-    const [deleted] = await db.delete(episodes).where(eq(episodes.id, id)).returning({ id: episodes.id });
-    if (!deleted) throw new ApiError(404, "Episode not found");
+    await moveToBin("episode", id);
     return NextResponse.json({ success: true, objectRetained: true });
   } catch (error) { return errorResponse(error); }
 }

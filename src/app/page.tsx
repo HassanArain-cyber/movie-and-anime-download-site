@@ -1,3 +1,4 @@
+import { activeContent, animeMovieFlag } from "@/lib/content-state";
 import Link from "next/link";
 import MediaGrid from "@/components/MediaGrid";
 import CategoryFilter from "@/components/CategoryFilter";
@@ -38,7 +39,8 @@ export default async function Home({ searchParams }: HomeProps) {
 
   // Build conditions for the unfiltered / category browse view. Search uses the
   // same ranked title/alias/episode matcher as the live suggestion endpoint.
-  const conditions: any[] = [];
+  const conditions: any[] = [await activeContent("media", media.id)];
+  if (typeFilter === "movie") conditions.push(sql`NOT (${await animeMovieFlag(media.id)})`);
   if (typeFilter) conditions.push(eq(media.type, typeFilter));
   const resolvedCategory = categorySlug ? cats.find((category) => category.slug === categorySlug) : undefined;
   if (resolvedCategory) conditions.push(eq(media.categoryId, resolvedCategory.id));
@@ -85,7 +87,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   const hasBrowseFilters = Boolean(q || typeFilter || categorySlug || yearFilter || explicitSort);
   // Counts must include the full library, not only the first page of posters.
-  const totals = await db.select({ type: media.type, count: sql`count(*)` }).from(media).groupBy(media.type);
+  const totals = await db.select({ type: media.type, count: sql`count(*)` }).from(media).where(await activeContent("media", media.id)).groupBy(media.type);
   const totalFor = (type: string) => Number(totals.find((row) => row.type === type)?.count ?? 0);
   const totalMovies = totalFor("movie"), totalAnime = totalFor("anime"), totalSeries = totalFor("series");
 

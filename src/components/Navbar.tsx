@@ -21,7 +21,7 @@ type SearchSuggestion = {
 const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/movie", label: "Movies" },
-  { href: "/anime", label: "Anime" },
+  { href: "/anime", label: "Anime & Movies" },
   { href: "/series", label: "Series" },
   { href: "/following", label: "Following" },
 ];

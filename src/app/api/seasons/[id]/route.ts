@@ -1,3 +1,5 @@
+import { assertActiveContent } from "@/lib/content-state";
+import { moveToBin } from "@/lib/recycle-bin";
 import { NextResponse } from "next/server";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
@@ -12,6 +14,7 @@ export async function PATCH(req: Request, { params }: Context) {
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
+    await assertActiveContent("season", id);
     const body = await readJson(req);
     const [existing] = await db.select().from(seasons).where(eq(seasons.id, id)).limit(1);
     if (!existing) throw new ApiError(404, "Season not found");
@@ -32,8 +35,7 @@ export async function DELETE(req: Request, { params }: Context) {
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
-    const [deleted] = await db.delete(seasons).where(eq(seasons.id, id)).returning({ id: seasons.id });
-    if (!deleted) throw new ApiError(404, "Season not found");
+    await moveToBin("season", id);
     return NextResponse.json({ success: true, objectRetained: true });
   } catch (error) { return errorResponse(error); }
 }

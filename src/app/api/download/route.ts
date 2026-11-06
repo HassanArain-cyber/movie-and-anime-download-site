@@ -1,3 +1,4 @@
+import { assertActiveContent } from "@/lib/content-state";
 import { NextResponse } from "next/server";
 import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
@@ -82,6 +83,7 @@ async function handle(req: Request) {
   if (idParam !== null) {
     const id = positiveId(idParam, "id");
     const [link] = await db.select().from(downloadLinks).where(eq(downloadLinks.id, id)).limit(1);
+    if (link) { if (link.mediaId) await assertActiveContent("media", link.mediaId); if (link.seasonId) await assertActiveContent("season", link.seasonId); if (link.episodeId) await assertActiveContent("episode", link.episodeId); }
     if (!link) throw new ApiError(404, "Download link not found");
     if (isR2Url(link.url) || link.storageProvider === "r2") {
       const key = link.objectKey || (isR2Url(link.url) ? link.url.slice("r2:///".length) : null);
@@ -95,8 +97,11 @@ async function handle(req: Request) {
   if (!url) throw new ApiError(400, "Missing url or id");
   // Direct URL access is only allowed for a URL already recorded in the DB.
   // This prevents the endpoint from becoming an open redirect for arbitrary URLs.
-  const [known] = await db.select({ id: downloadLinks.id, url: downloadLinks.url }).from(downloadLinks).where(eq(downloadLinks.url, url)).limit(1);
+  const [known] = await db.select().from(downloadLinks).where(eq(downloadLinks.url, url)).limit(1);
   if (!known) throw new ApiError(404, "File not available");
+  if (known.mediaId) await assertActiveContent("media", known.mediaId);
+  if (known.seasonId) await assertActiveContent("season", known.seasonId);
+  if (known.episodeId) await assertActiveContent("episode", known.episodeId);
   // Use the stored URL, not the request-decoded value, so encoded legacy paths
   // and external query strings are preserved exactly as recorded.
   if (isLegacyUpload(known.url)) return legacyResponse(req, known.url);

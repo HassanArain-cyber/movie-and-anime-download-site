@@ -1,3 +1,5 @@
+import { assertActiveContent } from "@/lib/content-state";
+import { moveEpisodes } from "@/lib/recycle-bin";
 import { NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
@@ -13,6 +15,7 @@ export async function POST(req: Request) {
   try {
     const body = await readJson(req);
     const seasonId = positiveId(body.seasonId, "seasonId");
+    await assertActiveContent("season", seasonId);
     const start = positiveId(body.start ?? 1, "start");
     const count = positiveId(body.count, "count");
     if (count > 500) throw new ApiError(400, "Add at most 500 episodes per batch");
@@ -27,9 +30,24 @@ export async function POST(req: Request) {
     const created = await db.transaction(async (tx) => {
       const existing = await tx.select({ episodeNumber: episodes.episodeNumber }).from(episodes)
         .where(and(eq(episodes.seasonId, seasonId), inArray(episodes.episodeNumber, numbers)));
-      if (existing.length) throw new ApiError(409, `Episode numbers already exist: ${existing.map((e) => e.episodeNumber).join(", ")}. No episodes were added.`);
+      if (existing.length) throw new ApiError(409, `Episode numbers already exist: ${existing.map((e) => e.episodeNumber).join(", ")}. No episodes were added. Restore or permanently delete any matching Recycle Bin entries before reusing their numbers.`);
       return tx.insert(episodes).values(numbers.map((episodeNumber) => ({ mediaId: season.mediaId, seasonId, episodeNumber, title: `${prefix} ${episodeNumber}`, duration }))).returning();
     });
     return NextResponse.json({ episodes: created }, { status: 201 });
+  } catch (error) { return errorResponse(error); }
+}
+
+export async function DELETE(req: Request) {
+  const auth = await requireAdmin(req); if (auth !== true) return auth;
+  try {
+    const body = await readJson(req, 65536), seasonId = positiveId(body.seasonId, "seasonId");
+    let ids: number[] | null = null;
+    if (body.all === true) {
+      if (body.confirmation !== "MOVE ALL EPISODES") throw new ApiError(400, "Confirm moving every episode to the Recycle Bin.");
+    } else {
+      if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 500) throw new ApiError(400, "Select 1–500 episodes.");
+      ids = body.ids.map((id) => positiveId(id));
+    }
+    return NextResponse.json({ success: true, moved: await moveEpisodes(seasonId, ids), objectsRetained: true });
   } catch (error) { return errorResponse(error); }
 }

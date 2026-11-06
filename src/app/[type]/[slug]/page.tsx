@@ -1,3 +1,4 @@
+import { activeContent } from "@/lib/content-state";
 import { notFound } from "next/navigation";
 import PosterImage from "@/components/PosterImage";
 import Link from "next/link";
@@ -16,7 +17,7 @@ interface PageProps { params: Promise<{ type: string; slug: string }>; }
 
 export default async function DetailPage({ params }: PageProps) {
   const { type, slug } = await params;
-  const [found] = await db.select({ id: media.id }).from(media).where(and(eq(media.slug, slug), eq(media.type, type))).limit(1);
+  const [found] = await db.select({ id: media.id }).from(media).where(and(eq(media.slug, slug), eq(media.type, type), await activeContent("media", media.id))).limit(1);
   if (!found) notFound();
   const item = await getMediaDetails(found.id);
   let followerCount: number | undefined;

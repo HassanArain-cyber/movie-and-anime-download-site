@@ -1,3 +1,4 @@
+import { activeContent, animeMovieFlag } from "@/lib/content-state";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import MediaGrid from "@/components/MediaGrid";
@@ -18,7 +19,7 @@ const VALID_TYPES: Record<string, { label: string }> = {
 
 interface PageProps {
   params: Promise<{ type: string }>;
-  searchParams: Promise<{ category?: string; year?: string; sort?: string }>;
+  searchParams: Promise<{ category?: string; year?: string; sort?: string; format?: string }>;
 }
 
 export async function generateStaticParams() {
@@ -28,6 +29,8 @@ export async function generateStaticParams() {
 export default async function TypePage({ params, searchParams }: PageProps) {
   const [{ type }, query] = await Promise.all([params, searchParams]);
   if (!VALID_TYPES[type]) notFound();
+  const animeMovie = type === "anime" && query.format === "movie";
+  const catalogType = animeMovie ? "movie" : type;
   const activeSort: LibrarySort = isLibrarySort(query.sort) ? query.sort : "newest";
 
   const [cats, yearRows] = await Promise.all([
@@ -38,7 +41,8 @@ export default async function TypePage({ params, searchParams }: PageProps) {
   const rawYear = query.year && /^\d{4}$/.test(query.year) ? Number(query.year) : undefined;
   const activeYear = rawYear && years.includes(rawYear) ? rawYear : undefined;
   const activeCategory = cats.find((category) => category.slug === query.category);
-  const conditions = [eq(media.type, type as MediaType)];
+  const conditions = [eq(media.type, catalogType as MediaType), await activeContent("media", media.id)];
+  if (catalogType === "movie") conditions.push(animeMovie ? await animeMovieFlag(media.id) : sql`NOT (${await animeMovieFlag(media.id)})`);
   if (activeCategory) conditions.push(eq(media.categoryId, activeCategory.id));
   if (activeYear) conditions.push(eq(media.year, activeYear));
 
@@ -68,7 +72,7 @@ export default async function TypePage({ params, searchParams }: PageProps) {
         : [activeSort === "oldest" ? asc(media.id) : desc(media.id)]),
     );
 
-  const label = VALID_TYPES[type].label;
+  const label = type === "anime" ? "Anime & Movies" : VALID_TYPES[type].label;
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -78,6 +82,7 @@ export default async function TypePage({ params, searchParams }: PageProps) {
         </div>
         <Link href="/" className="text-sm text-neutral-400 hover:text-white">← Back to all</Link>
       </div>
+      {type === "anime" && <nav aria-label="Anime format" className="flex gap-1"><Link aria-current={!animeMovie ? "page" : undefined} className={`min-h-9 rounded-md border px-3 py-2 text-xs ${!animeMovie ? "border-purple-500 bg-purple-500/15 text-purple-200" : "border-neutral-800 text-neutral-400"}`} href="/anime">Anime</Link><Link aria-current={animeMovie ? "page" : undefined} className={`min-h-9 rounded-md border px-3 py-2 text-xs ${animeMovie ? "border-purple-500 bg-purple-500/15 text-purple-200" : "border-neutral-800 text-neutral-400"}`} href="/anime?format=movie">Movie</Link></nav>}
       <div className="flex flex-wrap items-center gap-2">
         <CategoryFilter
           categories={cats}
@@ -85,7 +90,7 @@ export default async function TypePage({ params, searchParams }: PageProps) {
           activeSlug={activeCategory?.slug}
           activeYear={activeYear}
           activeSort={activeSort}
-          baseQuery={{ type }}
+          baseQuery={{ type: catalogType, ...(animeMovie ? { format: "movie" } : {}) }}
         />
       </div>
       <MediaGrid items={items as any[]} />

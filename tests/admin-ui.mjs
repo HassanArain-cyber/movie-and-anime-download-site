@@ -76,12 +76,11 @@ try {
     await page.getByLabel("Type", { exact: true }).selectOption(type);
     await page.getByLabel("Title", { exact: true }).fill(title);
     await page.getByLabel("Year", { exact: true }).fill("2026");
-    await assertFits("basic details");
+    await assertFits("details and poster");
+    assert.equal(await page.getByLabel("Poster URL", { exact: true }).isVisible(), true);
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await assertFits("poster step");
     await page.getByRole("button", { name: "Previous", exact: true }).click();
     assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), title);
-    await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await assertFits("final setup step");
   };

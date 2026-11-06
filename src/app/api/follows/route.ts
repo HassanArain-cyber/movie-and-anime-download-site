@@ -1,3 +1,4 @@
+import { assertActiveContent } from "@/lib/content-state";
 import { pool } from "@/db";
 import { ApiError, positiveId, readJson } from "@/lib/validation";
 import { notificationError, subscriber, notificationRateLimit, privateJson } from "@/lib/notifications/session";
@@ -8,6 +9,7 @@ async function change(req: Request, action: "follow" | "unfollow" | "status") {
     await notificationRateLimit(req, `write:${session.id}`);
     const body = await readJson(req, 1024);
     const id = positiveId(body.mediaId, "mediaId");
+    await assertActiveContent("media", id);
     const status = body.watchStatus;
     if (action === "status" && !isWatchStatus(status)) throw new ApiError(400, "Choose a valid watch status");
     const client = await pool.connect();

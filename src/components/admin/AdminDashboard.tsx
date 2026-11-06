@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import RecycleBin from "./RecycleBin";
 import BulkEpisodeLinks from "./BulkEpisodeLinks";
 import BulkAddEpisodes from "./BulkAddEpisodes";
 import MediaManager from "./MediaManager";
@@ -9,7 +10,7 @@ import AppearanceSettings from "./AppearanceSettings";
 import ContactRequestsManager from "./ContactRequestsManager";
 import CommentModerationManager from "./CommentModerationManager";
 
-type Tab = "links" | "bulk" | "media" | "categories" | "appearance" | "requests" | "moderation";
+type Tab = "recycle" | "links" | "bulk" | "media" | "categories" | "appearance" | "requests" | "moderation";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [linksOpened, setLinksOpened] = useState(false);
@@ -39,7 +40,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-neutral-800">
-        {(["media", "links", "bulk", "categories", "appearance", "requests", "moderation"] as Tab[]).map((t) => (
+        {(["media", "links", "bulk", "categories", "appearance", "requests", "moderation", "recycle"] as Tab[]).map((t) => (
           <button
             key={t}
             disabled={bulkBusy}
@@ -50,14 +51,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 : "border-transparent text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            {t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t}
+            {t === "recycle" ? "Recycle Bin" : t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t}
           </button>
         ))}
       </div>
 
       {linksOpened && <div hidden={tab !== "links"}><BulkEpisodeLinks onBusyChange={setBulkBusy} /></div>}
       {bulkOpened && <div hidden={tab !== "bulk"}><BulkAddEpisodes onBusyChange={setBulkBusy} /></div>}
-      {tab === "bulk" || tab === "links" ? null : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : tab === "requests" ? <ContactRequestsManager /> : <CommentModerationManager />}
+      {tab === "bulk" || tab === "links" ? null : tab === "recycle" ? <RecycleBin onBusyChange={setBulkBusy} /> : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <AppearanceSettings /> : tab === "requests" ? <ContactRequestsManager /> : <CommentModerationManager />}
     </div>
   );
 }

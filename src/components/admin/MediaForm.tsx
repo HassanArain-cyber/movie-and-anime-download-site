@@ -27,6 +27,7 @@ export default function MediaForm(props: Props) {
 
 function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
   const [type, setType] = useState(editing?.type || "movie");
+  const [isAnimeMovie, setIsAnimeMovie] = useState(editing?.isAnimeMovie === true);
   const [title, setTitle] = useState(editing?.title || "");
   const [description, setDescription] = useState(editing?.description || "");
   const [year, setYear] = useState<string>(editing?.year ? String(editing.year) : "");
@@ -48,6 +49,7 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
     try {
       const payload = {
         type,
+        ...(isAnimeMovie !== (editing?.isAnimeMovie === true) ? { isAnimeMovie: type === "movie" && isAnimeMovie } : {}),
         title: title.trim(),
         description: description.trim(),
         year: year ? Number(year) : null,
@@ -160,6 +162,7 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
         </div>
       </div>
 
+      {type === "movie" && <label className="flex min-h-10 items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={isAnimeMovie} onChange={(event) => setIsAnimeMovie(event.target.checked)} />Anime movie — separate from regular Movies</label>}
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
         <label className="text-xs font-medium text-neutral-400">Poster Image</label>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start">

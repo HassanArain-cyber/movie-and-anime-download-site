@@ -239,3 +239,17 @@ export const episodeNotifications = pgTable("episode_notifications", {
   readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex("episode_notifications_subscriber_episode_unique").on(t.subscriberId, t.episodeId), index("episode_notifications_inbox_idx").on(t.subscriberId, t.id)]);
+
+// Additive lifecycle markers. Original rows and FK relationships stay intact
+// until an admin explicitly confirms permanent deletion. No storage-object FK.
+export const contentState = pgTable("content_state", {
+  kind: varchar("kind", { length: 16 }).notNull(),
+  contentId: integer("content_id").notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  isAnimeMovie: boolean("is_anime_movie").notNull().default(false),
+}, (t) => [
+  primaryKey({ columns: [t.kind, t.contentId] }),
+  index("content_state_deleted_idx").on(t.deletedAt),
+  check("content_state_kind_check", sql`"kind" IN ('media', 'season', 'episode')`),
+  check("content_state_anime_movie_check", sql`NOT "is_anime_movie" OR "kind" = 'media'`),
+]);

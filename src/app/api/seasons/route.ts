@@ -1,3 +1,4 @@
+import { assertActiveContent } from "@/lib/content-state";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -11,6 +12,7 @@ export async function POST(req: Request) {
   try {
     const body = await readJson(req);
     const mediaId = positiveId(body.mediaId, "mediaId");
+    await assertActiveContent("media", mediaId);
     const seasonNumber = positiveId(body.seasonNumber, "seasonNumber");
     const [item] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
     if (!item) throw new ApiError(404, "Media not found");

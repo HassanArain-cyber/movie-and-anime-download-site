@@ -1123,7 +1123,6 @@ await page.getByRole("button", { name: "media", exact: true }).click();
 // Guided movie creation: real poster/video multipart uploads to the local R2 mock.
 await page.getByRole("button", { name: "+ Add media" }).click();
 await page.getByLabel("Title", { exact: true }).fill(`Wizard Movie ${run}`);
-await page.getByRole("button", { name: "Next", exact: true }).click();
 await page.locator('input[type="file"]').setInputFiles({ name: "wizard-poster.png", mimeType: "image/png", buffer: png });
 await page.waitForFunction(() => document.querySelector('input[placeholder="https://…"]')?.value.startsWith("/api/image?"));
 await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -1152,7 +1151,6 @@ await page.getByRole("button", { name: "← Back to media", exact: true }).click
 await page.getByRole("button", { name: "+ Add media" }).click();
 await page.getByLabel("Type").selectOption("anime");
 await page.getByLabel("Title", { exact: true }).fill(`Browser Anime ${run}`);
-await page.getByRole("button", { name: "Next", exact: true }).click();
 await page.getByRole("button", { name: "Next", exact: true }).click();
 await page.getByLabel("First season #", { exact: true }).fill("1");
 await page.getByRole("button", { name: "Create & Continue" }).click();

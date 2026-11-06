@@ -17,6 +17,9 @@ const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "Cont
 export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChanged }: { onBusyChange: (busy: boolean) => void; initialMediaId?: number; onChanged?: () => void | Promise<void> }) {
   const [titles, setTitles] = useState<Media[]>([]);
   const [mediaId, setMediaId] = useState(initialMediaId ? String(initialMediaId) : "");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [deleteStart, setDeleteStart] = useState("13");
+  const [deleteEnd, setDeleteEnd] = useState("22");
   const [newSeasonNumber, setNewSeasonNumber] = useState("1");
   const [newSeasonName, setNewSeasonName] = useState("");
   const [seasonBusy, setSeasonBusy] = useState(false);
@@ -65,7 +68,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
 
   const selectTitle = async (value: string) => {
     const generation = ++loadGeneration.current;
-    setOperation("selection"); setMediaId(value); setDetails(null); setSeasonId(""); setError(""); setNotice(""); setProgress("");
+    setSelectedIds([]); setOperation("selection"); setMediaId(value); setDetails(null); setSeasonId(""); setError(""); setNotice(""); setProgress("");
     if (!value) return;
     setLoading(true);
     try {
@@ -108,6 +111,15 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
       await refresh().catch(() => undefined);
     } finally { finish(); }
   };
+  const deleteEpisodes = async (ids: number[] | null) => {
+    if (!season || !confirm(ids ? `Move ${ids.length} selected episode(s) and their links/comments to the Recycle Bin? R2 files are retained.` : "Move ALL episodes in this season to the Recycle Bin? This is recoverable; R2 files are retained.") || !begin()) return;
+    setOperation("links");
+    try {
+      await request("/api/episodes/batch", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seasonId: season.id, ...(ids ? { ids } : { all: true, confirmation: "MOVE ALL EPISODES" }) }) });
+      setSelectedIds([]); await refresh(); setNotice("Episodes moved to the Recycle Bin. Their links, comments and R2 files were retained.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not move episodes."); await refresh().catch(() => undefined); }
+    finally { finish(); }
+  };
   const saveLinks = async () => {
     if (!season || !begin()) return;
     setOperation("links");
@@ -149,7 +161,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
     <div><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-bold">Episodes &amp; quality links</h2><button type="button" disabled={busy || !details} onClick={() => { if (begin()) { setOperation("selection"); void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh season.")).finally(finish); } }} className="min-h-11 rounded-lg border border-neutral-800 px-3 text-xs text-neutral-300 disabled:opacity-40">Refresh season</button></div><p className="mt-1 text-sm text-neutral-400">Choose a title and season, generate an episode range, then paste links directly into the table. Switch quality to add another version without replacing existing links.</p></div>
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="min-w-0 text-xs text-neutral-400">Anime / series<select aria-label="Link batch anime or series" value={mediaId} disabled={!!initialMediaId || busy || loading} onChange={(event) => void selectTitle(event.target.value)} className={`${control} mt-1`}><option value="">Select a title</option>{titles.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label className="min-w-0 text-xs text-neutral-400">Season<select aria-label="Link batch season" value={seasonId} disabled={busy || loading || !details} onChange={(event) => { setSeasonId(event.target.value); setNotice(""); setError(""); }} className={`${control} mt-1`}><option value="">Select a season</option>{details?.seasons?.map((entry) => <option key={entry.id} value={entry.id}>Season {entry.seasonNumber}{entry.name ? ` — ${entry.name}` : ""}</option>)}</select></label>
+      <label className="min-w-0 text-xs text-neutral-400">Season<select aria-label="Link batch season" value={seasonId} disabled={busy || loading || !details} onChange={(event) => { setSelectedIds([]); setSeasonId(event.target.value); setNotice(""); setError(""); }} className={`${control} mt-1`}><option value="">Select a season</option>{details?.seasons?.map((entry) => <option key={entry.id} value={entry.id}>Season {entry.seasonNumber}{entry.name ? ` — ${entry.name}` : ""}</option>)}</select></label>
     </div>
     {operation === "selection" && feedback}
     {loading && <p role="status" className="text-sm text-neutral-400">Loading…</p>}
@@ -167,12 +179,13 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3"><h3 className="text-sm font-semibold">2. Add links by quality</h3><label className="text-xs text-neutral-400">Batch quality<select aria-label="Batch link quality" value={quality} disabled={busy} onChange={(event) => { setQuality(event.target.value as VideoQuality); setError(""); setNotice(""); }} className={`${control} mt-1`}>{QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}</select></label></div>
       <p className="text-xs text-neutral-400">{episodes.length} episodes · Paste links only where needed; blank rows are skipped. Existing links for this quality are protected. Use the individual editor to replace a link.</p>
+      {!!episodes.length && <div className="space-y-2 rounded-lg border border-neutral-800 p-2"><div className="flex flex-wrap items-center gap-2"><label className="flex min-h-10 items-center gap-2 text-xs"><input type="checkbox" aria-label="Select all episodes" checked={episodes.length > 0 && episodes.every((episode) => selectedIds.includes(episode.id))} disabled={busy} onChange={(event) => setSelectedIds(event.target.checked ? episodes.map((episode) => episode.id) : [])} />{selectedIds.length} selected</label><button type="button" disabled={busy || !selectedIds.length || selectedIds.length > 500} onClick={() => void deleteEpisodes(selectedIds)} className="min-h-10 rounded-md border border-red-900/60 px-2 text-xs text-red-300 disabled:opacity-40">Delete selected</button><button type="button" disabled={busy} onClick={() => void deleteEpisodes(null)} className="min-h-10 rounded-md px-2 text-xs text-red-300 disabled:opacity-40">Delete All Episodes</button></div><details><summary className="min-h-9 cursor-pointer py-2 text-xs text-neutral-400">Select episode range to delete</summary><div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2"><label className="text-xs text-neutral-400">From<input aria-label="Delete range start" type="number" min={1} value={deleteStart} onChange={(event) => setDeleteStart(event.target.value)} className={control} /></label><label className="text-xs text-neutral-400">To<input aria-label="Delete range end" type="number" min={1} value={deleteEnd} onChange={(event) => setDeleteEnd(event.target.value)} className={control} /></label><button type="button" disabled={busy} onClick={() => { try { const range = episodeRange(deleteStart, deleteEnd); setSelectedIds(episodes.filter((episode) => episode.episodeNumber >= range.start && episode.episodeNumber < range.start + range.count).map((episode) => episode.id)); } catch (reason) { setOperation("links"); setError(String(reason)); } }} className="min-h-10 rounded-md border border-neutral-700 px-2 text-xs">Select range</button></div></details></div>}
       <div className="max-h-[60vh] overflow-y-auto overscroll-contain rounded-xl border border-neutral-800" aria-label="Episode link rows">
-        {!episodes.length ? <p className="p-3 text-sm text-neutral-400">Select or create a season, then enter a range above to generate episodes.</p> : <table className="w-full table-fixed text-left text-xs"><thead className="sticky top-0 z-10 bg-neutral-900 text-neutral-400"><tr><th className="w-20 px-2 py-3">Episode</th><th className="px-2 py-3">{qualityDisplay(quality)} download link</th></tr></thead><tbody>
+        {!episodes.length ? <p className="p-3 text-sm text-neutral-400">Select or create a season, then enter a range above to generate episodes.</p> : <table className="w-full table-fixed text-left text-xs"><thead className="sticky top-0 z-10 bg-neutral-900 text-neutral-400"><tr><th className="w-24 px-2 py-3">Episode</th><th className="px-2 py-3">{qualityDisplay(quality)} download link</th></tr></thead><tbody>
         {episodes.map((episode) => {
           const key = keyFor(episode.id), existing = qualityLinks(episode, quality), result = results[key];
           return <tr key={episode.id} data-testid="quality-link-row" className="border-t border-neutral-800/60 align-top">
-            <th className="px-2 py-3 font-medium"><label htmlFor={`quality-link-${episode.id}`}>Episode {episode.episodeNumber}</label></th>
+            <th className="px-2 py-3 font-medium"><input type="checkbox" className="mr-1" aria-label={`Select episode ${episode.episodeNumber}`} checked={selectedIds.includes(episode.id)} disabled={busy} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, episode.id] : current.filter((id) => id !== episode.id))} /><label htmlFor={`quality-link-${episode.id}`}>Episode {episode.episodeNumber}</label><button type="button" aria-label={`Delete episode ${episode.episodeNumber}`} disabled={busy} onClick={() => void deleteEpisodes([episode.id])} className="mt-1 block min-h-9 px-1 text-[11px] font-normal text-red-300 disabled:opacity-40">Delete</button></th>
             <td className="min-w-0 p-2"><input id={`quality-link-${episode.id}`} aria-label={`Link for episode ${episode.episodeNumber}`} type="text" value={drafts[key] ?? existing[0]?.url ?? ""} disabled={busy || existing.length > 0 || result?.state === "saved"} placeholder="Paste link" onChange={(event) => { setDrafts((current) => ({ ...current, [key]: event.target.value })); setResults((current) => { const next = { ...current }; delete next[key]; return next; }); }} className={control} />
             <p role="status" className={`break-words pt-1 text-[11px] ${result?.state === "error" ? "text-red-300" : result?.state === "saved" || existing.length ? "text-emerald-300" : "text-neutral-500"}`}>{result?.message ?? (existing.length ? "Already saved for this quality" : drafts[key]?.trim() ? "Pending · ready to save" : "Pending · no link entered")}</p>
             {!!episode.downloadLinks.length && <p className="pt-0.5 text-[10px] text-neutral-500">Saved qualities: {[...new Set(episode.downloadLinks.map((link) => link.quality || "unspecified"))].join(", ")}</p>}</td>

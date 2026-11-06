@@ -43,7 +43,7 @@ export default function MediaManager({ onBusyChange }: { onBusyChange?: (busy: b
   }, []);
 
   const del = async (id: number) => {
-    if (!confirm("Delete this media? This removes its seasons, episodes, and links from the database. R2 files are retained.")) return;
+    if (!confirm("Move this title to the Recycle Bin? Its seasons, episodes, comments, links and R2 files will be retained for recovery.")) return;
     const res = await fetch(`/api/media/${id}`, { method: "DELETE" });
     if (res.ok) await load(); else { const data = await res.json(); setErr(data.error || "Delete failed"); }
   };
@@ -57,17 +57,17 @@ export default function MediaManager({ onBusyChange }: { onBusyChange?: (busy: b
   if (editing) return <MediaEditor onBusyChange={onBusyChange} media={editing} categories={categories} onCancel={() => { setEditing(null); void load(); }} onUpdated={async () => { await load(); const res = await fetch(`/api/media/${editing.id}`); if (res.ok) setEditing(await res.json()); }} />;
 
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
-        <h2 className="font-semibold text-white">Media library</h2>
-        <p className="mt-1 text-sm text-neutral-400">Create a title in a few steps, or select an existing title to manage its poster, seasons and downloads.</p>
-        <div role="group" aria-label="Media sections" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {([ ["", "All media"], ["movie", "Movies"], ["anime", "Anime"], ["series", "Series"] ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm ${kind === value ? "border-purple-500/50 bg-purple-500/15 text-purple-200" : "border-neutral-800 text-neutral-400"}`}>{label}<span className="ml-2 text-xs text-neutral-500">{items.filter((item) => !value || item.type === value).length}</span></button>)}
+    <div className="min-w-0 space-y-2">
+      <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 px-3 py-2">
+        <h2 className="text-sm font-semibold text-white">Media library</h2>
+        <p className="mt-0.5 text-xs text-neutral-500">Create a title or select one to manage.</p>
+        <div role="group" aria-label="Media sections" className="mt-1.5 flex flex-wrap gap-1">
+          {([ ["", "All media"], ["movie", "Movies"], ["anime", "Anime"], ["series", "Series"] ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={`min-h-9 rounded-md border px-2 py-1 text-xs ${kind === value ? "border-purple-500/50 bg-purple-500/15 text-purple-200" : "border-neutral-800 text-neutral-400"}`}>{label}<span className="ml-1 text-[11px] text-neutral-500">{items.filter((item) => !value || item.type === value).length}</span></button>)}
         </div>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <input type="text" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter by title or type…" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700 sm:max-w-xs" />
-        <button type="button" onClick={() => setCreating(true)} className="rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500">+ Add media</button>
+      <div className="flex items-center gap-2">
+        <input type="text" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter by title or type…" className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700 min-w-0 flex-1" />
+        <button type="button" onClick={() => setCreating(true)} className="min-h-10 shrink-0 rounded-md bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500">+ Add media</button>
       </div>
       {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
       {loading ? <p className="p-4 text-sm text-neutral-500">Loading…</p> : (

@@ -129,6 +129,7 @@ try {
   await waitFor(`${base}/api/health`, "Next app");
   await run(process.execPath, ["tests/e2e.mjs"]);
   await run(process.execPath, ["tests/notifications-e2e.mjs"]);
+  await run(process.execPath, ["tests/recycle-bin-e2e.mjs"]);
 } catch (error) {
   failure = error;
 } finally {
