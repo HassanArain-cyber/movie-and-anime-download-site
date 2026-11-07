@@ -288,6 +288,13 @@ try {
         const measure = () => ({ width: shell.getBoundingClientRect().width, headerHeight: document.querySelector("header").getBoundingClientRect().height, mainY: document.querySelector("main").getBoundingClientRect().y });
         const before = measure(); toggle.click(); await new Promise(requestAnimationFrame);
         const focusBeforeFinish = document.activeElement === input, properties = shell.getAnimations().map((animation) => animation.transitionProperty);
+        const openingTiming = shell.getAnimations().find((animation) => animation.transitionProperty === "width")?.effect.getTiming();
+        const sample = async () => {
+          if (matchMedia("(prefers-reduced-motion: reduce)").matches) return null;
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return { width: measure().width, opacity: Number(getComputedStyle(field).opacity) };
+        };
+        const openingSample = await sample();
         await finish(); const open = measure();
         const rim = getComputedStyle(shell, "::before");
         const firstTransform = rim.transform;
@@ -296,11 +303,13 @@ try {
         const ring = { rotated, gradient: rim.backgroundImage, playState: rim.animationPlayState, name: rim.animationName, opacity: rim.opacity, glow: getComputedStyle(shell).boxShadow };
         toggle.click(); await new Promise(requestAnimationFrame);
         const reverse = shell.getAnimations().map((animation) => animation.transitionProperty);
+        const closingTiming = shell.getAnimations().find((animation) => animation.transitionProperty === "width")?.effect.getTiming();
+        const closingSample = await sample();
         const inactive = field.inert && field.getAttribute("aria-hidden") === "true";
         await finish(); const closed = measure();
         for (let attempt = 0; attempt < 3; attempt++) { toggle.click(); await new Promise(requestAnimationFrame); toggle.click(); await new Promise(requestAnimationFrame); }
         await finish();
-        return { before, open, closed, focusBeforeFinish, properties, reverse, ring, inactive, focusReturned: document.activeElement === toggle, closedRing: getComputedStyle(shell, "::before").opacity };
+        return { before, open, closed, openingTiming, closingTiming, openingSample, closingSample, focusBeforeFinish, properties, reverse, ring, inactive, focusReturned: document.activeElement === toggle, closedRing: getComputedStyle(shell, "::before").opacity };
       });
       assert.equal(publicMotion.focusBeforeFinish, true, "public search focuses BEFORE expansion finishes");
       assert.ok(publicMotion.open.width > publicMotion.before.width); assert.ok(Math.abs(publicMotion.closed.width - publicMotion.before.width) < 1);
@@ -311,6 +320,16 @@ try {
       for (const coordinate of ["headerHeight", "mainY"]) assert.ok(Math.abs(publicMotion.before[coordinate] - publicMotion.open[coordinate]) < 1, "activation must not shift the public header/content");
       if (reducedMotion === "reduce") { assert.equal(publicMotion.ring.name, "none"); assert.equal(publicMotion.properties.length, 0); assert.equal(publicMotion.reverse.length, 0); }
       else { assert.equal(publicMotion.ring.rotated, true, "the gradient actually rotates, not just an animation declaration"); assert.equal(publicMotion.ring.playState, "running"); assert.ok(publicMotion.properties.includes("width")); assert.ok(publicMotion.reverse.includes("width")); }
+      if (reducedMotion !== "reduce") {
+        for (const timing of [publicMotion.openingTiming, publicMotion.closingTiming]) {
+          assert.equal(timing.duration, 450, "public search expands AND reverses over 450ms");
+          assert.equal(timing.easing, "cubic-bezier(0.4, 0, 0.2, 1)");
+        }
+        for (const sample of [publicMotion.openingSample, publicMotion.closingSample]) {
+          assert.ok(sample.width > publicMotion.before.width && sample.width < publicMotion.open.width, "expansion/reverse passes through an intermediate width");
+          assert.ok(sample.opacity > 0 && sample.opacity < 1, "field fades smoothly alongside expansion/reverse");
+        }
+      }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `public animated search fits ${width}`);
     }
   }

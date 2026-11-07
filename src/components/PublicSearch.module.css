@@ -13,7 +13,7 @@
   border-radius: 999px;
   background: #101016;
   box-sizing: border-box;
-  transition: width 240ms cubic-bezier(.22,1,.36,1), box-shadow 200ms ease, border-color 200ms ease;
+  transition: width 450ms cubic-bezier(.4,0,.2,1), box-shadow 200ms ease, border-color 200ms ease;
 }
 /* Rotate a composited gradient layer, not the text or a continuously repainted
    angle variable. The dark inset covers the centre to leave a fine color rim. */
@@ -70,7 +70,7 @@
   opacity: 0;
   visibility: hidden;
   transform: translateX(-5px);
-  transition: opacity 160ms ease, transform 240ms cubic-bezier(.22,1,.36,1), visibility 0s linear 240ms;
+  transition: opacity 300ms cubic-bezier(.4,0,.2,1), transform 450ms cubic-bezier(.4,0,.2,1), visibility 0s linear 450ms;
 }
 .shell[data-open="true"] .field { opacity: 1; visibility: visible; transform: translateX(0); transition-delay: 0s; }
 .input {
