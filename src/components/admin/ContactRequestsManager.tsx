@@ -1,5 +1,7 @@
 "use client";
 
+import DeleteAllButton from "./DeleteAllButton";
+
 import { useCallback, useEffect, useState } from "react";
 
 interface ContactRequestRecord {
@@ -10,7 +12,9 @@ interface ContactRequestRecord {
   createdAt: string;
 }
 
-export default function ContactRequestsManager() {
+export default function ContactRequestsManager({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
+  const [deletingAll, setDeletingAll] = useState(false);
+  const bulkBusy = (busy: boolean) => { setDeletingAll(busy); onBusyChange?.(busy); };
   const [requests, setRequests] = useState<ContactRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -25,8 +29,10 @@ export default function ContactRequestsManager() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not load requests.");
       setRequests(Array.isArray(data) ? data : []);
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load requests.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -38,7 +44,7 @@ export default function ContactRequestsManager() {
   }, [load]);
 
   const remove = async (request: ContactRequestRecord) => {
-    if (!confirm(`Delete the request from ${request.name}? This cannot be undone.`)) return;
+    if (deletingAll || deletingId !== null || !confirm(`Delete the request from ${request.name}? This cannot be undone.`)) return;
     setDeletingId(request.id);
     setError("");
     setNotice("");
@@ -56,16 +62,17 @@ export default function ContactRequestsManager() {
   };
 
   return (
-    <section className="space-y-4" aria-labelledby="requests-heading">
+    <section aria-busy={deletingAll || loading} className="space-y-4" aria-labelledby="requests-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="requests-heading" className="text-lg font-semibold text-white">Submitted requests</h2>
           <p className="mt-1 text-sm text-neutral-500">Requests are stored privately in the database and visible only to admins.</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">
+        <button type="button" onClick={() => void load()} disabled={loading || deletingAll || deletingId !== null} className="rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">
           {loading ? "Loading…" : "Refresh"}
         </button>
       </div>
+      <DeleteAllButton kind="requests" disabled={loading || deletingId !== null} refresh={load} onBusyChange={bulkBusy} />
       {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
       {notice && <p role="status" className="text-sm text-emerald-300">{notice}</p>}
       {loading ? <p className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 text-sm text-neutral-500">Loading requests…</p> : requests.length === 0 ? (
@@ -84,7 +91,7 @@ export default function ContactRequestsManager() {
                     {new Date(request.createdAt).toLocaleString()}
                   </time>
                 </div>
-                <button type="button" onClick={() => void remove(request)} disabled={deletingId === request.id} aria-label={`Delete request from ${request.name}`} className="shrink-0 self-start rounded-md border border-red-900/50 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-950/50 disabled:cursor-wait disabled:opacity-50">
+                <button type="button" onClick={() => void remove(request)} disabled={deletingAll || deletingId !== null} aria-label={`Delete request from ${request.name}`} className="shrink-0 self-start rounded-md border border-red-900/50 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-950/50 disabled:cursor-wait disabled:opacity-50">
                   {deletingId === request.id ? "Deleting…" : "Delete"}
                 </button>
               </div>

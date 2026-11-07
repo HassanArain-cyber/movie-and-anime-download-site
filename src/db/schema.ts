@@ -1,5 +1,6 @@
 import {
   pgTable,
+  check,
   serial,
   text,
   integer,
@@ -12,7 +13,7 @@ import {
   primaryKey,
   foreignKey,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // Existing tables and columns are retained. R2 additions are nullable so old
 // records keep their original IDs, URLs, labels, and relationships.
@@ -207,3 +208,48 @@ export const downloadLinksRelations = relations(downloadLinks, ({ one }) => ({
 export const categoriesRelations = relations(categories, ({ many }) => ({
   media: many(media),
 }));
+
+// Independent anonymous follow identity: only a SHA-256 digest of a random
+// 256-bit HttpOnly cookie is stored. Comments/admin sessions are untouched.
+export const subscribers = pgTable("subscribers", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const animeFollows = pgTable("anime_follows", {
+  watchStatus: text("watch_status").notNull().default("plan_to_watch"),
+  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.subscriberId, t.mediaId] }), index("anime_follows_media_idx").on(t.mediaId, t.subscriberId), check("anime_follows_watch_status_check", sql`${sql.identifier("watch_status")} IN ('plan_to_watch', 'watching', 'continue', 'on_hold', 'watched')`)]);
+export const episodePublications = pgTable("episode_publications", {
+  episodeId: integer("episode_id").primaryKey().references(() => episodes.id, { onDelete: "cascade" }),
+  mediaId: integer("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  episodeNumber: integer("episode_number").notNull(),
+  episodeTitle: varchar("episode_title", { length: 255 }),
+  seasonNumber: integer("season_number").notNull(),
+  url: text("url").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+}, (t) => [index("episode_publications_pending_idx").on(t.processedAt, t.publishedAt)]);
+export const episodeNotifications = pgTable("episode_notifications", {
+  id: serial("id").primaryKey(),
+  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  episodeId: integer("episode_id").notNull().references(() => episodePublications.episodeId, { onDelete: "cascade" }),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("episode_notifications_subscriber_episode_unique").on(t.subscriberId, t.episodeId), index("episode_notifications_inbox_idx").on(t.subscriberId, t.id)]);
+
+// Additive lifecycle markers. Original rows and FK relationships stay intact
+// until an admin explicitly confirms permanent deletion. No storage-object FK.
+export const contentState = pgTable("content_state", {
+  kind: varchar("kind", { length: 16 }).notNull(),
+  contentId: integer("content_id").notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  isAnimeMovie: boolean("is_anime_movie").notNull().default(false),
+}, (t) => [
+  primaryKey({ columns: [t.kind, t.contentId] }),
+  index("content_state_deleted_idx").on(t.deletedAt),
+  check("content_state_kind_check", sql`"kind" IN ('media', 'season', 'episode')`),
+  check("content_state_anime_movie_check", sql`NOT "is_anime_movie" OR "kind" = 'media'`),
+]);

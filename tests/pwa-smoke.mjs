@@ -18,7 +18,7 @@ try {
   await page.addInitScript(() => { void caches.open("vault-static-obsolete-test"); });
   const home = await page.goto(base, { waitUntil: "networkidle" });
   assert.equal(home?.status(), 200);
-  assert.equal(await page.title(), "Vault — Movies, Anime & Series");
+  assert.equal(await page.title(), "Gojo’s Vault — Movies, Anime & Series");
 
   const manifestHref = await page.locator('link[rel="manifest"]').getAttribute("href");
   assert.ok(manifestHref, "manifest link should be present");
@@ -87,6 +87,8 @@ try {
   assert.ok(cacheAudit.urls.some((url) => url.startsWith("/_next/static/")), "hashed build assets should be cached after the controlled reload");
   assert.equal(cacheAudit.apiCached, false, "auth/API responses must never enter Cache Storage");
   await page.evaluate(() => fetch("/api/auth/session", { cache: "no-store" }));
+  await page.evaluate(() => fetch("/api/updates", { cache: "no-store" }));
+  assert.equal(await page.evaluate(async () => Boolean(await caches.match("/api/updates"))), false, "subscriber/inbox responses must never be cached");
   assert.equal(await page.evaluate(async () => Boolean(await caches.match("/api/auth/session"))), false);
 
   await page.goto(`${base}/admin`, { waitUntil: "networkidle" });

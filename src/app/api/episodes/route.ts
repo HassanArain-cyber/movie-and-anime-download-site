@@ -1,3 +1,4 @@
+import { assertActiveContent } from "@/lib/content-state";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
     const body = await readJson(req);
     const mediaId = positiveId(body.mediaId, "mediaId");
     const seasonId = positiveId(body.seasonId, "seasonId");
+    await assertActiveContent("season", seasonId);
     const episodeNumber = positiveId(body.episodeNumber, "episodeNumber");
     const [season] = await db.select().from(seasons).where(and(eq(seasons.id, seasonId), eq(seasons.mediaId, mediaId))).limit(1);
     if (!season) throw new ApiError(400, "Season does not belong to this media item");

@@ -1,10 +1,12 @@
+import { activeContent } from "@/lib/content-state";
 import { notFound } from "next/navigation";
 import PosterImage from "@/components/PosterImage";
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { media } from "@/db/schema";
+import { animeFollows, media } from "@/db/schema";
 import DownloadOptions from "@/components/DownloadOptions";
+import FollowButton from "@/components/FollowButton";
 import EpisodeList from "@/components/EpisodeList";
 import CommentSection from "@/components/CommentSection";
 import { getMediaDetails } from "@/lib/library";
@@ -15,9 +17,17 @@ interface PageProps { params: Promise<{ type: string; slug: string }>; }
 
 export default async function DetailPage({ params }: PageProps) {
   const { type, slug } = await params;
-  const [found] = await db.select({ id: media.id }).from(media).where(and(eq(media.slug, slug), eq(media.type, type))).limit(1);
+  const [found] = await db.select({ id: media.id }).from(media).where(and(eq(media.slug, slug), eq(media.type, type), await activeContent("media", media.id))).limit(1);
   if (!found) notFound();
   const item = await getMediaDetails(found.id);
+  let followerCount: number | undefined;
+  try { followerCount = (await db.select({ value: count() }).from(animeFollows).where(eq(animeFollows.mediaId, item.id)))[0].value; }
+  catch (error) {
+    // A Preview can precede the explicitly authorized migration. An optional
+    // follower count must not break the existing detail/download workflows.
+    const pgError = error as { code?: string; cause?: { code?: string } };
+    if ((pgError.code || pgError.cause?.code) !== "42P01") throw error;
+  }
   const typeLabel = item.type === "movie" ? "Movie" : item.type === "anime" ? "Anime" : "Series";
 
   return (
@@ -38,6 +48,7 @@ export default async function DetailPage({ params }: PageProps) {
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">{item.title}</h1>
           </div>
+          <FollowButton mediaId={item.id} mediaType={item.type} followerCount={followerCount} />
           {item.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-300">{item.description}</p>}
           {(item.downloadLinks?.length || 0) > 0 && <div className="space-y-3 pt-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{item.type === "movie" ? "Available downloads · choose a quality" : "Additional links"}</h2>

@@ -1,6 +1,9 @@
+import { assertActiveContent } from "@/lib/content-state";
+import { requireLifecycle, lifecycleReady } from "@/lib/content-state";
+import { moveToBin } from "@/lib/recycle-bin";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { media, categories, seasons } from "@/db/schema";
+import { media, categories, seasons, contentState } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
@@ -19,6 +22,7 @@ export async function PATCH(req: Request, { params }: Context) {
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
+    await assertActiveContent("media", id);
     const body = await readJson(req);
     const [existing] = await db.select().from(media).where(eq(media.id, id)).limit(1);
     if (!existing) throw new ApiError(404, "Media not found");
@@ -50,7 +54,20 @@ export async function PATCH(req: Request, { params }: Context) {
       }
       updates.categoryId = categoryId;
     }
-    const [updated] = await db.update(media).set(updates).where(eq(media.id, id)).returning();
+    if ("isAnimeMovie" in body) {
+      if (typeof body.isAnimeMovie !== "boolean" || (body.isAnimeMovie && (updates.type ?? existing.type) !== "movie")) throw new ApiError(400, "Anime movie classification requires a standalone movie");
+      await requireLifecycle();
+    }
+    const resetFlag = updates.type !== undefined && updates.type !== "movie" && await lifecycleReady();
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(media).set(updates).where(eq(media.id, id)).returning();
+      if (!row) throw new ApiError(404, "Not found");
+      if ("isAnimeMovie" in body || resetFlag) {
+        const flag = resetFlag ? false : body.isAnimeMovie as boolean;
+        await tx.insert(contentState).values({ kind: "media", contentId: id, isAnimeMovie: flag }).onConflictDoUpdate({ target: [contentState.kind, contentState.contentId], set: { isAnimeMovie: flag } });
+      }
+      return row;
+    });
     return NextResponse.json(updated);
   } catch (error) { return errorResponse(error); }
 }
@@ -60,9 +77,7 @@ export async function DELETE(req: Request, { params }: Context) {
   if (auth !== true) return auth;
   try {
     const id = positiveId((await params).id);
-    const [deleted] = await db.delete(media).where(eq(media.id, id)).returning({ id: media.id });
-    if (!deleted) throw new ApiError(404, "Media not found");
-    // Existing relational cascade is unchanged. R2 objects are never deleted here.
+    await moveToBin("media", id);
     return NextResponse.json({ success: true, objectRetained: true });
   } catch (error) { return errorResponse(error); }
 }

@@ -27,7 +27,7 @@ export default function SeasonEditor({ mediaId, seasons, onChange }: Props) {
   };
 
   const deleteSeason = async (id: number) => {
-    if (!confirm("Delete this season and all its episodes/links? R2 files are retained.")) return;
+    if (!confirm("Move this season to the Recycle Bin with its episodes and links? All data and R2 files are retained for recovery.")) return;
     const res = await fetch(`/api/seasons/${id}`, { method: "DELETE" });
     if (!res.ok) { const data = await res.json(); setErr(data.error || "Delete failed"); return; }
     await onChange();
@@ -125,7 +125,7 @@ function EpisodeEditor({ mediaId, seasonId, episodes, onChange }: { mediaId: num
   };
 
   const deleteEpisode = async (id: number) => {
-    if (!confirm("Delete this episode and its links? R2 files are retained.")) return;
+    if (!confirm("Move this episode to the Recycle Bin and its links? R2 files are retained.")) return;
     const res = await fetch(`/api/episodes/${id}`, { method: "DELETE" });
     if (!res.ok) { const data = await res.json(); setErr(data.error || "Delete failed"); return; }
     await onChange();

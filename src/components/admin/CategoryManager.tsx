@@ -47,8 +47,8 @@ export default function CategoryManager() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={submit} className="flex flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:flex-row">
-        <input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder={editingId ? "Edit category name" : "New category name"} className="flex-1 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700" />
+      <form onSubmit={submit} className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+        <input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder={editingId ? "Edit category name" : "New category name"} className="min-w-0 flex-1 basis-40 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700" />
         <button type="submit" disabled={loading} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50">{editingId ? "Update" : "Add category"}</button>
         {editingId && <button type="button" onClick={() => { setEditingId(null); setName(""); }} className="rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-400 hover:text-white">Cancel</button>}
       </form>

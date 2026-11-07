@@ -1,4 +1,5 @@
 import "server-only";
+import { activeContent, animeMovieFlag, assertActiveContent } from "./content-state";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, downloadLinks, episodes, media, seasons } from "@/db/schema";
@@ -30,6 +31,9 @@ export async function resolveTarget(body: Record<string, unknown>, allowImageWit
     if (allowImageWithoutTarget && seasonId === null && episodeId === null) return { mediaId: null, seasonId: null, episodeId: null, quality: null };
     throw new ApiError(400, "Choose a movie, season, or episode");
   }
+  await assertActiveContent("media", mediaId);
+  if (seasonId !== null) await assertActiveContent("season", seasonId);
+  if (episodeId !== null) await assertActiveContent("episode", episodeId);
   const [item] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
   if (!item) throw new ApiError(404, "Media not found");
   if (item.type === "movie" && (seasonId !== null || episodeId !== null)) throw new ApiError(400, "Movies cannot contain seasons or episodes");
@@ -45,15 +49,16 @@ function normalizeLink(row: typeof downloadLinks.$inferSelect): DownloadLink {
 /** Four bounded queries instead of one query per episode. */
 export async function getMediaDetails(mediaId: number): Promise<MediaWithRelations> {
   const [item] = await db.select({
+    isAnimeMovie: await animeMovieFlag(media.id),
     id: media.id, type: media.type, title: media.title, slug: media.slug,
     description: media.description, posterUrl: media.posterUrl, thumbnailUrl: media.thumbnailUrl,
     year: media.year, categoryId: media.categoryId, categoryName: categories.name,
     commentsEnabled: media.commentsEnabled,
     createdAt: media.createdAt, updatedAt: media.updatedAt,
-  }).from(media).leftJoin(categories, eq(media.categoryId, categories.id)).where(eq(media.id, mediaId)).limit(1);
+  }).from(media).leftJoin(categories, eq(media.categoryId, categories.id)).where(and(eq(media.id, mediaId), await activeContent("media", media.id))).limit(1);
   if (!item) throw new ApiError(404, "Media not found");
-  const seasonRows = await db.select().from(seasons).where(eq(seasons.mediaId, mediaId)).orderBy(seasons.seasonNumber, seasons.id);
-  const episodeRows = await db.select().from(episodes).where(eq(episodes.mediaId, mediaId)).orderBy(episodes.episodeNumber, episodes.id);
+  const seasonRows = await db.select().from(seasons).where(and(eq(seasons.mediaId, mediaId), await activeContent("season", seasons.id))).orderBy(seasons.seasonNumber, seasons.id);
+  const episodeRows = await db.select().from(episodes).where(and(eq(episodes.mediaId, mediaId), await activeContent("episode", episodes.id))).orderBy(episodes.episodeNumber, episodes.id);
   const conditions = [eq(downloadLinks.mediaId, mediaId)];
   if (seasonRows.length) conditions.push(inArray(downloadLinks.seasonId, seasonRows.map((row) => row.id)));
   if (episodeRows.length) conditions.push(inArray(downloadLinks.episodeId, episodeRows.map((row) => row.id)));

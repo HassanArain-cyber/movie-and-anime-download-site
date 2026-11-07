@@ -6,6 +6,7 @@ export type UploadKind = "image" | "video" | "archive";
 export type StorageProvider = "r2" | "local" | "external" | "telegram";
 
 export interface Media {
+  isAnimeMovie?: boolean;
   id: number;
   type: MediaType;
   title: string;

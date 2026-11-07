@@ -11,7 +11,7 @@ interface Props {
   activeSlug?: string;
   activeYear?: number;
   activeSort: LibrarySort;
-  baseQuery: { q?: string; type?: string; year?: number; sort?: LibrarySort };
+  baseQuery: { format?: string; q?: string; type?: string; year?: number; sort?: LibrarySort };
 }
 
 type Overrides = { type?: string; category?: string; year?: number; sort?: LibrarySort };
@@ -22,6 +22,7 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
 
   const buildHref = (overrides: Overrides) => {
     const params = new URLSearchParams();
+    if (baseQuery.format && !Object.hasOwn(overrides, "type")) params.set("format", baseQuery.format);
     if (baseQuery.q) params.set("q", baseQuery.q);
     const type = Object.hasOwn(overrides, "type") ? overrides.type : baseQuery.type;
     if (type) params.set("type", type);

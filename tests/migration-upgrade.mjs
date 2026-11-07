@@ -45,10 +45,23 @@ assert.deepEqual((await pool.query(`SELECT id,media_id,season_number,name FROM s
 assert.deepEqual((await pool.query(`SELECT id,media_id,season_id,episode_number,title,duration FROM episodes ORDER BY id`)).rows, episodesBefore.rows);
 const columns = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='download_links'`);
 for (const name of ["season_id", "quality", "storage_provider", "object_key", "size_bytes"]) assert.ok(columns.rows.some((row) => row.column_name === name));
-for (const table of ["comments", "comment_likes", "comment_reports"]) {
+for (const table of ["comments", "comment_likes", "comment_reports", "subscribers", "anime_follows", "episode_publications", "episode_notifications"]) {
   const exists = await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`]);
   assert.equal(exists.rows[0].relation, table, `${table} should be added by migrations`);
 }
+for (const table of ["push_subscriptions", "push_deliveries"]) {
+  assert.equal((await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`])).rows[0].relation, null);
+}
+const statusSubscriber = "9".repeat(64);
+await pool.query("INSERT INTO subscribers (id) VALUES ($1)", [statusSubscriber]);
+await pool.query("INSERT INTO anime_follows (subscriber_id,media_id) VALUES ($1,$2)", [statusSubscriber, anime.rows[0].id]);
+assert.equal((await pool.query("SELECT watch_status FROM anime_follows WHERE subscriber_id=$1", [statusSubscriber])).rows[0].watch_status, "plan_to_watch");
+for (const status of ["plan_to_watch", "watching", "continue", "on_hold", "watched"]) {
+  await pool.query("UPDATE anime_follows SET watch_status=$2 WHERE subscriber_id=$1", [statusSubscriber, status]);
+}
+await assert.rejects(pool.query("UPDATE anime_follows SET watch_status='invalid' WHERE subscriber_id=$1", [statusSubscriber]), /check constraint/i);
+await assert.rejects(pool.query("UPDATE anime_follows SET watch_status=NULL WHERE subscriber_id=$1", [statusSubscriber]), /not-null constraint/i);
+await pool.query("DELETE FROM subscribers WHERE id=$1", [statusSubscriber]);
 for (const table of ["media", "episodes"]) {
   const commentFlag = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name=$1 AND column_name='comments_enabled'", [table]);
   assert.equal(commentFlag.rowCount, 1, `${table}.comments_enabled should be added`);
@@ -80,5 +93,9 @@ await pool.query("DELETE FROM comments WHERE id=$1", [root.rows[0].id]);
 assert.equal((await pool.query(`SELECT id FROM comments WHERE id IN (${chainPlaceholders})`, chainIds)).rowCount, 0, "deleting a root cascades through replies at every nesting level");
 assert.equal((await pool.query(`SELECT comment_id FROM comment_likes WHERE comment_id IN (${chainPlaceholders})`, chainIds)).rowCount, 0);
 assert.equal((await pool.query(`SELECT comment_id FROM comment_reports WHERE comment_id IN (${chainPlaceholders})`, chainIds)).rowCount, 0);
+const publication = await pool.query("SELECT processed_at FROM episode_publications WHERE episode_id=$1", [ep.rows[0].id]);
+assert.equal(publication.rowCount, 1, "legacy published episode is backfilled once");
+assert.ok(publication.rows[0].processed_at, "legacy events must be marked processed to prevent retroactive spam");
+assert.equal((await pool.query("SELECT id FROM episode_notifications WHERE episode_id=$1", [ep.rows[0].id])).rowCount, 0);
 console.log("Migration upgrade passed: legacy categories/media/seasons/episodes/links preserved, comments migration added usable tables/settings, unlimited parent_id nesting, unique likes/reports and deep reply cascades work, migrations remain idempotent.");
 await pool.end();

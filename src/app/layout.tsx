@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import UpdatesProvider from "@/components/UpdatesProvider";
 import Navbar from "@/components/Navbar";
 import PwaRegister from "@/components/PwaRegister";
 import WallpaperBackground from "@/components/WallpaperBackground";
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="relative min-h-screen bg-neutral-950 text-neutral-200 antialiased">
         <WallpaperBackground />
         <a href="#main-content" className="vault-skip">Skip to content</a>
+        <UpdatesProvider>
         <Navbar />
         <PwaRegister />
         <main id="main-content" className="relative z-10 mx-auto w-full max-w-7xl px-4 py-6 pb-10 sm:px-6 lg:px-8">
@@ -41,6 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Gojo’s Vault · Movies, anime & series. Your collection, beautifully organized.
           </div>
         </footer>
+        </UpdatesProvider>
       </body>
     </html>
   );

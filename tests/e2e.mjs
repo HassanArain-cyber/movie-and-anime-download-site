@@ -749,6 +749,7 @@ await page.setViewportSize({ width: 1280, height: 900 });
 const searchBox = page.getByRole("combobox", { name: "Search movies, anime, and series" });
 const suggestions = page.locator("#search-suggestions");
 await page.goto(`${base}/?type=anime`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Juju");
 await suggestions.getByText(`Jujutsu Kaisen ${run}`, { exact: true }).waitFor();
 const desktopSearchLayout = await suggestions.evaluate((dropdown) => {
@@ -769,6 +770,7 @@ const animeSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) 
 assert.ok(animeSuggestionHrefs.length > 0 && animeSuggestionHrefs.every((href) => href?.startsWith("/anime/")), "selected Anime filter must scope every live suggestion");
 await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${base}/?type=movie`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Juju");
 await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
 const mobileSuggestionBounds = await suggestions.boundingBox();
@@ -777,6 +779,7 @@ const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) 
 assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("To You, in 2000 Years");
 const episodeAnchor = suggestions.locator('a[href*="#episode-"]');
 await episodeAnchor.waitFor();
@@ -792,8 +795,10 @@ await episodeAnchor.click();
 await page.waitForURL((url) => url.pathname === `/anime/attack-on-titan-${run}` && /^#episode-\d+$/.test(url.hash));
 await page.locator(new URL(page.url()).hash).waitFor();
 await page.goto(`${base}/`);
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("NoSuchVaultTitle");
 await suggestions.getByText(/No matching results found/).waitFor();
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("");
 await searchBox.pressSequentially("Juju", { delay: 35 });
 await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
@@ -804,6 +809,7 @@ await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*A
 await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
 await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
 
+if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Legacy");
 await searchBox.press("Enter");
 await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && url.searchParams.get("type") === "anime");
@@ -1120,17 +1126,47 @@ await page.getByText("Wallpaper removed. The private R2 image itself was retaine
 assert.equal(ok(await api("/api/site-settings")).wallpaperUrl, null);
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.getByRole("button", { name: "media", exact: true }).click();
+// Guided movie creation: real poster/video multipart uploads to the local R2 mock.
+await page.getByRole("button", { name: "+ Add media" }).click();
+await page.getByLabel("Title", { exact: true }).fill(`Wizard Movie ${run}`);
+await page.locator('input[type="file"]').setInputFiles({ name: "wizard-poster.png", mimeType: "image/png", buffer: png });
+await page.waitForFunction(() => document.querySelector('input[placeholder="https://…"]')?.value.startsWith("/api/image?"));
+await page.getByRole("button", { name: "Next", exact: true }).click();
+await page.getByLabel("Download link 1", { exact: true }).fill("https://example.com/wizard-1080");
+await page.getByRole("button", { name: "+ Another quality / link", exact: true }).click();
+await page.getByLabel("Download link 2", { exact: true }).fill("https://example.com/wizard-720");
+await page.getByRole("button", { name: "Save movie", exact: true }).click();
+await page.getByRole("button", { name: "Edit details", exact: true }).waitFor();
+const wizardMovie = (await pool.query("SELECT id,poster_url FROM media WHERE title=$1", [`Wizard Movie ${run}`])).rows[0];
+assert.ok(wizardMovie.poster_url.startsWith("/api/image?"), "wizard poster stays private via image handler");
+const movieUploadForm = page.getByRole("form", { name: "Download link form movie", exact: true });
+await movieUploadForm.locator("select").selectOption("2160p");
+await movieUploadForm.locator('input[type="file"]').setInputFiles({ name: "wizard-movie-2160.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048, 6) });
+await page.getByText(/Uploaded and verified in R2/).waitFor();
+await movieUploadForm.getByRole("button", { name: "Add link", exact: true }).click();
+await page.getByText("Cloudflare R2", { exact: true }).first().waitFor();
+await page.getByRole("button", { name: "Edit details", exact: true }).click();
+await page.getByLabel("Title", { exact: true }).fill(`Edited Wizard Movie ${run}`);
+await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+await page.getByRole("heading", { name: new RegExp(`Edited Wizard Movie ${run}`) }).waitFor();
+const savedWizardMovie = ok(await api(`/api/media/${wizardMovie.id}`));
+assert.equal(savedWizardMovie.posterUrl, wizardMovie.poster_url);
+assert.deepEqual(new Set(savedWizardMovie.downloadLinks.map((link) => link.quality)), new Set(["720p", "1080p", "2160p"]));
+assert.equal(savedWizardMovie.downloadLinks.filter((link) => link.storageProvider === "r2").length, 1);
+await page.getByRole("button", { name: "← Back to media", exact: true }).click();
 await page.getByRole("button", { name: "+ Add media" }).click();
 await page.getByLabel("Type").selectOption("anime");
 await page.getByLabel("Title", { exact: true }).fill(`Browser Anime ${run}`);
+await page.getByRole("button", { name: "Next", exact: true }).click();
+await page.getByLabel("First season #", { exact: true }).fill("1");
 await page.getByRole("button", { name: "Create & Continue" }).click();
-await page.getByLabel("Season #").waitFor();
-await page.getByLabel("Season #").fill("1");
-await page.getByRole("button", { name: "+ Add season" }).click();
+await page.getByText("Individual editing & files", { exact: true }).click();
+const individualEditor = page.getByTestId("individual-episode-editor");
+await individualEditor.getByRole("button", { name: /Season 1/ }).click();
 await page.getByText("Create a complete season").waitFor();
 await page.getByLabel("Count").fill("3");
-await page.getByRole("button", { name: "Create episodes" }).click();
-await page.getByText("Episode 1", { exact: true }).waitFor();
+await individualEditor.getByRole("button", { name: "Create episodes", exact: true }).click();
+await individualEditor.getByText("Episode 1", { exact: true }).waitFor();
 // A single batch may contain multiple qualities for the same episode.
 await page.locator('input[type="file"][multiple]').setInputFiles([
   { name: "S01E01-720p.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048, 4) },
@@ -1140,7 +1176,7 @@ await page.getByText("S01E01-720p.mp4").waitFor();
 await page.getByText("S01E01-720p.mp4").locator("..").locator("select").selectOption("720p");
 await page.getByRole("button", { name: "Upload / retry batch" }).click();
 await page.getByText("2 files uploaded and attached. Failed rows can be retried without re-uploading completed files.").waitFor({ timeout: 60000 });
-await page.getByText("Episode 1", { exact: true }).click();
+await individualEditor.getByText("Episode 1", { exact: true }).click();
 const episodeForm = page.getByRole("form", { name: "Download link form episode" });
 await episodeForm.getByPlaceholder("https://t.me/…, https://…, tg://…, or magnet:…").fill("https://t.me/browser/1080");
 await episodeForm.getByRole("button", { name: "Add link", exact: true }).click();
@@ -1187,7 +1223,7 @@ for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.g
 const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
 const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);
 await page.goto(`${base}/admin`);
-await page.getByRole("button", { name: "Bulk Add Episodes", exact: true }).click();
+await page.getByRole("button", { name: "File batches", exact: true }).click();
 await page.getByLabel("Bulk anime or series").selectOption(String(bulkTitle.id));
 await page.getByLabel("Bulk season").selectOption(String(bulkSeason.id));
 const bulkRows = page.getByTestId("bulk-episode-row");
@@ -1235,7 +1271,7 @@ await page.getByRole("button", { name: "Add Another Episode" }).click();
 await page.getByRole('button', { name: 'Remove entry 5', exact: true }).click();
 assert.equal(await bulkRows.count(), 4);
 await page.getByRole('button', { name: /^media$/i }).click();
-await page.getByRole('button', { name: 'Bulk Add Episodes', exact: true }).click();
+await page.getByRole('button', { name: 'File batches', exact: true }).click();
 assert.equal(await bulkRows.count(), 4, 'admin tab switches retain bulk retry checkpoints');
 for (const width of [360, 390, 768, 1280]) {
   await page.setViewportSize({ width, height: 900 });
@@ -1246,7 +1282,7 @@ const qualityTitle = ok(await api("/api/media", { method: "POST", body: { type: 
 const qualitySeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: qualityTitle.id, seasonNumber: 1 } }), 201);
 const largeQualitySeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: qualityTitle.id, seasonNumber: 2 } }), 201);
 await page.goto(`${base}/admin`);
-await page.getByRole("button", { name: "Bulk Add Links", exact: true }).click();
+await page.getByRole("button", { name: "Episodes", exact: true }).click();
 await page.getByLabel("Link batch anime or series").selectOption(String(qualityTitle.id));
 await page.getByLabel("Link batch season").selectOption(String(qualitySeason.id));
 await page.getByRole("button", { name: "Create Episodes", exact: true }).click();
@@ -1272,14 +1308,14 @@ await page.route('**/api/download-links', async (route) => {
   }
   return route.continue();
 });
-await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByRole("button", { name: "Save All", exact: true }).click();
 await page.getByText("2 saved · 1 failed · 0 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
-await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByRole("button", { name: "Save All", exact: true }).click();
 await page.getByText("1 saved · 0 failed · 0 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
 await page.unroute('**/api/download-links');
 await page.getByLabel("Batch link quality").selectOption("1080p");
 for (let number = 1; number <= 3; number++) await page.getByLabel(`Link for episode ${number}`, { exact: true }).fill(`https://example.com/quality-${number}-1080.mp4`);
-await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByRole("button", { name: "Save All", exact: true }).click();
 await page.getByText("3 saved · 0 failed · 0 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
 qualityDetails = ok(await api(`/api/media/${qualityTitle.id}`));
 assert.deepEqual(qualityDetails.seasons[0].episodes.map((episode) => episode.id), originalEpisodeIds, 'quality batches never recreate episodes');
@@ -1292,12 +1328,12 @@ assert.equal(await page.getByLabel("Link for episode 1", { exact: true }).isDisa
 await page.getByLabel("Link for episode 4", { exact: true }).fill('https://example.com/proposed-change.mp4');
 const episodeFour = qualityDetails.seasons[0].episodes[3];
 ok(await api('/api/download-links', { method: 'POST', body: { mediaId: qualityTitle.id, seasonId: qualitySeason.id, episodeId: episodeFour.id, quality: '720p', url: 'https://example.com/existing-protected.mp4' } }), 201);
-await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByRole("button", { name: "Save All", exact: true }).click();
 await page.getByText("0 saved · 0 failed · 1 existing qualities skipped. Other qualities were not changed.", { exact: true }).waitFor();
 qualityDetails = ok(await api(`/api/media/${qualityTitle.id}`));
 assert.deepEqual(qualityDetails.seasons[0].episodes[3].downloadLinks.map((link) => link.url), ['https://example.com/existing-protected.mp4']);
 await page.getByLabel("Link for episode 5", { exact: true }).fill('javascript:alert(1)');
-await page.getByRole("button", { name: "Save quality links", exact: true }).click();
+await page.getByRole("button", { name: "Save All", exact: true }).click();
 await page.getByRole("alert").getByText("Fix the invalid links before saving. Nothing new was submitted.").waitFor();
 assert.equal(ok(await api(`/api/media/${qualityTitle.id}`)).seasons[0].episodes[4].downloadLinks.length, 0);
 for (const width of [360, 390, 768, 1280]) {

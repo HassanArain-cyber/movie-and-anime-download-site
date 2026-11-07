@@ -1,4 +1,5 @@
 import "server-only";
+import { activeContent, animeMovieFlag } from "./content-state";
 import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, episodes, media, seasons } from "@/db/schema";
@@ -60,6 +61,9 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
   const directPatterns = getSearchCandidatePatterns(trimmed, { fuzzy: false });
   if (!directPatterns.length) return [];
 
+  const visibleMedia = await activeContent("media", media.id);
+  const visibleEpisode = await activeContent("episode", episodes.id);
+  const movieScope = options.type === "movie" ? sql`NOT (${await animeMovieFlag(media.id)})` : sql`true`;
   const selectedMedia = {
     id: media.id,
     type: media.type,
@@ -75,7 +79,7 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
   };
 
   const fetchTitleRows = (patterns: string[]) => {
-    const filters: SQL[] = [or(...patterns.map((pattern) => ilike(media.title, pattern)))!];
+    const filters: SQL[] = [visibleMedia, movieScope, or(...patterns.map((pattern) => ilike(media.title, pattern)))!];
     if (options.type) filters.push(eq(media.type, options.type));
     if (options.categorySlug) filters.push(eq(categories.slug, options.categorySlug));
     if (options.year) filters.push(eq(media.year, options.year));
@@ -91,7 +95,7 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
 
   const fetchEpisodeRows = (patterns: string[]) => {
     const episodeTitle = sql`coalesce(${episodes.title}, 'Episode ' || ${episodes.episodeNumber}::text)`;
-    const episodeFilters: SQL[] = [or(...patterns.map((pattern) => ilike(episodeTitle, pattern)))!];
+    const episodeFilters: SQL[] = [visibleMedia, visibleEpisode, movieScope, or(...patterns.map((pattern) => ilike(episodeTitle, pattern)))!];
     if (options.type) episodeFilters.push(eq(media.type, options.type));
     if (options.categorySlug) episodeFilters.push(eq(categories.slug, options.categorySlug));
     if (options.year) episodeFilters.push(eq(media.year, options.year));
@@ -167,7 +171,7 @@ export async function searchMedia(query: string, options: SearchOptions = {}): P
     const descriptionRows = await db.select(selectedMedia)
       .from(media)
       .leftJoin(categories, eq(media.categoryId, categories.id))
-      .where(and(
+      .where(and(visibleMedia, movieScope,
         ...(options.type ? [eq(media.type, options.type)] : []),
         ...(options.categorySlug ? [eq(categories.slug, options.categorySlug)] : []),
         ...(options.year ? [eq(media.year, options.year)] : []),

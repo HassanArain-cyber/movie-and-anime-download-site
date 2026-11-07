@@ -1,7 +1,8 @@
 import "server-only";
+import { assertActiveContent } from "./content-state";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { episodes, media } from "@/db/schema";
+import { comments, episodes, media } from "@/db/schema";
 import { ApiError } from "./validation";
 import type { CommentReportReason } from "./comment-validation";
 
@@ -31,6 +32,8 @@ type RawPublicCommentRow = Omit<PublicComment, "createdAt"> & {
 };
 
 export async function resolveCommentTarget(mediaId: number, episodeId: number | null): Promise<CommentTarget> {
+  await assertActiveContent("media", mediaId);
+  if (episodeId !== null) await assertActiveContent("episode", episodeId);
   const [item] = await db.select({ id: media.id, commentsEnabled: media.commentsEnabled })
     .from(media).where(eq(media.id, mediaId)).limit(1);
   if (!item) throw new ApiError(404, "Media item not found");
@@ -113,6 +116,9 @@ export async function listPublicComments(
  * ancestors? UNION (not UNION ALL) also terminates safely on malformed cycles.
  */
 export async function isCommentPubliclyVisible(commentId: number): Promise<boolean> {
+  const [target] = await db.select({ mediaId: comments.mediaId, episodeId: comments.episodeId }).from(comments).where(eq(comments.id, commentId)).limit(1);
+  if (!target) return false;
+  await resolveCommentTarget(target.mediaId, target.episodeId);
   const result = await db.execute(sql`
     WITH RECURSIVE ancestors(id, parent_id, is_hidden) AS (
       SELECT c.id, c.parent_id, c.is_hidden FROM comments c WHERE c.id = ${commentId}

@@ -4,15 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import MediaForm from "./MediaForm";
 import DownloadLinksEditor from "./DownloadLinksEditor";
 import SeasonEditor from "./SeasonEditor";
+import BulkEpisodeLinks from "./BulkEpisodeLinks";
 import type { Media, Category, MediaWithRelations } from "@/lib/types";
 
-interface Props { media: Media; categories: Category[]; onCancel: () => void; onUpdated: () => void | Promise<void>; }
+interface Props { media: Media; categories: Category[]; onCancel: () => void; onUpdated: () => void | Promise<void>; onBusyChange?: (busy: boolean) => void; }
 
-export default function MediaEditor({ media, categories, onCancel, onUpdated }: Props) {
+export default function MediaEditor({ media, categories, onCancel, onUpdated, onBusyChange }: Props) {
   const [fullData, setFullData] = useState<MediaWithRelations | null>(null);
   const [showEditForm, setShowEditForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [episodesBusy, setEpisodesBusy] = useState(false);
   const [commentsBusy, setCommentsBusy] = useState(false);
   const [commentsError, setCommentsError] = useState("");
 
@@ -59,15 +61,16 @@ export default function MediaEditor({ media, categories, onCancel, onUpdated }: 
   if (!fullData) return <div role="alert" className="rounded-lg border border-red-900 bg-neutral-900 p-8 text-center text-red-400">{err || "Media not found"}</div>;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="min-w-0 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <button type="button" onClick={onCancel} className="text-sm text-neutral-400 hover:text-white">← Back to media</button>
-          <h2 className="mt-1 text-xl font-bold text-white">{fullData.title}<span className="ml-2 rounded-md bg-neutral-800 px-2 py-0.5 text-xs font-normal capitalize text-neutral-300">{fullData.type}</span></h2>
+          <button type="button" disabled={episodesBusy} onClick={onCancel} className="text-sm text-neutral-400 hover:text-white">← Back to media</button>
+          <h2 className="mt-1 break-words text-xl font-bold text-white">{fullData.title}<span className="ml-2 rounded-md bg-neutral-800 px-2 py-0.5 text-xs font-normal capitalize text-neutral-300">{fullData.type}</span></h2>
         </div>
-        <button type="button" onClick={() => setShowEditForm((value) => !value)} className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-300 hover:text-white">{showEditForm ? "Close edit" : "Edit details"}</button>
+        <button type="button" disabled={episodesBusy} onClick={() => setShowEditForm((value) => !value)} className="min-h-11 rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-300 hover:text-white">{showEditForm ? "Close edit" : "Edit details"}</button>
       </div>
       {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
+      <details className="rounded-lg border border-neutral-800 p-3"><summary className="min-h-10 cursor-pointer py-2 text-sm text-neutral-400">Advanced title settings</summary>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3">
         <div><p className="text-sm font-medium text-white">Title comments</p><p className="text-xs text-neutral-500">Turn off new title and episode comments for this media item.</p></div>
         <label className="flex min-h-10 items-center gap-2 text-sm text-neutral-300">
@@ -76,11 +79,15 @@ export default function MediaEditor({ media, categories, onCancel, onUpdated }: 
         </label>
         {commentsError && <p role="alert" className="w-full text-sm text-red-400">{commentsError}</p>}
       </div>
+      </details>
       {showEditForm && <MediaForm categories={categories} editing={fullData} onCancel={() => setShowEditForm(false)} onSaved={async () => { setShowEditForm(false); await onUpdated(); await load(); }} />}
       {fullData.type === "movie" ? (
         <DownloadLinksEditor mediaId={fullData.id} links={fullData.downloadLinks || []} onChange={load} />
       ) : (
-        <SeasonEditor mediaId={fullData.id} seasons={fullData.seasons || []} onChange={load} />
+        <div className="min-w-0 space-y-4">
+          <BulkEpisodeLinks initialMediaId={fullData.id} onChanged={load} onBusyChange={(value) => { setEpisodesBusy(value); onBusyChange?.(value); }} />
+          <details className="min-w-0 rounded-xl border border-neutral-800 p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium text-purple-300">Individual editing &amp; files</summary><p className="mb-3 text-xs text-neutral-400">Edit/delete existing episodes, season archives, comments settings, or upload files using the original editors.</p><div data-testid="individual-episode-editor"><SeasonEditor mediaId={fullData.id} seasons={fullData.seasons || []} onChange={load} /></div></details>
+        </div>
       )}
       {fullData.type !== "movie" && (fullData.downloadLinks?.length || 0) > 0 && (
         <DownloadLinksEditor mediaId={fullData.id} links={fullData.downloadLinks || []} onChange={load} />
