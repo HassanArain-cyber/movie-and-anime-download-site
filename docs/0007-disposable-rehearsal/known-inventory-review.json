@@ -1,0 +1,70 @@
+{
+  "status": "READY_FOR_APPROVALS_AND_AUTHORIZED_TEST_EXECUTION",
+  "source": "User-confirmed Neon Console inventory; no API request",
+  "project_id": "weathered-fog-95101745",
+  "verified_branch_ids": [
+    "br-orange-butterfly-b5iijgxu",
+    "br-mute-term-b55h8k8j",
+    "br-lucky-feather-b57gf857",
+    "br-lively-scene-b5dhtkvc",
+    "br-frosty-glade-b5s0bss3",
+    "br-curly-forest-b5qmtwgf",
+    "br-flat-paper-b5bo07wm",
+    "br-round-scene-b5t9covj"
+  ],
+  "verified_parent_links": [
+    {
+      "id": "br-mute-term-b55h8k8j",
+      "parent_id": "br-orange-butterfly-b5iijgxu"
+    },
+    {
+      "id": "br-lucky-feather-b57gf857",
+      "parent_id": "br-orange-butterfly-b5iijgxu"
+    },
+    {
+      "id": "br-lively-scene-b5dhtkvc",
+      "parent_id": "br-orange-butterfly-b5iijgxu"
+    },
+    {
+      "id": "br-frosty-glade-b5s0bss3",
+      "parent_id": "br-lively-scene-b5dhtkvc"
+    },
+    {
+      "id": "br-curly-forest-b5qmtwgf",
+      "parent_id": "br-lively-scene-b5dhtkvc"
+    },
+    {
+      "id": "br-flat-paper-b5bo07wm",
+      "parent_id": "br-orange-butterfly-b5iijgxu"
+    },
+    {
+      "id": "br-round-scene-b5t9covj",
+      "parent_id": "br-lucky-feather-b57gf857"
+    }
+  ],
+  "verified_root_branch": "br-orange-butterfly-b5iijgxu",
+  "verified_default_branch": "br-orange-butterfly-b5iijgxu",
+  "endpoint_branch_ids": {
+    "ep-delicate-sunset-b5inue9w": "br-orange-butterfly-b5iijgxu",
+    "ep-morning-poetry-b5eo42g4": "br-round-scene-b5t9covj",
+    "ep-still-darkness-b5bsw66y": "br-lively-scene-b5dhtkvc",
+    "ep-restless-king-b539mkzg": "br-flat-paper-b5bo07wm",
+    "ep-noisy-rice-b53bwzqh": "br-lucky-feather-b57gf857",
+    "ep-round-forest-b5nk3wmj": "br-curly-forest-b5qmtwgf",
+    "ep-orange-glade-b5jrxh1l": "br-frosty-glade-b5s0bss3",
+    "ep-polished-dawn-b5jbwun9": "br-mute-term-b55h8k8j"
+  },
+  "confirmed_test_endpoint": {
+    "id": "ep-morning-poetry-b5eo42g4",
+    "type": "read_write",
+    "host": "ep-morning-poetry-b5eo42g4.c-7.us-east-2.aws.neon.tech"
+  },
+  "pending": [
+    "Legitimate operational approvals and identity review timestamp",
+    "Authorized environment with Neon API and TEST database access",
+    "Explicit TEST migration execution authorization"
+  ],
+  "metadata_scope": "TEST + backup parent + Production reference only; unrelated endpoint types, hosts and defaults are not required",
+  "independent_live_api_verification": "Not performed; retained as a separate execution gate, not missing Console facts",
+  "approvals_unchanged": true
+}
