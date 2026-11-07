@@ -1,0 +1,168 @@
+name: Disposable TEST 0007 rehearsal (manual only)
+
+# No push, PR, schedule, workflow_call, notification harness, deployment or retry.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type APPLY 0007 TO test-0007-migration ONLY to authorize TEST writes'
+        required: true
+        type: string
+      approval_reference:
+        description: 'Actual approval/change reference (not a placeholder)'
+        required: true
+        type: string
+      identity_verified_at:
+        description: 'Actual identity review ISO timestamp, within 24 hours; do not fabricate'
+        required: true
+        type: string
+      maintenance_confirmed:
+        description: 'TEST writers/jobs paused; no concurrent migration operator'
+        required: true
+        default: false
+        type: boolean
+      application_search_path_verified:
+        description: 'Application relation resolution reviewed and approved'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vault-test-br-round-scene-b5t9covj-0007
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  rehearse:
+    name: Install only original 0007 on disposable TEST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REVIEWED_PACKAGE_COMMIT: fde8750b4583160e5a8a2f403577c4d915b76545
+      EXPECTED_BRANCH: arena/cb6b68e7-movie-and-anime-download-site
+    steps:
+      - name: Require explicit approval, fixed branch and first attempt
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+          IDENTITY_VERIFIED_AT: ${{ inputs.identity_verified_at }}
+          MAINTENANCE_CONFIRMED: ${{ inputs.maintenance_confirmed }}
+          SEARCH_PATH_VERIFIED: ${{ inputs.application_search_path_verified }}
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const e = process.env;
+          try {
+            assert.equal(e.GITHUB_EVENT_NAME, 'workflow_dispatch');
+            assert.equal(e.GITHUB_REPOSITORY, 'HassanArain-cyber/movie-and-anime-download-site');
+            assert.equal(e.GITHUB_REF, `refs/heads/${e.EXPECTED_BRANCH}`);
+            assert.equal(e.GITHUB_RUN_ATTEMPT, '1', 'No reruns: investigate prior outcome');
+            assert.equal(e.CONFIRMATION, 'APPLY 0007 TO test-0007-migration ONLY');
+            assert.equal(e.MAINTENANCE_CONFIRMED, 'true');
+            assert.equal(e.SEARCH_PATH_VERIFIED, 'true');
+            assert.ok(e.APPROVAL_REFERENCE?.trim() && !/[\r\n]/.test(e.APPROVAL_REFERENCE) && !/REPLACE|EXAMPLE|TODO/i.test(e.APPROVAL_REFERENCE));
+            const age = Date.now() - Date.parse(e.IDENTITY_VERIFIED_AT);
+            assert.ok(Number.isFinite(age) && age >= 0 && age <= 86400000);
+          } catch {
+            console.error('Approval/ref/attempt gate failed. No connection attempted.');
+            process.exit(1);
+          }
+          JS
+
+      - name: Checkout exact reviewed package (never main)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: fde8750b4583160e5a8a2f403577c4d915b76545
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Verify immutable checkout and original artifacts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REVIEWED_PACKAGE_COMMIT"
+          printf '%s  %s\n' \
+            d6c108d47c5c45a4ff16b17ea5e07ca45f2c71b7d1e1a851a5d7143fb3c14666 drizzle/0007_anime_notifications.sql \
+            f412548466a281a4f00351393445805979ae25433f794d950ca3749830145606 drizzle/meta/_journal.json | sha256sum --check
+
+      - name: Restore locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Prepare private temporary approval manifest
+        env:
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+          IDENTITY_VERIFIED_AT: ${{ inputs.identity_verified_at }}
+          MAINTENANCE_CONFIRMED: ${{ inputs.maintenance_confirmed }}
+          SEARCH_PATH_VERIFIED: ${{ inputs.application_search_path_verified }}
+        run: |
+          set -euo pipefail
+          umask 077
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFile, writeFile } from 'node:fs/promises';
+          import path from 'node:path';
+          import { validateRehearsal } from './scripts/migrations/rehearse-0007.mjs';
+          try {
+            const m = JSON.parse(await readFile('docs/0007-disposable-rehearsal/manifest.template.json', 'utf8'));
+            for (const key of ['approvalReference','identityVerifiedAt','disposableBranchApproved','maintenanceWindowConfirmed','applicationSearchPathVerified']) assert.equal(m[key], null);
+            assert.equal(m.projectId, 'weathered-fog-95101745');
+            assert.equal(m.branchId, 'br-round-scene-b5t9covj');
+            assert.equal(m.endpointId, 'ep-morning-poetry-b5eo42g4');
+            assert.equal(m.hostname, 'ep-morning-poetry-b5eo42g4.c-7.us-east-2.aws.neon.tech');
+            assert.equal(m.database, 'neondb'); assert.equal(m.role, 'neondb_owner');
+            assert.equal(m.allowPublicFunctionExecute, false);
+            m.approvalReference = process.env.APPROVAL_REFERENCE;
+            m.identityVerifiedAt = process.env.IDENTITY_VERIFIED_AT;
+            m.disposableBranchApproved = true; // Explicit typed dispatch authorization.
+            m.maintenanceWindowConfirmed = process.env.MAINTENANCE_CONFIRMED === 'true';
+            m.applicationSearchPathVerified = process.env.SEARCH_PATH_VERIFIED === 'true';
+            validateRehearsal(m);
+            await writeFile(path.join(process.env.RUNNER_TEMP, 'vault-0007-approved.json'), JSON.stringify(m), {mode:0o600, flag:'wx'});
+          } catch {
+            console.error('Private manifest validation failed. No credentials or manifest printed.');
+            process.exit(1);
+          }
+          JS
+
+      - name: Execute TEST-only installer once (all original safety gates enforced)
+        env:
+          VAULT_0007_REHEARSAL_DATABASE_URL: ${{ secrets.VAULT_0007_REHEARSAL_DATABASE_URL }}
+          VAULT_0007_REHEARSAL_NEON_API_KEY: ${{ secrets.VAULT_0007_REHEARSAL_NEON_API_KEY }}
+        run: |
+          set -euo pipefail
+          set +x
+          trap 'unset VAULT_0007_REHEARSAL_DATABASE_URL VAULT_0007_REHEARSAL_NEON_API_KEY' EXIT
+          if [[ -z "$VAULT_0007_REHEARSAL_DATABASE_URL" || -z "$VAULT_0007_REHEARSAL_NEON_API_KEY" ]]; then
+            echo 'Dedicated rehearsal repository secrets unavailable. Stopped without connecting.'
+            exit 1
+          fi
+          node scripts/migrations/rehearse-0007.mjs --apply-disposable-rehearsal-0007 --manifest "$RUNNER_TEMP/vault-0007-approved.json"
+
+      - name: Remove private runner manifest
+        if: always()
+        run: |
+          rm -f -- "$RUNNER_TEMP/vault-0007-approved.json"
+
+      - name: Record outcome advisory (no manifest or secrets)
+        if: always()
+        env:
+          OUTCOME: ${{ job.status }}
+        run: |
+          {
+            echo '## Disposable TEST 0007 rehearsal'
+            printf 'Job status: %s\n' "$OUTCOME"
+            echo 'No notification harness, database-wide worker, Production/backup database connection, merge or deployment is part of this workflow.'
+            echo 'On any installer failure/cancellation/timeout, investigate TEST ledger and objects read-only before a new dispatch. Do not use Re-run jobs.'
+            echo 'COMMIT acknowledgement uncertainty is not proof of rollback. Success is not notification end-to-end verification.'
+          } >> "$GITHUB_STEP_SUMMARY"
