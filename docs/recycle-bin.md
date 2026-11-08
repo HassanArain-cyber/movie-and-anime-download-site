@@ -6,6 +6,15 @@
 
 An authorized operator must install **only the new 0008 migration**, once, on the independently confirmed Preview database, recording it consistently with the existing migration process. Do not paste/re-run installed 0007, use `db:push`, or target Production. This change does not provide authorization to execute live SQL. Before 0008 is installed, existing browsing, creation and editing remain compatible; deletion and new anime-movie classification return an explicit 503 instead of deleting anything. The bin explains that the migration is missing.
 
+### Readiness probe and `search_path`
+
+The readiness guard (`lifecycleReady`) previously probed the hardcoded name `public.content_state` while every runtime query in this feature is unqualified (`FROM content_state`) and therefore resolves through the session `search_path`. The two could disagree in both directions:
+
+- the table existed on the schema the application actually resolves, but not on `public`, so the guard reported "not installed" and the bin stayed blocked although its queries worked;
+- the session could not resolve the table at all, so the guard reported "installed" and a bin request failed with a raw SQLSTATE 42P01 / generic HTTP 500 instead of the safe, explanatory 503.
+
+The probe now uses the same unqualified lookup as the queries and additionally requires the four columns the feature depends on (`kind`, `content_id`, `deleted_at`, `is_anime_movie`, ignoring dropped attributes), so a partial or divergent table is still classified as "not installed". `src/lib/notifications/readiness.ts` applies the same rule to the 0007 relations it pre-checks. This remains capability detection only: it never creates, alters or repairs schema, it does not prove a matching migration ledger or ACLs, and the missing-schema guard is unchanged. `tests/recycle-bin-readiness.test.ts` exercises both guards against a real in-process PostgreSQL engine, including a non-`public` installation and a session that cannot resolve the table.
+
 ## Recovery semantics
 
 - Normal content Delete means **move to bin**. Original IDs, metadata, descendants, quality links, comments/replies/likes/reports, follows, publication and notification records remain intact.

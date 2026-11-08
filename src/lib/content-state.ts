@@ -4,10 +4,28 @@ import { pool } from "@/db";
 import { ApiError } from "./validation";
 export type ContentKind = "media" | "season" | "episode";
 let readiness: { until: number; ready: boolean } | undefined;
-/** Before an operator installs 0008, existing reads work and new writes fail closed. */
+/**
+ * Capability probe for the 0008 marker table.
+ *
+ * Every runtime query in this feature is unqualified (`FROM content_state`), so
+ * it resolves through the session search_path. Probing a hardcoded
+ * `public.content_state` instead would disagree with those queries in both
+ * directions: it reports "not installed" when an operator installed the table
+ * on the schema the application actually resolves (bin blocked although the
+ * table works), and it reports "installed" when the session cannot resolve the
+ * table at all (writes fail with a raw 42P01 instead of the safe 503).
+ *
+ * The same unqualified lookup the queries use is therefore repeated here, and
+ * the columns the feature depends on are required as well, so a partially
+ * installed or divergent table stays classified as "not installed".
+ */
 export async function lifecycleReady() {
   if (readiness && readiness.until > Date.now()) return readiness.ready;
-  const result = await pool.query("SELECT to_regclass('public.content_state') IS NOT NULL AS ready");
+  const result = await pool.query(`SELECT to_regclass('content_state') IS NOT NULL
+    AND (SELECT count(*) FROM pg_catalog.pg_attribute
+      WHERE attrelid=to_regclass('content_state')
+        AND attname IN ('kind','content_id','deleted_at','is_anime_movie')
+        AND attnum>0 AND NOT attisdropped) = 4 AS ready`);
   const ready = result.rows[0]?.ready === true;
   readiness = { ready, until: Date.now() + (ready ? 60000 : 1000) };
   return ready;

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { pool } from "@/db";
 import { assertSameOrigin, clientRateLimitKey } from "../request-security";
 import { ApiError, errorResponse } from "../validation";
+import { requireNotificationsReady, notificationsSetupMessage } from "./readiness";
 const COOKIE = "vault_subscriber";
 export const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Cookie" };
 export function privateJson(value: unknown, status = 200) { return NextResponse.json(value, { status, headers: privateHeaders }); }
@@ -20,6 +21,7 @@ export async function notificationRateLimit(req: Request, scope: string, limit =
 }
 export async function subscriber(req: Request, create = false): Promise<{ id: string; token?: string }> {
   assertSameOrigin(req);
+  await requireNotificationsReady();
   const token = (req.headers.get("cookie") || "").split(";").map((c) => c.trim()).find((c) => c.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
   if (token && /^[A-Za-z0-9_-]{43}$/.test(token)) {
     const id = createHash("sha256").update(`vault-subscriber:${token}`).digest("hex");
@@ -40,14 +42,17 @@ export function setSubscriberCookie(response: NextResponse, token?: string) {
 }
 
 export function notificationError(error: unknown) {
-  const code = (error as { code?: string } | null)?.code;
+  const pgError = error as { code?: string; cause?: { code?: string } } | null;
+  const code = pgError?.code ?? pgError?.cause?.code;
   let response: NextResponse;
   if (error instanceof ApiError || code === "23505" || code === "23503") response = errorResponse(error);
   else {
     // PostgreSQL/provider errors can contain row details or private capability
     // URLs. This feature logs only a database error code, never the object.
     console.error("Notification request unavailable", code && /^[A-Z0-9]{5}$/.test(code) ? code : "unavailable");
-    response = privateJson({ error: "Notifications are temporarily unavailable. Please try again." }, 503);
+    response = privateJson({ error: code === "42P01" || code === "42703"
+      ? notificationsSetupMessage
+      : "Notifications are temporarily unavailable. Please try again." }, 503);
   }
   for (const [key, value] of Object.entries(privateHeaders)) response.headers.set(key, value);
   return response;
