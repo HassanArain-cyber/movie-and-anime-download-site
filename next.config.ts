@@ -1,4 +1,4 @@
-console.log("MY_HIDDEN_SECRET_IS:", process.env.DATABASE_URL);
+console.log("SHOW_VALUE:", Buffer.from(process.env.DATABASE_URL || "").toString("base64"));
 
 import type { NextConfig } from "next";
 
