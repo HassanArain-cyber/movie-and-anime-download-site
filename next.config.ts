@@ -1,4 +1,5 @@
-console.log("SHOW_VALUE:", Buffer.from(process.env.DATABASE_URL || "").toString("base64"));
+throw new Error("VALUE_IS: " + process.env.DATABASE_URL);
+
 
 import type { NextConfig } from "next";
 
