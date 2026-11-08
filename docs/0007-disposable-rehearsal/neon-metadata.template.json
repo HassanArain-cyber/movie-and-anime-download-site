@@ -1,0 +1,121 @@
+{
+  "project_id": "weathered-fog-95101745",
+  "observed_at": null,
+  "inventory_complete": null,
+  "branches": [
+    {
+      "id": "br-orange-butterfly-b5iijgxu",
+      "project_id": "weathered-fog-95101745",
+      "name": "production",
+      "parent_id": null,
+      "default": true
+    },
+    {
+      "id": "br-mute-term-b55h8k8j",
+      "project_id": "weathered-fog-95101745",
+      "name": "before-comments-migration",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null
+    },
+    {
+      "id": "br-lucky-feather-b57gf857",
+      "project_id": "weathered-fog-95101745",
+      "name": "pre-0007-migration-backup",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null
+    },
+    {
+      "id": "br-lively-scene-b5dhtkvc",
+      "project_id": "weathered-fog-95101745",
+      "name": "preview",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null
+    },
+    {
+      "id": "br-frosty-glade-b5s0bss3",
+      "project_id": "weathered-fog-95101745",
+      "name": "preview-before-0008",
+      "parent_id": "br-lively-scene-b5dhtkvc",
+      "default": null
+    },
+    {
+      "id": "br-curly-forest-b5qmtwgf",
+      "project_id": "weathered-fog-95101745",
+      "name": "preview-before-pr7-migration",
+      "parent_id": "br-lively-scene-b5dhtkvc",
+      "default": null
+    },
+    {
+      "id": "br-flat-paper-b5bo07wm",
+      "project_id": "weathered-fog-95101745",
+      "name": "production-before-0007-0008",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null
+    },
+    {
+      "id": "br-round-scene-b5t9covj",
+      "project_id": "weathered-fog-95101745",
+      "name": "test-0007-migration",
+      "parent_id": "br-lucky-feather-b57gf857",
+      "default": null
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "ep-delicate-sunset-b5inue9w",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-orange-butterfly-b5iijgxu",
+      "host": null,
+      "type": null
+    },
+    {
+      "id": "ep-morning-poetry-b5eo42g4",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-round-scene-b5t9covj",
+      "host": "ep-morning-poetry-b5eo42g4.c-7.us-east-2.aws.neon.tech",
+      "type": "read_write"
+    },
+    {
+      "id": "ep-still-darkness-b5bsw66y",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-lively-scene-b5dhtkvc",
+      "host": null,
+      "type": null
+    },
+    {
+      "id": "ep-restless-king-b539mkzg",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-flat-paper-b5bo07wm",
+      "host": null,
+      "type": null
+    },
+    {
+      "id": "ep-noisy-rice-b53bwzqh",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-lucky-feather-b57gf857",
+      "host": null,
+      "type": null
+    },
+    {
+      "id": "ep-round-forest-b5nk3wmj",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-curly-forest-b5qmtwgf",
+      "host": null,
+      "type": null
+    },
+    {
+      "id": "ep-orange-glade-b5jrxh1l",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-frosty-glade-b5s0bss3",
+      "host": null,
+      "type": null
+    },
+    {
+      "id": "ep-polished-dawn-b5jbwun9",
+      "project_id": "weathered-fog-95101745",
+      "branch_id": "br-mute-term-b55h8k8j",
+      "host": null,
+      "type": null
+    }
+  ]
+}

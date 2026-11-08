@@ -1,0 +1,132 @@
+{
+  "environment": "rehearsal",
+  "branchName": "test-0007-migration",
+  "approvedMigrationHash": "d6c108d47c5c45a4ff16b17ea5e07ca45f2c71b7d1e1a851a5d7143fb3c14666",
+  "projectId": "weathered-fog-95101745",
+  "branchId": "br-round-scene-b5t9covj",
+  "backupBranchId": "br-lucky-feather-b57gf857",
+  "productionBranchId": "br-orange-butterfly-b5iijgxu",
+  "endpointId": "ep-morning-poetry-b5eo42g4",
+  "hostname": "ep-morning-poetry-b5eo42g4.c-7.us-east-2.aws.neon.tech",
+  "excludedEndpointIds": [
+    "ep-delicate-sunset-b5inue9w",
+    "ep-still-darkness-b5bsw66y",
+    "ep-restless-king-b539mkzg",
+    "ep-noisy-rice-b53bwzqh",
+    "ep-round-forest-b5nk3wmj",
+    "ep-orange-glade-b5jrxh1l",
+    "ep-polished-dawn-b5jbwun9"
+  ],
+  "port": 5432,
+  "database": "neondb",
+  "role": "neondb_owner",
+  "ledgerOwner": "neondb_owner",
+  "originalSearchPath": "\"$user\", public",
+  "serverVersionNum": "180006",
+  "approvalReference": null,
+  "identityVerifiedAt": null,
+  "disposableBranchApproved": null,
+  "maintenanceWindowConfirmed": null,
+  "applicationSearchPathVerified": null,
+  "allowPublicFunctionExecute": false,
+  "statementTimeoutMs": 60000,
+  "networkTimeoutMs": 65000,
+  "overallTimeoutMs": 300000,
+  "cleanupTimeoutMs": 3000,
+  "endpointBranchNames": {
+    "ep-delicate-sunset-b5inue9w": "production",
+    "ep-morning-poetry-b5eo42g4": "test-0007-migration",
+    "ep-still-darkness-b5bsw66y": "preview",
+    "ep-restless-king-b539mkzg": "production-before-0007-0008",
+    "ep-noisy-rice-b53bwzqh": "pre-0007-migration-backup",
+    "ep-round-forest-b5nk3wmj": "preview-before-pr7-migration",
+    "ep-orange-glade-b5jrxh1l": "preview-before-0008",
+    "ep-polished-dawn-b5jbwun9": "before-comments-migration"
+  },
+  "branchInventory": [
+    {
+      "id": "br-orange-butterfly-b5iijgxu",
+      "name": "production",
+      "parent_id": null,
+      "default": true,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-mute-term-b55h8k8j",
+      "name": "before-comments-migration",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-lucky-feather-b57gf857",
+      "name": "pre-0007-migration-backup",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-lively-scene-b5dhtkvc",
+      "name": "preview",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-frosty-glade-b5s0bss3",
+      "name": "preview-before-0008",
+      "parent_id": "br-lively-scene-b5dhtkvc",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-curly-forest-b5qmtwgf",
+      "name": "preview-before-pr7-migration",
+      "parent_id": "br-lively-scene-b5dhtkvc",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-flat-paper-b5bo07wm",
+      "name": "production-before-0007-0008",
+      "parent_id": "br-orange-butterfly-b5iijgxu",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    },
+    {
+      "id": "br-round-scene-b5t9covj",
+      "name": "test-0007-migration",
+      "parent_id": "br-lucky-feather-b57gf857",
+      "default": null,
+      "parent_verified": true,
+      "project_id": "weathered-fog-95101745"
+    }
+  ],
+  "endpointBranchIds": {
+    "ep-delicate-sunset-b5inue9w": "br-orange-butterfly-b5iijgxu",
+    "ep-morning-poetry-b5eo42g4": "br-round-scene-b5t9covj",
+    "ep-still-darkness-b5bsw66y": "br-lively-scene-b5dhtkvc",
+    "ep-restless-king-b539mkzg": "br-flat-paper-b5bo07wm",
+    "ep-noisy-rice-b53bwzqh": "br-lucky-feather-b57gf857",
+    "ep-round-forest-b5nk3wmj": "br-curly-forest-b5qmtwgf",
+    "ep-orange-glade-b5jrxh1l": "br-frosty-glade-b5s0bss3",
+    "ep-polished-dawn-b5jbwun9": "br-mute-term-b55h8k8j"
+  },
+  "endpointTypes": {
+    "ep-delicate-sunset-b5inue9w": null,
+    "ep-morning-poetry-b5eo42g4": "read_write",
+    "ep-still-darkness-b5bsw66y": null,
+    "ep-restless-king-b539mkzg": null,
+    "ep-noisy-rice-b53bwzqh": null,
+    "ep-round-forest-b5nk3wmj": null,
+    "ep-orange-glade-b5jrxh1l": null,
+    "ep-polished-dawn-b5jbwun9": null
+  }
+}
