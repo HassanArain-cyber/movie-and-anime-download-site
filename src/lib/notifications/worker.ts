@@ -1,8 +1,10 @@
 import "server-only";
 import { pool } from "@/db";
 import { drainFanout } from "./fanout";
+import { requireNotificationsReady } from "./readiness";
 
 export async function processNotifications() {
+  await requireNotificationsReady();
   const deadline = Date.now() + 18000;
   await pool.query("DELETE FROM auth_rate_limits WHERE key IN (SELECT key FROM auth_rate_limits WHERE expires_at<now()-interval '1 day' LIMIT 500)");
   const notifications = await drainFanout(pool, deadline);
