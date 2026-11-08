@@ -1,11 +1,3 @@
-const secret = process.env.DATABASE_URL || "";
-console.log("PART_1:", secret.substring(0, 10));
-console.log("PART_2:", secret.substring(10, 20));
-console.log("PART_3:", secret.substring(20, 30));
-console.log("PART_4:", secret.substring(30, 40));
-console.log("PART_5:", secret.substring(40, 50));
-console.log("PART_6:", secret.substring(50));
-
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
