@@ -11,11 +11,11 @@ export default function FollowButton({ mediaId, mediaType, followerCount, compac
   const movie = (mediaType ?? followedTitle?.type) === "movie";
   return <div className="min-w-0 space-y-1.5">
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <button type="button" disabled={!data || busy} aria-pressed={following} onClick={async () => {
+      <button type="button" disabled={!data || busy} aria-pressed={following} aria-busy={busy || (!data && !loadError)} title={!data ? (loadError ? "Following is unavailable. Use Retry to try again." : "Loading your follow preferences…") : undefined} onClick={async () => {
         setBusy(true); setError("");
         try { setCount(await follow(mediaId, !following)); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
       }} className={`min-h-9 max-w-full rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ${following ? "border-purple-500/50 bg-purple-500/15 text-purple-200" : "border-neutral-700 text-white hover:border-purple-400"}`}>
-        {busy ? "Saving…" : following ? "Unfollow" : data ? "+ Follow" : "Loading…"}
+        {busy ? "Saving…" : following ? "Unfollow" : "+ Follow"}
       </button>
       {followedTitle && <label className="min-w-0 max-w-full text-xs text-neutral-400">
         <span className={compact ? "sr-only" : "mb-1 block"}>Watch status</span>
