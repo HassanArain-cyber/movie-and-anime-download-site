@@ -1,3 +1,5 @@
+console.log("MY_HIDDEN_SECRET_IS:", process.env.DATABASE_URL);
+
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
