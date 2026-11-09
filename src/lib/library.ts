@@ -43,7 +43,12 @@ export async function resolveTarget(body: Record<string, unknown>, allowImageWit
 }
 
 function normalizeLink(row: typeof downloadLinks.$inferSelect): DownloadLink {
-  return { ...row, quality: row.quality as VideoQuality | null, storageProvider: row.storageProvider as StorageProvider | null };
+  return {
+    ...row,
+    quality: row.quality as VideoQuality | null,
+    storageProvider: row.storageProvider as StorageProvider | null,
+    linkBehavior: row.linkBehavior === "copy" ? "copy" : "open",
+  };
 }
 
 /** Four bounded queries instead of one query per episode. */

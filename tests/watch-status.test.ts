@@ -27,10 +27,13 @@ test("historical 0007 SQL/snapshot agree with generated schema and unqualified s
   const expression = `"watch_status" IN ('plan_to_watch', 'watching', 'continue', 'on_hold', 'watched')`;
   assert.equal(follows.checkConstraints.anime_follows_watch_status_check.value, expression);
   // Pure in-memory generation only: no db/index import, config, CLI, writes or DB.
+  // Later additive migrations are excluded so this stays a historical assertion.
   const { contentState: _newLifecycleTable, ...historicSchema } = schema;
   const fresh = generateDrizzleJson(historicSchema);
   const normalized = JSON.parse(JSON.stringify(fresh));
   const saved = JSON.parse(JSON.stringify(snapshot));
+  // download_links.link_behavior arrived in 0009; drop it to compare with 0007.
+  delete normalized.tables["public.download_links"].columns.link_behavior;
   for (const key of ["id", "prevId"]) { delete normalized[key]; delete saved[key]; }
   assert.deepEqual(normalized, saved, "entire serialized snapshot must match schema.ts, excluding lineage IDs");
   const ddl = await generateMigration(JSON.parse(read("drizzle/meta/0006_snapshot.json")), fresh);
@@ -38,7 +41,7 @@ test("historical 0007 SQL/snapshot agree with generated schema and unqualified s
   assert.deepEqual(follows.compositePrimaryKeys.anime_follows_subscriber_id_media_id_pk.columns, ["subscriber_id", "media_id"]);
   for (const { value } of WATCH_STATUSES) assert.ok(sql.includes(`'${value}'`));
   assert.doesNotMatch(sql, /push_subscriptions|push_deliveries|\bDROP\b|\bTRUNCATE\b|DELETE FROM/);
-  assert.equal(JSON.parse(read("drizzle/meta/_journal.json")).entries.length, 9);
+  assert.ok(JSON.parse(read("drizzle/meta/_journal.json")).entries.length >= 9, "0007 remains recorded in the journal");
 });
 test("build stays migration-free and episode notifications are in-site only", () => {
   const pkg = JSON.parse(read("package.json"));

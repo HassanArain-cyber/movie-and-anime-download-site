@@ -39,15 +39,23 @@ test("active episode predicates check independent deletion plus both ancestors",
   assert.ok(raw.includes("lifecycle_parent.id=p.episode_id"), "notification publication alias p must stay correlated to the outer query");
   assert.doesNotMatch(raw, /FROM episodes p\b|FROM seasons p\b/, "inner aliases must not shadow the publication alias");
 });
-test("0008 is strictly additive and exactly matches the generated latest snapshot", async () => {
+test("0008 is strictly additive", async () => {
+  // Asserted purely from historical snapshots, so later migrations cannot make
+  // this historical check stale or tie it to the current schema.
   const previous = JSON.parse(read("drizzle/meta/0007_snapshot.json")), saved = JSON.parse(read("drizzle/meta/0008_snapshot.json"));
-  const fresh = JSON.parse(JSON.stringify(generateDrizzleJson(schema)));
-  for (const key of ["id", "prevId"]) { delete saved[key]; delete fresh[key]; }
-  assert.deepEqual(fresh, saved);
-  const ddl = (await generateMigration(previous, generateDrizzleJson(schema))).join("\n");
+  const ddl = (await generateMigration(previous, saved)).join("\n");
   assert.match(ddl, /CREATE TABLE "content_state"/);
   assert.doesNotMatch(ddl, /\bALTER\b|\bDROP\b|\bDELETE\b|\bUPDATE\b|\bTRUNCATE\b/i);
   const sql = read("drizzle/0008_recycle_bin.sql");
   assert.doesNotMatch(sql, /\bALTER\b|\bDROP\b|\bDELETE\b|\bUPDATE\b|\bTRUNCATE\b|wallpaper|r2_uploads/i);
   for (const [name, table] of Object.entries(previous.tables)) assert.deepEqual(saved.tables[name], table, `Existing ${name} is byte-structurally unchanged`);
+});
+
+test("the newest snapshot matches schema.ts, so the migration lineage is current", () => {
+  const journal = JSON.parse(read("drizzle/meta/_journal.json")).entries;
+  const latest = journal.at(-1).tag;
+  const saved = JSON.parse(read(`drizzle/meta/${latest.slice(0, 4)}_snapshot.json`));
+  const fresh = JSON.parse(JSON.stringify(generateDrizzleJson(schema)));
+  for (const key of ["id", "prevId"]) { delete saved[key]; delete fresh[key]; }
+  assert.deepEqual(fresh, saved, `${latest} snapshot must match src/db/schema.ts`);
 });

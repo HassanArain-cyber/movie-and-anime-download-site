@@ -67,7 +67,7 @@ test("attachment reconciliation avoids duplicate links after a lost response", a
   let attached = false;
   const result = await processBulkEpisode({ ...row(), episodeId: 42 }, {
     create: async () => { throw Error("must not recreate"); }, upload: async () => { throw Error("not used"); },
-    links: async () => [{ id: 1, mediaId: 1, seasonId: 1, episodeId: 42, label: "1080p", url: row().url, quality: "1080p", fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null, storageProvider: "external" }],
+    links: async () => [{ id: 1, mediaId: 1, seasonId: 1, episodeId: 42, label: "1080p", url: row().url, quality: "1080p", fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null, storageProvider: "external", linkBehavior: "open" }],
     attach: async () => { attached = true; },
   }, () => undefined);
   assert.equal(result.status, "done"); assert.equal(attached, false);

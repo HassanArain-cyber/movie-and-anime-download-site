@@ -6,7 +6,7 @@ import { downloadLinks } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { getQuality, isLegacyUpload, isR2Url } from "@/lib/media-links";
 import { getUpload, r2LinkValues } from "@/lib/storage";
-import { ApiError, errorResponse, externalUrl, positiveId, quality, readJson, text, uuid } from "@/lib/validation";
+import { ApiError, errorResponse, externalUrl, linkBehavior, positiveId, quality, readJson, text, uuid } from "@/lib/validation";
 import type { VideoQuality } from "@/lib/types";
 
 type Context = { params: Promise<{ id: string }> };
@@ -24,6 +24,7 @@ export async function PATCH(req: Request, { params }: Context) {
     if ("label" in body) updates.label = text(body.label, "Label", 50) || "Download";
     if ("fileSize" in body) updates.fileSize = text(body.fileSize, "File size", 30);
     if ("quality" in body) updates.quality = quality(body.quality);
+    if ("linkBehavior" in body) updates.linkBehavior = linkBehavior(body.linkBehavior);
     const label = updates.label ?? existing.label;
     if (!("quality" in body)) updates.quality = getQuality({ quality: existing.quality as VideoQuality | null, label });
 

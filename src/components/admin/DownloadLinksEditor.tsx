@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CompletedUpload, DownloadLink, StorageStatus, VideoQuality } from "@/lib/types";
+import type { CompletedUpload, DownloadLink, LinkBehavior, StorageStatus, VideoQuality } from "@/lib/types";
 import { formatBytes, getLinkProvider, getProviderLabel, getQuality, QUALITIES, qualityDisplay } from "@/lib/media-links";
 import { uploadToR2, UploadError } from "@/lib/upload-client";
 
@@ -16,11 +16,17 @@ interface Props {
 
 const inputClass = "min-h-11 min-w-0 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700";
 
+const LINK_BEHAVIORS: { value: LinkBehavior; label: string }[] = [
+  { value: "open", label: "Open Link (Default)" },
+  { value: "copy", label: "Copy Link" },
+];
+
 export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, links, onChange, kind = "video" }: Props) {
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [fileSize, setFileSize] = useState("");
   const [quality, setQuality] = useState<VideoQuality>("1080p");
+  const [linkBehavior, setLinkBehavior] = useState<LinkBehavior>("open");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -43,7 +49,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
 
   const reset = () => {
     abortRef.current?.abort(); abortRef.current = null;
-    setLabel(""); setUrl(""); setFileSize(""); setQuality("1080p"); setEditingId(null);
+    setLabel(""); setUrl(""); setFileSize(""); setQuality("1080p"); setLinkBehavior("open"); setEditingId(null);
     setCompleted(null); setSelectedFile(null); setResumeId(undefined); setProgress(0); setErr("");
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -78,7 +84,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
     try {
       const target = { mediaId, seasonId: seasonId ?? null, episodeId: episodeId ?? null, quality };
       const payload = {
-        ...target, label: label.trim() || quality, fileSize: fileSize.trim() || null,
+        ...target, label: label.trim() || quality, fileSize: fileSize.trim() || null, linkBehavior,
         ...(completed ? { r2UploadId: completed.id, url: completed.url } : editingStored ? {} : { url: url.trim() }),
       };
       const res = await fetch(editingId ? `/api/download-links/${editingId}` : "/api/download-links", {
@@ -102,7 +108,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
   const startEdit = (link: DownloadLink) => {
     abortRef.current?.abort(); abortRef.current = null; setUploading(false);
     setEditingId(link.id); setLabel(link.label || ""); setUrl(link.url); setFileSize(link.fileSize || "");
-    setQuality(getQuality(link) || "other"); setCompleted(null); setSelectedFile(null); setResumeId(undefined); setErr("");
+    setQuality(getQuality(link) || "other"); setLinkBehavior(link.linkBehavior === "copy" ? "copy" : "open"); setCompleted(null); setSelectedFile(null); setResumeId(undefined); setErr("");
   };
 
   const scope = episodeId ? "episode" : seasonId ? "complete season" : "movie";
@@ -127,6 +133,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
               <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs font-medium text-neutral-200">{link.label || "Download"}</span>
               {linkQuality && <span className="rounded bg-purple-950/60 px-2 py-0.5 text-xs text-purple-300">{qualityDisplay(linkQuality)}</span>}
               <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase text-neutral-400">{getProviderLabel(provider)}</span>
+              {link.linkBehavior === "copy" && <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase text-neutral-300">Copy link</span>}
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-400" title={link.url}>{provider === "r2" ? link.objectKey || link.url : link.url}</span>
               {link.fileSize && <span className="text-xs text-neutral-500">{link.fileSize}</span>}
               <button type="button" onClick={() => startEdit(link)} className="rounded border border-neutral-800 px-2 py-0.5 text-xs text-neutral-400 hover:text-white">Edit</button>
@@ -143,7 +150,12 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
               {QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}
             </select>
           </label>
-          <details open={editingId !== null} className="min-w-0 sm:col-span-2"><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">Optional label &amp; file size</summary><div className="grid gap-2 sm:grid-cols-2">
+          <label className="space-y-1 text-xs text-neutral-400">Link Behavior
+            <select value={linkBehavior} onChange={(event) => setLinkBehavior(event.target.value as LinkBehavior)} className={`${inputClass} mt-1 w-full`}>
+              {LINK_BEHAVIORS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <details open={editingId !== null} className="min-w-0"><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">Optional label &amp; file size</summary><div className="grid gap-2 sm:grid-cols-2">
           <label className="space-y-1 text-xs text-neutral-400">Label
             <input type="text" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. 1080p WEB-DL" maxLength={50} className={`${inputClass} mt-1 w-full`} />
           </label>

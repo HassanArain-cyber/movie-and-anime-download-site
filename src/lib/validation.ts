@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isIP } from "node:net";
 import { normalizeQuality, safeExternalUrl } from "./media-links";
-import type { MediaType, VideoQuality } from "./types";
+import type { LinkBehavior, MediaType, VideoQuality } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -78,6 +78,13 @@ export function quality(value: unknown): VideoQuality | null {
 export function mediaType(value: unknown): MediaType {
   if (value !== "movie" && value !== "anime" && value !== "series") {
     throw new ApiError(400, "Type must be movie, anime, or series");
+  }
+  return value;
+}
+
+export function linkBehavior(value: unknown): LinkBehavior {
+  if (value !== "open" && value !== "copy") {
+    throw new ApiError(400, "Choose Open Link or Copy Link");
   }
   return value;
 }
