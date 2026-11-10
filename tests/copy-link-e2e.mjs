@@ -257,13 +257,14 @@ try {
     await tab.waitForURL(/\/copy$/, { timeout: 20000 });
     const url = new URL(tab.url());
     assert.deepEqual([url.pathname, url.search, url.hash], ["/copy", "", ""], "a clean confirmation URL: no copy state in the address bar");
+    // The countdown starts at 5 and each number only lives a second, so watch it first.
+    await tab.getByText("Opening download website in 5 seconds…").waitFor({ timeout: 20000 });
     const probe = await tab.evaluate(() => ({
       detached: window.opener === null,
       fits: document.documentElement.scrollWidth <= innerWidth,
     }));
     assert.equal(probe.detached, true, "the confirmation tab has no handle on the download page");
     assert.equal(probe.fits, true, "the confirmation fits a phone screen");
-    await tab.getByText("Opening download website in 5 seconds…").waitFor({ timeout: 20000 });
     await tab.getByRole("button", { name: "Continue to download website" }).waitFor();
     if (manual) {
       await tab.getByRole("button", { name: "Continue to download website" }).tap();
@@ -279,6 +280,8 @@ try {
       const needle = parsed && parsed.pathname.length > 1 ? parsed.pathname : copied;
       assert.equal(html.includes(needle), false, "the download link is never rendered on the confirmation page");
       assert.equal(html.includes(site), false, "nor is the full website address");
+      // Ticking: the same line counts down on real seconds and the last one is singular.
+      await tab.getByText("Opening download website in 1 second…").waitFor({ timeout: 15000 });
     }
     await tab.waitForURL(site, { timeout: 20000 });
     assert.equal(await tab.getByTestId("copy-confirmation").count(), 0, "the tab leaves the confirmation behind once the website loads");
@@ -429,5 +432,5 @@ try {
   assert.deepEqual(ok(await admin(SETTING)), { url: null }, "removing nothing is harmless");
 
   assert.deepEqual(pageErrors, []); assert.deepEqual(visitorErrors, []);
-  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, confirmation tab that redirects to the website after 5s (Continue fallback, clean URL, none on failure or popup block) plus the shared toast and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
+  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, confirmation tab with a live 5,4,3,2,1 countdown that redirects to the website after 5s (Continue fallback, clean URL, none on failure or popup block) plus the shared toast and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
 } finally { await phone?.close(); await browser?.close(); await pool.end(); }

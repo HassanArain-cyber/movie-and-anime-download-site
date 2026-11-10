@@ -6,15 +6,18 @@ import { readCopyDestination } from "@/lib/copy-link";
 import {
   COPY_CONFIRMATION_CHECKING, COPY_CONFIRMATION_FAILED, COPY_CONFIRMATION_INSTRUCTION,
   COPY_CONFIRMATION_MANUAL, COPY_CONFIRMATION_MISSING, COPY_CONFIRMATION_REDIRECT_MS,
-  COPY_CONFIRMATION_TITLE, copyConfirmationHost, copyConfirmationStatus,
+  COPY_CONFIRMATION_SECONDS, COPY_CONFIRMATION_TICK_MS, COPY_CONFIRMATION_TITLE,
+  copyConfirmationHost, copyConfirmationStatus,
 } from "@/lib/copy-confirmation";
 
 export type CopyConfirmationPhase = "checking" | "ready" | "failed" | "missing";
 
 /** The visible card. Presentational, so the wording and the manual way out are testable alone. */
-export function CopyConfirmationCard({ phase, website, onContinue }: {
+export function CopyConfirmationCard({ phase, website, seconds = COPY_CONFIRMATION_SECONDS, onContinue }: {
   phase: CopyConfirmationPhase;
   website: string | null;
+  /** Whole seconds left on the countdown; the tab counts down from the full delay. */
+  seconds?: number;
   onContinue: () => void;
 }) {
   const host = copyConfirmationHost(website);
@@ -31,7 +34,7 @@ export function CopyConfirmationCard({ phase, website, onContinue }: {
       {website ? (
         <>
           <p role="status" className="mt-5 break-words text-sm font-medium text-emerald-300 [overflow-wrap:anywhere]">
-            {phase === "failed" ? COPY_CONFIRMATION_FAILED : copyConfirmationStatus()}
+            {phase === "failed" ? COPY_CONFIRMATION_FAILED : copyConfirmationStatus(seconds)}
           </p>
           <button type="button" onClick={onContinue} className="vault-copy-confirm-continue">
             {COPY_CONFIRMATION_MANUAL}
@@ -66,6 +69,7 @@ export default function CopyConfirmation() {
   const website = useSyncExternalStore(noopSubscribe, readCopyDestination, () => null);
   const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [failed, setFailed] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const go = useCallback((destination: string) => {
     try {
       window.opener = null;
@@ -76,15 +80,32 @@ export default function CopyConfirmation() {
       setFailed(true); // the Continue button retries from a fresh user gesture
     }
   }, []);
+  // Count down on real elapsed time, not on how often the interval happens to fire, so a
+  // throttled or busy tab still shows 5, 4, 3, 2, 1 and leaves on time.
   useEffect(() => {
     if (!hydrated || !website || failed) return;
-    const timer = setTimeout(() => go(website), COPY_CONFIRMATION_REDIRECT_MS);
-    return () => clearTimeout(timer);
+    const startedAt = Date.now();
+    const tick = () => {
+      const left = Math.ceil((startedAt + COPY_CONFIRMATION_REDIRECT_MS - Date.now()) / 1000);
+      if (left <= 0) {
+        clearInterval(timer);
+        go(website);
+        return;
+      }
+      setRemaining((current) => (current === left ? current : left));
+    };
+    const timer = setInterval(tick, COPY_CONFIRMATION_TICK_MS);
+    return () => clearInterval(timer);
   }, [hydrated, website, failed, go]);
   const phase: CopyConfirmationPhase = !hydrated ? "checking" : failed ? "failed" : website ? "ready" : "missing";
   return (
     <div className="vault-copy-confirm-shell">
-      <CopyConfirmationCard phase={phase} website={website} onContinue={() => { if (website) go(website); }} />
+      <CopyConfirmationCard
+        phase={phase}
+        website={website}
+        seconds={remaining ?? COPY_CONFIRMATION_SECONDS}
+        onContinue={() => { if (website) go(website); }}
+      />
     </div>
   );
 }

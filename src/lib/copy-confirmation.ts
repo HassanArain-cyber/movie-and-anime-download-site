@@ -9,8 +9,12 @@ export const COPY_CONFIRMATION_MISSING =
   "This tab could not read the download website. Return to the Vault page and tap Copy Link again.";
 /** How long the confirmation stays before the tab redirects itself. */
 export const COPY_CONFIRMATION_REDIRECT_MS = 5000;
+/** Whole seconds the countdown starts from; the tab ticks this down to 1, then leaves. */
+export const COPY_CONFIRMATION_SECONDS = Math.ceil(COPY_CONFIRMATION_REDIRECT_MS / 1000);
+/** How often the tab re-reads the clock, so each whole second is shown on time. */
+export const COPY_CONFIRMATION_TICK_MS = 200;
 
-export function copyConfirmationStatus(seconds: number = COPY_CONFIRMATION_REDIRECT_MS / 1000): string {
+export function copyConfirmationStatus(seconds: number = COPY_CONFIRMATION_SECONDS): string {
   return `Opening download website in ${seconds} ${seconds === 1 ? "second" : "seconds"}…`;
 }
 
