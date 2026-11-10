@@ -101,11 +101,11 @@ const copyLink: DownloadLink = { ...base, linkBehavior: "copy" };
 
 test("a Copy Link button opens its own website, else the saved default, else only copies", () => {
   const title = (html: string) => html.match(/title="([^"]*)"/)?.[1];
-  assert.equal(title(render(copyLink, { copyWebsite: "https://www.default.example/tool" })), "External link — copy link, then open default.example");
-  assert.equal(title(render({ ...copyLink, afterCopyUrl: "https://own.example/" }, { copyWebsite: "https://default.example/" })), "External link — copy link, then open own.example");
+  assert.equal(title(render(copyLink, { copyWebsite: "https://www.default.example/tool" })), "External link — copy link, then continue to default.example");
+  assert.equal(title(render({ ...copyLink, afterCopyUrl: "https://own.example/" }, { copyWebsite: "https://default.example/" })), "External link — copy link, then continue to own.example");
   assert.equal(title(render(copyLink)), "External link — copy link", "no website configured keeps Copy Only");
   assert.equal(title(render({ ...copyLink, afterCopyUrl: "javascript:alert(1)" })), "External link — copy link", "an unsafe saved value is ignored");
-  assert.equal(title(render({ ...copyLink, afterCopyUrl: "javascript:alert(1)" }, { copyWebsite: "https://default.example/" })), "External link — copy link, then open default.example");
+  assert.equal(title(render({ ...copyLink, afterCopyUrl: "javascript:alert(1)" }, { copyWebsite: "https://default.example/" })), "External link — copy link, then continue to default.example");
 });
 
 test("websites never apply to Open Link, stored files or other normal links", () => {

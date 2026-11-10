@@ -2,9 +2,16 @@
 
 export type CopyOutcome =
   | "copied"  // copied; no website is configured
-  | "opened"  // copied, then the website opened in a new tab
+  | "opened"  // copied, then the confirmation tab opened (that tab redirects to the website)
   | "blocked" // copied, but the browser refused to open the new tab
   | "failed"; // could not copy; nothing was opened
+
+/** Same-origin confirmation page shown in the new tab before the redirect. */
+export const COPY_CONFIRM_PATH = "/copy";
+/** Session key the opener leaves the destination in; it never becomes part of a URL. */
+export const COPY_DESTINATION_KEY = "vault:copy-destination";
+/** A destination older than this is ignored, so a reused tab can never redirect. */
+export const COPY_DESTINATION_MAX_AGE_MS = 60_000;
 
 /** Clipboard API first, then the legacy command for insecure contexts and in-app browsers. */
 async function copyText(text: string): Promise<boolean> {
@@ -28,23 +35,75 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/** Only plain http(s) addresses can become a redirect target. */
+function safeDestination(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Copy the ORIGINAL download URL, then open the website that can use it.
- * The website is opened only after a successful copy, from the same click, so
- * browsers still count it as user-initiated. Never throws.
+ * Hand the destination to the tab that is about to open. A new tab started with
+ * window.open() receives a copy of this session storage, so the address travels
+ * out of the URL entirely: no query string, no history entry, no server log.
+ * Returns false when the browser offers no storage; the caller then falls back
+ * to opening the website directly, exactly as before.
  */
-export async function copyThenOpen(downloadUrl: string, website: string | null): Promise<CopyOutcome> {
+export function stageCopyDestination(website: string, now = Date.now()): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.sessionStorage.setItem(COPY_DESTINATION_KEY, JSON.stringify({ website, at: now }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read the destination staged for this tab, ignoring stale or malformed values. */
+export function readCopyDestination(now = Date.now()): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(COPY_DESTINATION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { website?: unknown; at?: unknown };
+    const website = safeDestination(parsed.website);
+    const at = typeof parsed.at === "number" ? parsed.at : NaN;
+    if (!website || !Number.isFinite(at) || now - at > COPY_DESTINATION_MAX_AGE_MS || at - now > COPY_DESTINATION_MAX_AGE_MS) {
+      window.sessionStorage.removeItem(COPY_DESTINATION_KEY);
+      return null;
+    }
+    return website;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Copy the ORIGINAL download URL, then open the confirmation tab that tells the
+ * visitor the link is ready and redirects itself to the website after a moment.
+ *
+ * Nothing opens unless the copy succeeded, and both calls happen inside the same
+ * click so browsers still treat them as user-initiated. Never throws.
+ */
+export async function copyThenConfirm(downloadUrl: string, website: string | null): Promise<CopyOutcome> {
   if (!(await copyText(downloadUrl))) return "failed";
   if (!website) return "copied";
+  // Without session storage the confirmation page could not learn the website, so
+  // keep the previous behaviour rather than showing a dead end.
+  const staged = stageCopyDestination(website);
   let tab: Window | null;
   try {
     // No "noopener" feature: it makes open() return null, hiding popup blockers.
-    tab = window.open(website, "_blank");
+    tab = window.open(staged ? COPY_CONFIRM_PATH : website, "_blank");
   } catch {
     return "blocked";
   }
   if (!tab || tab.closed) return "blocked"; // some blockers hand back an already closed window
-  // The opened site must not be able to script this page.
+  // Neither the confirmation page nor the site it redirects to needs this page.
   try { tab.opener = null; } catch { /* already cross-origin: nothing left to detach */ }
   return "opened";
 }

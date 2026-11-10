@@ -141,3 +141,13 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-copy-toast a:focus-visible, .vault-copy-toast-dismiss:focus-visible { outline: 2px solid #c4a2ff; outline-offset: 2px; }
 @keyframes vault-toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .vault-copy-toast { animation: none; } }
+
+/* Copy Link confirmation tab: the copy is done, the website follows in a moment. */
+.vault-copy-confirm-shell { display: flex; align-items: center; justify-content: center; min-height: min(70dvh, 34rem); padding: 1rem 0 2rem; }
+.vault-copy-confirm { width: 100%; max-width: 26rem; padding: 2rem 1.35rem 1.5rem; border: 1px solid #6d527f; border-radius: 1.15rem; background: linear-gradient(180deg, #1d1728, #12101a); box-shadow: 0 24px 60px #000000b3, inset 0 1px 0 #ffffff14; text-align: center; }
+.vault-copy-confirm-check { display: inline-flex; align-items: center; justify-content: center; width: 4rem; height: 4rem; border-radius: 999px; border: 1px solid #34d39966; background: #10b9811f; color: #6ee7b7; box-shadow: 0 0 0 8px #10b9810f; animation: vault-check-in .32s ease-out; }
+.vault-copy-confirm-continue { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; width: 100%; min-height: 48px; margin-top: 1.1rem; padding: .7rem 1rem; border-radius: .65rem; font-size: .9rem; font-weight: 600; color: #fff; background: linear-gradient(110deg, #7c3aed, #ba448c); box-shadow: 0 6px 22px #9333ea2e; }
+.vault-copy-confirm-continue:hover { filter: brightness(1.08); }
+.vault-copy-confirm-continue:focus-visible { outline: 2px solid #c4a2ff; outline-offset: 3px; }
+@keyframes vault-check-in { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .vault-copy-confirm-check { animation: none; } }

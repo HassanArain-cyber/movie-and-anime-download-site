@@ -58,9 +58,9 @@ test("a successful copy confirms itself; a failed copy keeps the manual fallback
   assert.equal(copyOutcomeEffects("blocked", { host: "", website: null }).toast?.website, null);
 });
 
-test("the confirmation names the outcome and the site that was opened", () => {
+test("the confirmation names the outcome and points at the new tab", () => {
   assert.equal(copyToastText(detail({ outcome: "copied", host: "", website: null })), "Link copied to clipboard.");
-  assert.equal(copyToastText(detail()), "Link copied. downloader.example opened in a new tab — paste the link there.");
+  assert.equal(copyToastText(detail()), "Link copied. Continue in the new tab to download.");
   assert.equal(copyToastText(detail({ outcome: "blocked" })), "Link copied. Your browser blocked the new tab for downloader.example.");
   assert.ok(COPY_TOAST_MS >= 3000 && COPY_TOAST_MS <= 10000, "a confirmation should stay long enough to read, not forever");
 });
@@ -69,7 +69,7 @@ test("the toast is announced, dismissible and offers the blocked-tab link", () =
   const opened = cardMarkup(detail());
   assert.match(opened, /data-testid="copy-toast" data-outcome="opened"/);
   assert.match(opened, /role="status" aria-live="polite" aria-atomic="true"/, "each confirmation announces itself politely");
-  assert.match(opened, /Link copied\. downloader\.example opened in a new tab — paste the link there\./);
+  assert.match(opened, /Link copied\. Continue in the new tab to download\./, "the new tab, not the toast, explains the next step");
   assert.match(opened, /aria-label="Dismiss copy confirmation"/);
   assert.doesNotMatch(opened, /Open downloader\.example/, "a site that opened needs no manual link");
 
@@ -128,6 +128,6 @@ test("the toast stays presentation-only and the button never toasts a failed cop
   assert.match(button, /failure === "failed" &&/, "the URL fallback only renders for a failed copy");
   // The inline success text is gone: success is announced by the toast only.
   assert.doesNotMatch(button, /Link copied to clipboard\./);
-  assert.doesNotMatch(button, /opened in a new tab — paste the link there/);
+  assert.doesNotMatch(button, /Continue in the new tab to download/);
   assert.match(readFileSync("src/app/layout.tsx", "utf8"), /<CopyToast \/>/, "one toast is mounted for every page");
 });

@@ -247,11 +247,38 @@ try {
   const shopper = await visitor.newPage(); const visitorErrors = []; shopper.on("pageerror", (error) => visitorErrors.push(error.message));
   const clipboard = () => shopper.evaluate(() => navigator.clipboard.readText());
   const button = (name) => shopper.getByRole("button", { name });
-  const tapAndExpectTab = async (target, expectedUrl, copied) => {
+  // The new tab confirms the copy, then takes itself to the website. The confirmation is
+  // captured in one round trip right after it appears, because the redirect follows 2s later.
+  const tapAndExpectConfirm = async (target, site, copied, { manual = false } = {}) => {
     const [tab] = await Promise.all([visitor.waitForEvent("page"), target.tap()]);
-    await tab.waitForLoadState();
-    assert.equal(tab.url(), expectedUrl);
-    assert.equal(await tab.evaluate(() => window.opener === null), true, "the opened website has no handle on the download page");
+    await tab.waitForURL(/\/copy$/, { timeout: 20000 });
+    const url = new URL(tab.url());
+    assert.deepEqual([url.pathname, url.search, url.hash], ["/copy", "", ""], "a clean confirmation URL: no copy state in the address bar");
+    const probe = await tab.evaluate(() => ({
+      detached: window.opener === null,
+      fits: document.documentElement.scrollWidth <= innerWidth,
+    }));
+    assert.equal(probe.detached, true, "the confirmation tab has no handle on the download page");
+    assert.equal(probe.fits, true, "the confirmation fits a phone screen");
+    await tab.getByText("Opening download website in 2 seconds…").waitFor({ timeout: 20000 });
+    await tab.getByRole("button", { name: "Continue to download website" }).waitFor();
+    if (manual) {
+      await tab.getByRole("button", { name: "Continue to download website" }).tap();
+    } else {
+      const html = await tab.content(); // one snapshot, asserted offline so the 2s window cannot race us
+      assert.match(html, /data-phase="ready"/);
+      assert.match(html, /Link Copied Successfully!/);
+      assert.match(html, /Paste the copied link on the next website to download\./);
+      assert.match(html, /Continue to download website/);
+      assert.ok(html.includes(`Destination: ${new URL(site).hostname}`), "the visitor sees where they are going, by host only");
+      // A magnet link has no hierarchical path, so fall back to its full text as the marker.
+      const parsed = /^https?:/i.test(copied) ? new URL(copied) : null;
+      const needle = parsed && parsed.pathname.length > 1 ? parsed.pathname : copied;
+      assert.equal(html.includes(needle), false, "the download link is never rendered on the confirmation page");
+      assert.equal(html.includes(site), false, "nor is the full website address");
+    }
+    await tab.waitForURL(site, { timeout: 20000 });
+    assert.equal(await tab.getByTestId("copy-confirmation").count(), 0, "the tab leaves the confirmation behind once the website loads");
     await tab.close(); await shopper.bringToFront();
     assert.equal(await clipboard(), copied, "the clipboard holds the download link, never the website");
   };
@@ -259,12 +286,12 @@ try {
   const openMoviePage = async () => { await shopper.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" }); };
 
   await openMoviePage();
-  await tapAndExpectTab(button(/Inherits default/), DEFAULT_SITE, inherited.url);
-  // Success is now confirmed by one shared toast instead of a line under the button.
+  await tapAndExpectConfirm(button(/Inherits default/), DEFAULT_SITE, inherited.url);
+  // The original page also confirms the copy, in one shared toast.
   const toast = shopper.getByTestId("copy-toast");
   await toast.waitFor();
   assert.equal(await toast.getAttribute("data-outcome"), "opened");
-  await toast.getByText("Link copied. downloader.example opened in a new tab — paste the link there.").waitFor();
+  await toast.getByText("Link copied. Continue in the new tab to download.").waitFor();
   assert.equal(await shopper.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the confirmation does not widen the phone layout");
   assert.deepEqual(
     [await toast.getAttribute("role"), await toast.getAttribute("aria-live"), await toast.getAttribute("aria-atomic")],
@@ -273,10 +300,11 @@ try {
   );
   await shopper.getByRole("button", { name: "Dismiss copy confirmation" }).tap();
   assert.equal(await shopper.getByTestId("copy-toast").count(), 0, "the confirmation can be dismissed");
-  await tapAndExpectTab(button(/Own site/), OWN_SITE, own.url);
-  await shopper.getByTestId("copy-toast").getByText("Link copied. own-tool.example opened in a new tab — paste the link there.").waitFor();
-  await tapAndExpectTab(button(/Telegram copy/), DEFAULT_SITE, telegram.url);
-  await tapAndExpectTab(button(/Magnet copy/), DEFAULT_SITE, magnet.url);
+  await tapAndExpectConfirm(button(/Own site/), OWN_SITE, own.url);
+  await shopper.getByTestId("copy-toast").getByText("Link copied. Continue in the new tab to download.").waitFor();
+  // The manual Continue button is not only decorative: it navigates too.
+  await tapAndExpectConfirm(button(/Telegram copy/), DEFAULT_SITE, telegram.url, { manual: true });
+  await tapAndExpectConfirm(button(/Magnet copy/), DEFAULT_SITE, magnet.url);
   assert.equal(await shopper.getByTestId("copy-toast").count(), 1, "only one confirmation is on screen at a time");
   await shopper.mouse.move(4, 4);
   await shopper.getByTestId("copy-toast").waitFor({ state: "detached", timeout: 12000 });
@@ -299,6 +327,7 @@ try {
   await button(/Inherits default/).tap();
   await shopper.getByTestId("copy-toast").getByText(/Your browser blocked the new tab/).waitFor();
   assert.equal(await clipboard(), inherited.url);
+  assert.equal(visitor.pages().length, 1, "a blocked tab shows no confirmation page");
   const manual = shopper.getByTestId("copy-toast").getByRole("link", { name: "Open downloader.example" });
   assert.deepEqual([await manual.getAttribute("href"), await manual.getAttribute("target"), await manual.getAttribute("rel")], [DEFAULT_SITE, "_blank", "noopener noreferrer"]);
   const [manualTab] = await Promise.all([visitor.waitForEvent("page"), manual.tap()]);
@@ -308,7 +337,7 @@ try {
   // Clipboard API denied: the legacy copy command still copies, then the website opens.
   await openMoviePage();
   await shopper.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new DOMException("Write permission denied.", "NotAllowedError")); });
-  await tapAndExpectTab(button(/Inherits default/), DEFAULT_SITE, inherited.url);
+  await tapAndExpectConfirm(button(/Inherits default/), DEFAULT_SITE, inherited.url);
 
   // Nothing can copy: nothing opens, and the visitor gets the original link to copy by hand.
   await openMoviePage();
@@ -319,6 +348,16 @@ try {
   await noNewTab();
   assert.equal(await shopper.locator("[role=status] .select-all").innerText(), inherited.url, "the manual fallback shows the download link");
   assert.equal(await shopper.getByRole("link", { name: "Open downloader.example" }).getAttribute("href"), DEFAULT_SITE);
+
+  // A tab that never received a destination explains itself instead of redirecting anywhere.
+  const orphan = await visitor.newPage();
+  await orphan.goto(`${base}/copy`, { waitUntil: "domcontentloaded" });
+  await orphan.getByText(/This tab could not read the download website/).waitFor();
+  await orphan.waitForTimeout(2500);
+  assert.ok(orphan.url().endsWith("/copy"), "nothing to open, so the tab stays on the confirmation");
+  assert.equal(await orphan.getByRole("button", { name: "Continue to download website" }).count(), 0, "there is no destination to continue to");
+  await orphan.close();
+  await shopper.bringToFront();
 
   // ---- Changes happen only on explicit edits, and survive refresh, logout/login and content edits.
   const publicWebsite = async () => (await details(movie.id)).copyWebsite;
@@ -348,15 +387,15 @@ try {
   await settings.getByRole("button", { name: "Update website", exact: true }).click();
   await settings.getByText("Saved website: https://newer-downloader.example/", { exact: true }).waitFor();
   await openMoviePage();
-  await tapAndExpectTab(button(/Inherits default/), NEWER_SITE, inherited.url);
-  await tapAndExpectTab(button(/Own site renamed/), OWN_SITE, own.url);
+  await tapAndExpectConfirm(button(/Inherits default/), NEWER_SITE, inherited.url);
+  await tapAndExpectConfirm(button(/Own site renamed/), OWN_SITE, own.url);
 
   // Anime page: season archive and episode links get the same behavior and website.
   await shopper.goto(`${base}/anime/${anime.slug}`, { waitUntil: "networkidle" });
-  await tapAndExpectTab(button(/Season archive/), OWN_SITE, "https://example.com/season-1.zip");
+  await tapAndExpectConfirm(button(/Season archive/), OWN_SITE, "https://example.com/season-1.zip");
   await shopper.locator(`#episode-${ep1.id} button[aria-expanded]`).tap();
-  await tapAndExpectTab(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /1080p/ }), NEWER_SITE, "https://example.com/ep1-1080.mp4");
-  await tapAndExpectTab(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /Ep1 own site/ }), OWN_SITE, "https://example.com/ep1-720.mp4");
+  await tapAndExpectConfirm(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /1080p/ }), NEWER_SITE, "https://example.com/ep1-1080.mp4");
+  await tapAndExpectConfirm(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /Ep1 own site/ }), OWN_SITE, "https://example.com/ep1-720.mp4");
   assert.equal(await shopper.locator(`#episode-${ep1.id}`).getByRole("link", { name: /720p/ }).count(), 0, "Open Link episodes elsewhere are unaffected");
   assert.equal(await shopper.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the phone layout does not overflow");
 
@@ -372,10 +411,10 @@ try {
   assert.equal(await shopper.getByTestId("copy-toast").getAttribute("data-outcome"), "copied");
   await noNewTab();
   assert.equal(await clipboard(), inherited.url);
-  await tapAndExpectTab(button(/Own site renamed/), OWN_SITE, own.url);
+  await tapAndExpectConfirm(button(/Own site renamed/), OWN_SITE, own.url);
   ok(await admin(SETTING, { method: "DELETE" }));
   assert.deepEqual(ok(await admin(SETTING)), { url: null }, "removing nothing is harmless");
 
   assert.deepEqual(pageErrors, []); assert.deepEqual(visitorErrors, []);
-  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy-then-open with a success toast (dismiss, auto-dismiss, blocked-tab link, none on failure) and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
+  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, confirmation tab that redirects to the website after 2s (Continue fallback, clean URL, none on failure or popup block) plus the shared toast and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
 } finally { await phone?.close(); await browser?.close(); await pool.end(); }

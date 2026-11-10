@@ -39,7 +39,7 @@ export function copyOutcomeEffects(
 /** Wording shared by the toast and its tests; the copy is already on the clipboard. */
 export function copyToastText({ outcome, host }: CopyToastDetail): string {
   if (outcome === "copied") return "Link copied to clipboard.";
-  if (outcome === "opened") return `Link copied. ${host} opened in a new tab — paste the link there.`;
+  if (outcome === "opened") return "Link copied. Continue in the new tab to download.";
   return `Link copied. Your browser blocked the new tab for ${host}.`;
 }
 

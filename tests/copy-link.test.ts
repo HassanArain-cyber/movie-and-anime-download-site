@@ -1,21 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyThenOpen } from "../src/lib/copy-link";
+import {
+  COPY_CONFIRM_PATH, COPY_DESTINATION_KEY, COPY_DESTINATION_MAX_AGE_MS,
+  copyThenConfirm, readCopyDestination, stageCopyDestination,
+} from "../src/lib/copy-link";
 import { safeWebsiteUrl, websiteHost } from "../src/lib/media-links";
 import { ApiError, websiteUrl } from "../src/lib/validation";
 
 const DOWNLOAD = "https://www.terabox.com/s/1abc";
 const SITE = "https://downloader.example/open";
 
-type Fake = { clipboard?: "ok" | "denied" | "missing"; legacy?: boolean | "throws"; open?: "tab" | "closed" | "blocked" | "throws"; hold?: boolean; sealedTab?: boolean };
+type Fake = {
+  clipboard?: "ok" | "denied" | "missing"; legacy?: boolean | "throws";
+  open?: "tab" | "closed" | "blocked" | "throws";
+  hold?: boolean; sealedTab?: boolean; storage?: boolean;
+};
 
 /** Install fake browser globals for one scenario; `events` records what the code did, in order. */
-function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false }: Fake = {}) {
+function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true }: Fake = {}) {
   const events: string[] = [];
   const tab: { opener: unknown; closed?: boolean } = { opener: "the page" };
   if (open === "closed") tab.closed = true;
   if (sealedTab) Object.defineProperty(tab, "opener", { get: () => "the page", set: () => { throw new DOMException("cross-origin", "SecurityError"); } });
   const fields: { value: string; removed: boolean }[] = [];
+  const stored = new Map<string, string>();
   let release = () => {};
   const gate = hold ? new Promise<void>((resolve) => { release = resolve; }) : Promise.resolve();
   const fakes: Record<string, unknown> = {
@@ -24,11 +32,18 @@ function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, 
       await gate;
       if (clipboard === "denied") throw new DOMException("Write permission denied.", "NotAllowedError");
     } } },
-    window: { open: (...args: unknown[]) => {
-      events.push(`open:${args.join("|")}`);
-      if (open === "throws") throw new Error("popup blocked");
-      return open === "tab" || open === "closed" ? tab : null;
-    } },
+    window: {
+      open: (...args: unknown[]) => {
+        events.push(`open:${args.join("|")}`);
+        if (open === "throws") throw new Error("popup blocked");
+        return open === "tab" || open === "closed" ? tab : null;
+      },
+      ...(storage ? { sessionStorage: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => { events.push(`stage:${key}`); stored.set(key, value); },
+        removeItem: (key: string) => { stored.delete(key); },
+      } } : {}),
+    },
     document: {
       body: { appendChild: () => events.push("append") },
       createElement: () => {
@@ -46,44 +61,52 @@ function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, 
   const original = Object.keys(fakes).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   for (const [name, value] of Object.entries(fakes)) Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
   const restore = () => { for (const [name, descriptor] of original) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete (globalThis as Record<string, unknown>)[name]; } };
-  return { events, tab, fields, release, restore };
+  return { events, tab, fields, stored, release, restore };
 }
 
 async function run(fake: Fake, website: string | null = SITE) {
   const env = install(fake);
-  try { return { outcome: await copyThenOpen(DOWNLOAD, website), ...env }; } finally { env.restore(); }
+  try { return { outcome: await copyThenConfirm(DOWNLOAD, website), ...env }; } finally { env.restore(); }
 }
 
-test("copies the ORIGINAL download link, then opens only the configured website", async () => {
-  const { outcome, events, tab } = await run({});
+test("copies the ORIGINAL download link, then opens the confirmation page instead of the website", async () => {
+  const { outcome, events, tab, stored } = await run({});
   assert.equal(outcome, "opened");
-  assert.deepEqual(events, [`copy:${DOWNLOAD}`, `open:${SITE}|_blank`]);
+  assert.deepEqual(events.filter((event) => !event.startsWith("stage:")), [`copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`]);
   assert.equal(events.filter((event) => event.startsWith("copy:") && event.includes("downloader.example")).length, 0, "the website is never what gets copied");
-  assert.equal(tab.opener, null, "the opened site cannot script the page");
+  assert.equal(tab.opener, null, "the confirmation tab cannot script the page");
+  assert.deepEqual(JSON.parse(stored.get(COPY_DESTINATION_KEY) ?? "{}"), { website: SITE, at: JSON.parse(stored.get(COPY_DESTINATION_KEY) ?? "{}").at });
+});
+
+test("the new tab never receives the website or the download link through its URL", async () => {
+  const { events } = await run({});
+  const opened = events.find((event) => event.startsWith("open:")) ?? "";
+  assert.equal(opened, `open:${COPY_CONFIRM_PATH}|_blank`, "a clean, static path: no query string, hash or encoded address");
+  assert.doesNotMatch(opened, /terabox|downloader|https?:|\?|#/);
 });
 
 test("without a website it is the existing Copy Only behaviour", async () => {
   const { outcome, events } = await run({}, null);
   assert.equal(outcome, "copied");
-  assert.deepEqual(events, [`copy:${DOWNLOAD}`]);
+  assert.deepEqual(events, [`copy:${DOWNLOAD}`], "no tab and nothing staged without a destination");
 });
 
-test("the website opens only after the copy has finished", async () => {
+test("the confirmation page opens only after the copy has finished", async () => {
   const env = install({ hold: true });
   try {
-    const pending = copyThenOpen(DOWNLOAD, SITE);
+    const pending = copyThenConfirm(DOWNLOAD, SITE);
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(env.events, [`copy:${DOWNLOAD}`], "still copying: nothing is opened yet");
+    assert.deepEqual(env.events, [`copy:${DOWNLOAD}`], "still copying: no tab yet, so nothing can race the clipboard");
     env.release();
     assert.equal(await pending, "opened");
-    assert.equal(env.events.length, 2);
+    assert.deepEqual(env.events.filter((event) => !event.startsWith("stage:")), [`copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`]);
   } finally { env.restore(); }
 });
 
 test("a denied clipboard permission falls back to the legacy copy command and still continues", async () => {
   const { outcome, events, fields } = await run({ clipboard: "denied" });
   assert.equal(outcome, "opened");
-  assert.deepEqual(events, [`copy:${DOWNLOAD}`, "append", `legacy:copy:${DOWNLOAD}`, `open:${SITE}|_blank`]);
+  assert.deepEqual(events.filter((event) => !event.startsWith("stage:")), [`copy:${DOWNLOAD}`, "append", `legacy:copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`]);
   assert.equal(fields[0].value, DOWNLOAD);
   assert.equal(fields[0].removed, true, "the temporary field is cleaned up");
 });
@@ -94,11 +117,11 @@ test("insecure pages without a clipboard API use the legacy copy command", async
   assert.deepEqual(events, ["append", `legacy:copy:${DOWNLOAD}`]);
 });
 
-test("when nothing can copy, the website is NOT opened and the visitor gets the manual fallback", async () => {
+test("when nothing can copy, no confirmation page is shown and nothing is staged", async () => {
   for (const fake of [{ clipboard: "denied", legacy: false }, { clipboard: "missing", legacy: "throws" }] as Fake[]) {
     const { outcome, events } = await run(fake);
     assert.equal(outcome, "failed");
-    assert.ok(!events.some((event) => event.startsWith("open:")), "no tab opens when the link was not copied");
+    assert.ok(!events.some((event) => event.startsWith("open:") || event.startsWith("stage:")), "no tab and no destination when the link was not copied");
   }
 });
 
@@ -117,8 +140,41 @@ test("a tab that is already cross-origin and cannot be detached still counts as 
 
 test("open() is called without noopener, which would hide popup blockers by always returning null", async () => {
   const { events } = await run({});
-  assert.equal(events.at(-1), `open:${SITE}|_blank`);
+  assert.equal(events.at(-1), `open:${COPY_CONFIRM_PATH}|_blank`);
   assert.doesNotMatch(events.join(), /noopener|noreferrer/);
+});
+
+test("without session storage the flow degrades to the previous behaviour instead of a dead end", async () => {
+  const { outcome, events } = await run({ storage: false });
+  assert.equal(outcome, "opened");
+  assert.equal(events.at(-1), `open:${SITE}|_blank`, "no confirmation page: it could never learn the website");
+});
+
+test("the staged destination survives a round trip unmangled", () => {
+  const env = install({});
+  try {
+    assert.equal(readCopyDestination(), null, "nothing staged yet");
+    assert.equal(stageCopyDestination(`  ${SITE} `), true);
+    assert.equal(readCopyDestination(), SITE, "stored trimmed and normalised");
+  } finally { env.restore(); }
+});
+
+test("stale, tampered and unusable destinations are refused and dropped", () => {
+  const env = install({});
+  try {
+    const now = Date.now();
+    assert.equal(stageCopyDestination(SITE, now - COPY_DESTINATION_MAX_AGE_MS - 1), true);
+    assert.equal(readCopyDestination(now), null, "an old destination must never redirect a reused tab");
+    assert.equal(env.stored.has(COPY_DESTINATION_KEY), false, "and it is removed");
+
+    stageCopyDestination(SITE, now + 10 * COPY_DESTINATION_MAX_AGE_MS);
+    assert.equal(readCopyDestination(now), null, "a timestamp from the future is not trusted either");
+
+    for (const bad of [{ website: "javascript:alert(1)" }, { website: "magnet:?xt=urn:btih:a" }, { website: 42 }, { at: 1 }, "not json"]) {
+      env.stored.set(COPY_DESTINATION_KEY, typeof bad === "string" ? bad : JSON.stringify(bad));
+      assert.equal(readCopyDestination(now), null, JSON.stringify(bad));
+    }
+  } finally { env.restore(); }
 });
 
 test("only plain http(s) websites are usable", () => {

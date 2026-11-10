@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { DownloadLink } from "@/lib/types";
 import { getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay, safeWebsiteUrl, websiteHost } from "@/lib/media-links";
-import { copyThenOpen } from "@/lib/copy-link";
+import { copyThenConfirm } from "@/lib/copy-link";
 import { copyOutcomeEffects, showCopyToast } from "@/lib/copy-toast";
 
 export default function DownloadButton({ link, copyWebsite }: { link: DownloadLink; copyWebsite?: string | null }) {
@@ -57,12 +57,12 @@ export default function DownloadButton({ link, copyWebsite }: { link: DownloadLi
     <span className="inline-flex min-w-0 max-w-full flex-col gap-1">
       <button
         type="button"
-        onClick={() => void copyThenOpen(href, website).then((next) => {
+        onClick={() => void copyThenConfirm(href, website).then((next) => {
           const effects = copyOutcomeEffects(next, { host, website });
           setFailure(effects.manualFallback ? "failed" : null);
           if (effects.toast) showCopyToast(effects.toast);
         })}
-        title={`${getProviderLabel(provider)} — ${website ? `copy link, then open ${host}` : "copy link"}`}
+        title={`${getProviderLabel(provider)} — ${website ? `copy link, then continue to ${host}` : "copy link"}`}
         className={`${className} text-left`}
       >
         {content}
