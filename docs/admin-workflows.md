@@ -63,7 +63,7 @@ a website, e.g. a TeraBox downloader, so the visitor can paste it there.
 - **Visitors:** the link is copied first; only then does a new tab open. That tab
   shows a short confirmation — a green check, **Link Copied Successfully!**, and
   *Paste the copied link on the next website to download* — and redirects itself to
-  the website after two seconds. A **Continue to download website** button is always
+  the website after five seconds. A **Continue to download website** button is always
   there for browsers that refuse the automatic redirect. The confirmation page never
   puts the download link or the website in its address bar. The original page also
   shows a brief toast ("Link copied…"), announced politely to screen readers,

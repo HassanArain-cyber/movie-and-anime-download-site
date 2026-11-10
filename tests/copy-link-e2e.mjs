@@ -248,9 +248,12 @@ try {
   const clipboard = () => shopper.evaluate(() => navigator.clipboard.readText());
   const button = (name) => shopper.getByRole("button", { name });
   // The new tab confirms the copy, then takes itself to the website. The confirmation is
-  // captured in one round trip right after it appears, because the redirect follows 2s later.
-  const tapAndExpectConfirm = async (target, site, copied, { manual = false } = {}) => {
+  // captured in one round trip right after it appears, because the redirect follows 5s later.
+  // `onOpened` runs while the new tab is counting down: the page toast only lives 5s, so it
+  // must be checked inside the click flow, not after the redirect has finished.
+  const tapAndExpectConfirm = async (target, site, copied, { manual = false, onOpened } = {}) => {
     const [tab] = await Promise.all([visitor.waitForEvent("page"), target.tap()]);
+    if (onOpened) await onOpened(tab);
     await tab.waitForURL(/\/copy$/, { timeout: 20000 });
     const url = new URL(tab.url());
     assert.deepEqual([url.pathname, url.search, url.hash], ["/copy", "", ""], "a clean confirmation URL: no copy state in the address bar");
@@ -260,12 +263,12 @@ try {
     }));
     assert.equal(probe.detached, true, "the confirmation tab has no handle on the download page");
     assert.equal(probe.fits, true, "the confirmation fits a phone screen");
-    await tab.getByText("Opening download website in 2 seconds…").waitFor({ timeout: 20000 });
+    await tab.getByText("Opening download website in 5 seconds…").waitFor({ timeout: 20000 });
     await tab.getByRole("button", { name: "Continue to download website" }).waitFor();
     if (manual) {
       await tab.getByRole("button", { name: "Continue to download website" }).tap();
     } else {
-      const html = await tab.content(); // one snapshot, asserted offline so the 2s window cannot race us
+      const html = await tab.content(); // one snapshot, asserted offline so the 5s window cannot race us
       assert.match(html, /data-phase="ready"/);
       assert.match(html, /Link Copied Successfully!/);
       assert.match(html, /Paste the copied link on the next website to download\./);
@@ -286,28 +289,28 @@ try {
   const openMoviePage = async () => { await shopper.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" }); };
 
   await openMoviePage();
-  await tapAndExpectConfirm(button(/Inherits default/), DEFAULT_SITE, inherited.url);
   // The original page also confirms the copy, in one shared toast.
   const toast = shopper.getByTestId("copy-toast");
-  await toast.waitFor();
-  assert.equal(await toast.getAttribute("data-outcome"), "opened");
-  await toast.getByText("Link copied. Continue in the new tab to download.").waitFor();
-  assert.equal(await shopper.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the confirmation does not widen the phone layout");
-  assert.deepEqual(
-    [await toast.getAttribute("role"), await toast.getAttribute("aria-live"), await toast.getAttribute("aria-atomic")],
-    ["status", "polite", "true"],
-    "the confirmation is announced from a polite live region",
-  );
-  await shopper.getByRole("button", { name: "Dismiss copy confirmation" }).tap();
-  assert.equal(await shopper.getByTestId("copy-toast").count(), 0, "the confirmation can be dismissed");
-  await tapAndExpectConfirm(button(/Own site/), OWN_SITE, own.url);
-  await shopper.getByTestId("copy-toast").getByText("Link copied. Continue in the new tab to download.").waitFor();
+  const toastText = "Link copied. Continue in the new tab to download.";
+  await tapAndExpectConfirm(button(/Inherits default/), DEFAULT_SITE, inherited.url, { onOpened: async () => {
+    await toast.waitFor();
+    assert.equal(await toast.getAttribute("data-outcome"), "opened");
+    await toast.getByText(toastText).waitFor();
+    assert.equal(await shopper.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the confirmation does not widen the phone layout");
+    assert.deepEqual(
+      [await toast.getAttribute("role"), await toast.getAttribute("aria-live"), await toast.getAttribute("aria-atomic")],
+      ["status", "polite", "true"],
+      "the confirmation is announced from a polite live region",
+    );
+  } });
+  await tapAndExpectConfirm(button(/Own site/), OWN_SITE, own.url, { onOpened: async () => {
+    await shopper.getByTestId("copy-toast").getByText(toastText).waitFor();
+  } });
   // The manual Continue button is not only decorative: it navigates too.
   await tapAndExpectConfirm(button(/Telegram copy/), DEFAULT_SITE, telegram.url, { manual: true });
-  await tapAndExpectConfirm(button(/Magnet copy/), DEFAULT_SITE, magnet.url);
-  assert.equal(await shopper.getByTestId("copy-toast").count(), 1, "only one confirmation is on screen at a time");
-  await shopper.mouse.move(4, 4);
-  await shopper.getByTestId("copy-toast").waitFor({ state: "detached", timeout: 12000 });
+  await tapAndExpectConfirm(button(/Magnet copy/), DEFAULT_SITE, magnet.url, { onOpened: async () => {
+    assert.equal(await shopper.getByTestId("copy-toast").count(), 1, "only one confirmation is on screen at a time");
+  } });
   // Normal external pages and stored files keep navigating; websites never apply to them.
   const plain = shopper.getByRole("link", { name: /Plain open/ });
   assert.equal(await plain.getAttribute("href"), "https://example.com/plain-open");
@@ -407,14 +410,24 @@ try {
   assert.equal(await settings.getByLabel("Website to Open After Copying").inputValue(), "");
   await openMoviePage();
   await button(/Inherits default/).tap();
-  await shopper.getByTestId("copy-toast").getByText("Link copied to clipboard.", { exact: true }).waitFor();
-  assert.equal(await shopper.getByTestId("copy-toast").getAttribute("data-outcome"), "copied");
+  const copiedToast = shopper.getByTestId("copy-toast");
+  await copiedToast.getByText("Link copied to clipboard.", { exact: true }).waitFor();
+  assert.equal(await copiedToast.getAttribute("data-outcome"), "copied");
+  assert.equal(await copiedToast.count(), 1, "only one confirmation is on screen");
   await noNewTab();
   assert.equal(await clipboard(), inherited.url);
+  await shopper.getByRole("button", { name: "Dismiss copy confirmation" }).tap();
+  assert.equal(await shopper.getByTestId("copy-toast").count(), 0, "the confirmation can be dismissed");
+  await button(/Inherits default/).tap();
+  await shopper.getByTestId("copy-toast").waitFor();
+  await shopper.mouse.move(4, 4);
+  await shopper.getByTestId("copy-toast").waitFor({ state: "detached", timeout: 15000 });
+  assert.equal(await shopper.getByTestId("copy-toast").count(), 0, "the confirmation disappears on its own");
+  await noNewTab();
   await tapAndExpectConfirm(button(/Own site renamed/), OWN_SITE, own.url);
   ok(await admin(SETTING, { method: "DELETE" }));
   assert.deepEqual(ok(await admin(SETTING)), { url: null }, "removing nothing is harmless");
 
   assert.deepEqual(pageErrors, []); assert.deepEqual(visitorErrors, []);
-  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, confirmation tab that redirects to the website after 2s (Continue fallback, clean URL, none on failure or popup block) plus the shared toast and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
+  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, confirmation tab that redirects to the website after 5s (Continue fallback, clean URL, none on failure or popup block) plus the shared toast and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
 } finally { await phone?.close(); await browser?.close(); await pool.end(); }

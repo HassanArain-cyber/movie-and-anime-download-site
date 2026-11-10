@@ -8,7 +8,7 @@ export const COPY_CONFIRMATION_FAILED = "Automatic redirection failed. Tap Conti
 export const COPY_CONFIRMATION_MISSING =
   "This tab could not read the download website. Return to the Vault page and tap Copy Link again.";
 /** How long the confirmation stays before the tab redirects itself. */
-export const COPY_CONFIRMATION_REDIRECT_MS = 2000;
+export const COPY_CONFIRMATION_REDIRECT_MS = 5000;
 
 export function copyConfirmationStatus(seconds: number = COPY_CONFIRMATION_REDIRECT_MS / 1000): string {
   return `Opening download website in ${seconds} ${seconds === 1 ? "second" : "seconds"}…`;

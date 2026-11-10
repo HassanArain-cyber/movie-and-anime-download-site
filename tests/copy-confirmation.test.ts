@@ -81,9 +81,9 @@ function cardMarkup(phase: string, website: string | null) {
 test("the confirmation says exactly what the visitor must do next", () => {
   assert.equal(COPY_CONFIRMATION_TITLE, "Link Copied Successfully!");
   assert.equal(COPY_CONFIRMATION_INSTRUCTION, "Paste the copied link on the next website to download.");
-  assert.equal(copyConfirmationStatus(), "Opening download website in 2 seconds…");
+  assert.equal(copyConfirmationStatus(), "Opening download website in 5 seconds…");
   assert.equal(copyConfirmationStatus(1), "Opening download website in 1 second…");
-  assert.equal(COPY_CONFIRMATION_REDIRECT_MS, 2000, "the redirect waits two seconds, long enough to read");
+  assert.equal(COPY_CONFIRMATION_REDIRECT_MS, 5000, "the redirect waits five seconds, long enough to read");
 });
 
 test("the destination is only ever shown as a host, never with the download link", () => {
@@ -99,8 +99,8 @@ test("the ready card shows the check, the instruction, the countdown and the man
   assert.match(html, /<svg[^>]*aria-hidden="true"/, "the green check is decorative");
   assert.match(html, /Link Copied Successfully!/);
   assert.match(html, /Paste the copied link on the next website to download\./);
-  assert.match(html, /Opening download website in 2 seconds…/);
-  assert.match(html, /<p role="status"[^>]*>Opening download website in 2 seconds…/, "the countdown is announced politely");
+  assert.match(html, /Opening download website in 5 seconds…/);
+  assert.match(html, /<p role="status"[^>]*>Opening download website in 5 seconds…/, "the countdown is announced politely");
   assert.match(html, /<button type="button"[^>]*>Continue to download website/, "Continue is always available");
   assert.match(html, /Destination: downloader\.example/);
   assert.doesNotMatch(html, /downloader\.example\/open|terabox|https?:/, "neither the website path nor the download link is rendered");
@@ -191,13 +191,13 @@ function drive({ website = SITE as string | null, failed = false, hydrated = tru
   }
 }
 
-test("the tab redirects itself to the saved website two seconds later, once", () => {
+test("the tab redirects itself to the saved website five seconds later, once", () => {
   const tab = drive();
   assert.equal(tab.effects.length, 1, "one effect owns the countdown");
   assert.equal(tab.timers.length, 0, "the countdown starts after render, not during it");
   const cleanup = tab.effects[0]();
   assert.equal(tab.timers.length, 1);
-  assert.equal(tab.timers[0].delay, COPY_CONFIRMATION_REDIRECT_MS, "two seconds: long enough to read the message");
+  assert.equal(tab.timers[0].delay, COPY_CONFIRMATION_REDIRECT_MS, "five seconds: long enough to read the message");
   assert.deepEqual(tab.replaced, [], "nothing happens before the delay elapses");
   tab.timers[0].run();
   assert.deepEqual(tab.replaced, [SITE], "exactly the saved website");
