@@ -19,6 +19,7 @@ function render(link: DownloadLink, { copyWebsite, outcome }: { copyWebsite?: st
     "@/lib/types": {},
     "@/lib/media-links": require("../src/lib/media-links"),
     "@/lib/copy-link": require("../src/lib/copy-link"),
+    "@/lib/copy-toast": require("../src/lib/copy-toast"),
   };
   vm.runInNewContext(
     ts.transpileModule(readFileSync("src/components/DownloadButton.tsx", "utf8"), {
@@ -116,13 +117,15 @@ test("websites never apply to Open Link, stored files or other normal links", ()
   assert.doesNotMatch(stored, /default\.example/);
 });
 
-test("each copy outcome tells the visitor what happened and never offers the website as the thing to copy", () => {
+test("a successful copy is confirmed by the shared toast and never offers the website as the thing to copy", () => {
   const site = { copyWebsite: "https://www.site.example/downloader" };
-  assert.match(render(copyLink, { ...site, outcome: "copied" }), /Link copied to clipboard\./);
-  assert.match(render(copyLink, { ...site, outcome: "opened" }), /Link copied\. site\.example opened in a new tab/);
-  const blocked = render(copyLink, { ...site, outcome: "blocked" });
-  assert.match(blocked, /Your browser blocked the new tab/);
-  assert.match(blocked, /<a href="https:\/\/www\.site\.example\/downloader" target="_blank" rel="noopener noreferrer"[^>]*>Open site\.example<\/a>/);
+  for (const outcome of ["copied", "opened", "blocked"]) {
+    const html = render(copyLink, { ...site, outcome });
+    assert.doesNotMatch(html, /Link copied/, `${outcome} is announced by the toast, not under the button`);
+    assert.doesNotMatch(html, /blocked the new tab/, outcome);
+    assert.doesNotMatch(html, /Open site\.example/, outcome);
+  }
+  // Only a failed copy keeps inline text, because the visitor has to act on it.
   const failed = render(copyLink, { ...site, outcome: "failed" });
   assert.match(failed, /Copy this link: <span class="select-all">https:\/\/pixeldrain\.net\/u\/abc<\/span>/, "the manual fallback shows the ORIGINAL link");
   assert.match(failed, /Open site\.example/);

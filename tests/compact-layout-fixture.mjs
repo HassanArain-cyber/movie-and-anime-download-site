@@ -14,6 +14,9 @@ const allowed = new Map([
   ["@/components/DownloadOptions", "src/components/DownloadOptions.tsx"],
   ["@/components/CommentSection", "src/components/CommentSection.tsx"],
   ["@/lib/media-links", "src/lib/media-links.ts"],
+  // DownloadButton imports the Copy Link helpers (PR #10), so the fixture needs them.
+  ["@/lib/copy-link", "src/lib/copy-link.ts"],
+  ["@/lib/copy-toast", "src/lib/copy-toast.ts"],
   ["@/lib/comment-display", "src/lib/comment-display.ts"],
   ["@/lib/comment-thread", "src/lib/comment-thread.ts"],
 ]);

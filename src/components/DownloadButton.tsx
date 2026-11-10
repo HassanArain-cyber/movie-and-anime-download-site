@@ -3,14 +3,17 @@
 import { useState } from "react";
 import type { DownloadLink } from "@/lib/types";
 import { getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay, safeWebsiteUrl, websiteHost } from "@/lib/media-links";
-import { copyThenOpen, type CopyOutcome } from "@/lib/copy-link";
+import { copyThenOpen } from "@/lib/copy-link";
+import { copyOutcomeEffects, showCopyToast } from "@/lib/copy-toast";
 
 export default function DownloadButton({ link, copyWebsite }: { link: DownloadLink; copyWebsite?: string | null }) {
   const href = getLinkHref(link);
   const provider = getLinkProvider(link);
   const stored = provider === "r2" || provider === "local";
   const quality = getQuality(link);
-  const [outcome, setOutcome] = useState<CopyOutcome | null>(null);
+  // Success is confirmed by the shared toast; only a failed copy keeps inline text
+  // so the visitor can still select the URL by hand.
+  const [failure, setFailure] = useState<"failed" | null>(null);
   // Copying needs a raw URL; stored files point at the download handler and keep
   // navigating. Everything else follows the admin's per-link choice.
   const copy = link.linkBehavior === "copy" && !stored && !!href;
@@ -52,14 +55,20 @@ export default function DownloadButton({ link, copyWebsite }: { link: DownloadLi
 
   return (
     <span className="inline-flex min-w-0 max-w-full flex-col gap-1">
-      <button type="button" onClick={() => void copyThenOpen(href, website).then(setOutcome)} title={`${getProviderLabel(provider)} — ${website ? `copy link, then open ${host}` : "copy link"}`} className={`${className} text-left`}>
+      <button
+        type="button"
+        onClick={() => void copyThenOpen(href, website).then((next) => {
+          const effects = copyOutcomeEffects(next, { host, website });
+          setFailure(effects.manualFallback ? "failed" : null);
+          if (effects.toast) showCopyToast(effects.toast);
+        })}
+        title={`${getProviderLabel(provider)} — ${website ? `copy link, then open ${host}` : "copy link"}`}
+        className={`${className} text-left`}
+      >
         {content}
       </button>
-      {outcome && <span role="status" className={`break-words text-xs [overflow-wrap:anywhere] ${outcome === "copied" || outcome === "opened" ? "text-emerald-300" : "text-amber-300"}`}>
-        {outcome === "copied" && "Link copied to clipboard."}
-        {outcome === "opened" && `Link copied. ${host} opened in a new tab — paste the link there.`}
-        {outcome === "blocked" && <>Link copied. Your browser blocked the new tab. {openSite}</>}
-        {outcome === "failed" && <>Could not copy automatically. Copy this link: <span className="select-all">{href}</span> {openSite}</>}
+      {failure === "failed" && <span role="status" className="break-words text-xs text-amber-300 [overflow-wrap:anywhere]">
+        Could not copy automatically. Copy this link: <span className="select-all">{href}</span> {openSite}
       </span>}
     </span>
   );

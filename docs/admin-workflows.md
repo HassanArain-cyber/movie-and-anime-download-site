@@ -61,8 +61,11 @@ a website, e.g. a TeraBox downloader, so the visitor can paste it there.
   website. The behavior picked in a bulk form applies to the links saved by that
   action. Uploaded R2 files and local files always download directly.
 - **Visitors:** the link is copied first; only then is the website opened in a new
-  tab. If copying is refused the site is not opened and the link is shown to copy
-  by hand. If the browser blocks the new tab, an **Open …** link is shown.
+  tab. A successful copy is confirmed by a single toast at the bottom of the screen
+  ("Link copied…"), announced politely to screen readers, dismissible, and it
+  disappears on its own after a few seconds. If the browser blocks the new tab the
+  same toast carries an **Open …** link. If copying is refused the site is not
+  opened, no toast is shown, and the link appears under the button to copy by hand.
   Telegram and magnet links can be copied like any other link.
 - **Selected downloads** (episode checkboxes) are unchanged and ignore this setting.
 

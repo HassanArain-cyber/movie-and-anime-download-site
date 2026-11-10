@@ -131,3 +131,13 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-detail-page .vault-season summary + div > :not(:first-child) { margin-top: .75rem; }
 .vault-detail-page .vault-season [id^="episode-"] > div:first-child { padding-block: .2rem; }
 .vault-detail-page .vault-comments { padding: .75rem; }
+
+/* Copy Link confirmation toast: one at a time, clear of the scroll control. */
+.vault-copy-toast-region { position: fixed; z-index: 70; left: 50%; transform: translateX(-50%); bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: .4rem; width: min(26rem, calc(100vw - 1.5rem)); pointer-events: none; }
+.vault-copy-toast { pointer-events: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .55rem; padding: .65rem .7rem; border: 1px solid #5c4a7a; border-radius: .8rem; background: linear-gradient(180deg, #1d1728, #15111e); color: #e5e7eb; box-shadow: 0 16px 36px #000000d9, inset 0 1px 0 #ffffff14; animation: vault-toast-in .2s ease-out; }
+.vault-copy-toast-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; margin-top: .1rem; border-radius: 999px; background: #10b98126; color: #6ee7b7; }
+.vault-copy-toast-dismiss { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border: 1px solid #ffffff1f; border-radius: .5rem; background: #ffffff0d; color: #e5e7eb; }
+.vault-copy-toast-dismiss:hover { border-color: #c4a2ff66; background: #a855f71f; color: #fff; }
+.vault-copy-toast a:focus-visible, .vault-copy-toast-dismiss:focus-visible { outline: 2px solid #c4a2ff; outline-offset: 2px; }
+@keyframes vault-toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .vault-copy-toast { animation: none; } }
