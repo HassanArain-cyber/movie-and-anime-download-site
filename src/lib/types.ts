@@ -56,6 +56,8 @@ export interface DownloadLink {
   objectKey: string | null;
   sizeBytes: number | null;
   linkBehavior: LinkBehavior;
+  /** Per-link website opened after copying; null inherits the site-wide default. */
+  afterCopyUrl: string | null;
 }
 
 export interface Category {
@@ -67,6 +69,8 @@ export interface Category {
 export interface MediaWithRelations extends Media {
   seasons?: SeasonWithEpisodes[];
   downloadLinks?: DownloadLink[];
+  /** Saved site-wide website opened after a Copy Link click, if any. */
+  copyWebsite?: string | null;
 }
 
 export interface EpisodeWithLinks extends Episode {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isIP } from "node:net";
-import { normalizeQuality, safeExternalUrl } from "./media-links";
+import { normalizeQuality, safeExternalUrl, safeWebsiteUrl } from "./media-links";
 import type { LinkBehavior, MediaType, VideoQuality } from "./types";
 
 export class ApiError extends Error {
@@ -99,6 +99,13 @@ export function year(value: unknown): number | null {
 export function externalUrl(value: unknown): string {
   const result = text(value, "URL", 8192, true)!;
   if (!safeExternalUrl(result)) throw new ApiError(400, "Use an HTTPS, HTTP, Telegram, or magnet link. Upload files to R2 instead of entering a local path.");
+  return result;
+}
+
+/** Optional website opened after copying. Blank means "none / inherit the default". */
+export function websiteUrl(value: unknown): string | null {
+  const result = text(value, "Website to Open After Copying", 2048);
+  if (result !== null && !safeWebsiteUrl(result)) throw new ApiError(400, "Website to Open After Copying must be a full http:// or https:// address");
   return result;
 }
 

@@ -2,17 +2,21 @@
 
 import { useState } from "react";
 import type { DownloadLink } from "@/lib/types";
-import { getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay } from "@/lib/media-links";
+import { getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay, safeWebsiteUrl, websiteHost } from "@/lib/media-links";
+import { copyThenOpen, type CopyOutcome } from "@/lib/copy-link";
 
-export default function DownloadButton({ link }: { link: DownloadLink }) {
+export default function DownloadButton({ link, copyWebsite }: { link: DownloadLink; copyWebsite?: string | null }) {
   const href = getLinkHref(link);
   const provider = getLinkProvider(link);
   const stored = provider === "r2" || provider === "local";
   const quality = getQuality(link);
-  const [message, setMessage] = useState("");
+  const [outcome, setOutcome] = useState<CopyOutcome | null>(null);
   // Copying needs a raw URL; stored files point at the download handler and keep
   // navigating. Everything else follows the admin's per-link choice.
   const copy = link.linkBehavior === "copy" && !stored && !!href;
+  // The link's own website, else the saved site-wide default. None means copy only.
+  const website = copy ? safeWebsiteUrl(link.afterCopyUrl) ?? safeWebsiteUrl(copyWebsite) : null;
+  const host = website ? websiteHost(website) : "";
 
   if (!href) {
     return <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 break-words rounded-md bg-neutral-900 px-3 py-2 text-sm text-neutral-500 ring-1 ring-neutral-800">Unavailable link</span>;
@@ -43,22 +47,20 @@ export default function DownloadButton({ link }: { link: DownloadLink }) {
     );
   }
 
-  const copyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(href);
-      setMessage("Link copied to clipboard.");
-    } catch {
-      // Clipboard access is denied outside secure contexts or without permission.
-      setMessage(`Could not copy automatically. Copy this link: ${href}`);
-    }
-  };
+  // A real link, so it still works when the browser blocked the automatic tab.
+  const openSite = website && <a href={website} target="_blank" rel="noopener noreferrer" className="font-medium underline">Open {host}</a>;
 
   return (
     <span className="inline-flex min-w-0 max-w-full flex-col gap-1">
-      <button type="button" onClick={() => void copyUrl()} title={`${getProviderLabel(provider)} — copy link`} className={`${className} text-left`}>
+      <button type="button" onClick={() => void copyThenOpen(href, website).then(setOutcome)} title={`${getProviderLabel(provider)} — ${website ? `copy link, then open ${host}` : "copy link"}`} className={`${className} text-left`}>
         {content}
       </button>
-      {message && <span role="status" className="break-words text-xs text-emerald-300 [overflow-wrap:anywhere]">{message}</span>}
+      {outcome && <span role="status" className={`break-words text-xs [overflow-wrap:anywhere] ${outcome === "copied" || outcome === "opened" ? "text-emerald-300" : "text-amber-300"}`}>
+        {outcome === "copied" && "Link copied to clipboard."}
+        {outcome === "opened" && `Link copied. ${host} opened in a new tab — paste the link there.`}
+        {outcome === "blocked" && <>Link copied. Your browser blocked the new tab. {openSite}</>}
+        {outcome === "failed" && <>Could not copy automatically. Copy this link: <span className="select-all">{href}</span> {openSite}</>}
+      </span>}
     </span>
   );
 }

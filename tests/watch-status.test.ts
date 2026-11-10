@@ -32,8 +32,8 @@ test("historical 0007 SQL/snapshot agree with generated schema and unqualified s
   const fresh = generateDrizzleJson(historicSchema);
   const normalized = JSON.parse(JSON.stringify(fresh));
   const saved = JSON.parse(JSON.stringify(snapshot));
-  // download_links.link_behavior arrived in 0009; drop it to compare with 0007.
-  delete normalized.tables["public.download_links"].columns.link_behavior;
+  // download_links.link_behavior (0009) and after_copy_url (0010) are later additions.
+  for (const column of ["link_behavior", "after_copy_url"]) delete normalized.tables["public.download_links"].columns[column];
   for (const key of ["id", "prevId"]) { delete normalized[key]; delete saved[key]; }
   assert.deepEqual(normalized, saved, "entire serialized snapshot must match schema.ts, excluding lineage IDs");
   const ddl = await generateMigration(JSON.parse(read("drizzle/meta/0006_snapshot.json")), fresh);

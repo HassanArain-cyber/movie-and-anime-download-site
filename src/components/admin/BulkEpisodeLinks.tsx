@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { QUALITIES, qualityDisplay } from "@/lib/media-links";
+import { LINK_BEHAVIORS, QUALITIES, qualityDisplay, websiteHost } from "@/lib/media-links";
 import { episodeRange, qualityLinks, saveEpisodeQualityLink, validateEpisodeLink, type LinkResult } from "@/lib/episode-quality-batch";
-import type { Media, MediaWithRelations, VideoQuality } from "@/lib/types";
+import type { LinkBehavior, Media, MediaWithRelations, VideoQuality } from "@/lib/types";
 
 const control = "min-h-10 w-full min-w-0 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white disabled:opacity-50";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -26,6 +26,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
   const [seasonId, setSeasonId] = useState("");
   const [details, setDetails] = useState<MediaWithRelations | null>(null);
   const [quality, setQuality] = useState<VideoQuality>("720p");
+  const [linkBehavior, setLinkBehavior] = useState<LinkBehavior>("open");
   const [start, setStart] = useState("1");
   const [end, setEnd] = useState("12");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -141,7 +142,7 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
         setResults((current) => ({ ...current, [key]: { state: "saving", message: "Saving…" } }));
         const currentEpisode = existingSeason.episodes.find((entry) => entry.id === episode.id);
         const result: LinkResult = currentEpisode ? await saveEpisodeQualityLink(currentEpisode, quality, url, async () => {
-          await request("/api/download-links", post({ mediaId: Number(mediaId), seasonId: season.id, episodeId: episode.id, quality, label: qualityDisplay(quality), url }));
+          await request("/api/download-links", post({ mediaId: Number(mediaId), seasonId: season.id, episodeId: episode.id, quality, label: qualityDisplay(quality), url, linkBehavior }));
         }) : { state: "error", message: "Episode no longer exists. Refresh this season." };
         if (result.state === "saved") saved++; else if (result.state === "exists") skipped++; else failed++;
         setResults((current) => ({ ...current, [key]: result }));
@@ -177,7 +178,8 @@ export default function BulkEpisodeLinks({ onBusyChange, initialMediaId, onChang
       {operation === "range" && feedback}
     </div>
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3"><h3 className="text-sm font-semibold">2. Add links by quality</h3><label className="text-xs text-neutral-400">Batch quality<select aria-label="Batch link quality" value={quality} disabled={busy} onChange={(event) => { setQuality(event.target.value as VideoQuality); setError(""); setNotice(""); }} className={`${control} mt-1`}>{QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}</select></label></div>
+      <div className="flex flex-wrap items-end justify-between gap-3"><h3 className="text-sm font-semibold">2. Add links by quality</h3><div className="flex flex-wrap items-end gap-2"><label className="text-xs text-neutral-400">Batch quality<select aria-label="Batch link quality" value={quality} disabled={busy} onChange={(event) => { setQuality(event.target.value as VideoQuality); setError(""); setNotice(""); }} className={`${control} mt-1`}>{QUALITIES.map((value) => <option key={value} value={value}>{qualityDisplay(value)}</option>)}</select></label><label className="text-xs text-neutral-400">Link behavior<select aria-label="Batch link behavior" value={linkBehavior} disabled={busy} onChange={(event) => setLinkBehavior(event.target.value as LinkBehavior)} className={`${control} mt-1`}>{LINK_BEHAVIORS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div></div>
+        {linkBehavior === "copy" && <p className="text-xs text-neutral-400">Links saved now copy the download link{details?.copyWebsite ? `, then open ${websiteHost(details.copyWebsite)}` : ". Save a default website under Appearance to open one after copying"}. Saved links keep their own settings.</p>}
       <p className="text-xs text-neutral-400">{episodes.length} episodes · Paste links only where needed; blank rows are skipped. Existing links for this quality are protected. Use the individual editor to replace a link.</p>
       {!!episodes.length && <div className="space-y-2 rounded-lg border border-neutral-800 p-2"><div className="flex flex-wrap items-center gap-2"><label className="flex min-h-10 items-center gap-2 text-xs"><input type="checkbox" aria-label="Select all episodes" checked={episodes.length > 0 && episodes.every((episode) => selectedIds.includes(episode.id))} disabled={busy} onChange={(event) => setSelectedIds(event.target.checked ? episodes.map((episode) => episode.id) : [])} />{selectedIds.length} selected</label><button type="button" disabled={busy || !selectedIds.length || selectedIds.length > 500} onClick={() => void deleteEpisodes(selectedIds)} className="min-h-10 rounded-md border border-red-900/60 px-2 text-xs text-red-300 disabled:opacity-40">Delete selected</button><button type="button" disabled={busy} onClick={() => void deleteEpisodes(null)} className="min-h-10 rounded-md px-2 text-xs text-red-300 disabled:opacity-40">Delete All Episodes</button></div><details><summary className="min-h-9 cursor-pointer py-2 text-xs text-neutral-400">Select episode range to delete</summary><div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2"><label className="text-xs text-neutral-400">From<input aria-label="Delete range start" type="number" min={1} value={deleteStart} onChange={(event) => setDeleteStart(event.target.value)} className={control} /></label><label className="text-xs text-neutral-400">To<input aria-label="Delete range end" type="number" min={1} value={deleteEnd} onChange={(event) => setDeleteEnd(event.target.value)} className={control} /></label><button type="button" disabled={busy} onClick={() => { try { const range = episodeRange(deleteStart, deleteEnd); setSelectedIds(episodes.filter((episode) => episode.episodeNumber >= range.start && episode.episodeNumber < range.start + range.count).map((episode) => episode.id)); } catch (reason) { setOperation("links"); setError(String(reason)); } }} className="min-h-10 rounded-md border border-neutral-700 px-2 text-xs">Select range</button></div></details></div>}
       <div className="max-h-[60vh] overflow-y-auto overscroll-contain rounded-xl border border-neutral-800" aria-label="Episode link rows">

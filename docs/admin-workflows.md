@@ -2,7 +2,8 @@
 
 Only media-management screens change. Wallpaper/Appearance and the existing shared
 ImageUploader are unchanged; a hash-based regression test guards both source files.
-No database, storage, public-site or API-contract changes are required.
+The title and episode workflows need no database, storage, public-site or
+API-contract changes. Link Behavior (below) adds two small database migrations.
 
 ## Create a title
 
@@ -40,6 +41,34 @@ retry checkpoints. **Individual editing & files** in a title retains season and
 episode editing/deletion, archives, batch uploads, and per-episode moderation.
 Title comment settings are under **Advanced title settings**. Categories, requests
 and moderation remain available. No capability has been removed.
+
+## Link Behavior and the Copy Link website
+
+Every place that saves a download link has **Link Behavior**: movie downloads,
+episode links (quick table, individual editor, **File batches** pasted links),
+complete-season archives and the Add media setup. **Open Link (Default)** is a
+normal new-tab link. **Copy Link** copies the original URL instead, then opens
+a website, e.g. a TeraBox downloader, so the visitor can paste it there.
+
+- **Default website:** Appearance → **Copy Link website** → **Save website**.
+  It is stored in the database and used by every Copy Link button without its own
+  website. It changes only with **Update website** and goes away only with
+  **Remove**; a blank field is rejected, never treated as a delete.
+- **Per-link website:** with Copy Link selected, **Website to Open After Copying**
+  overrides the default for that link. Leave it blank to follow the default.
+- **No website saved:** Copy Link only copies, as before.
+- **Bulk saves** only add links: they never rewrite an existing link's behavior or
+  website. The behavior picked in a bulk form applies to the links saved by that
+  action. Uploaded R2 files and local files always download directly.
+- **Visitors:** the link is copied first; only then is the website opened in a new
+  tab. If copying is refused the site is not opened and the link is shown to copy
+  by hand. If the browser blocks the new tab, an **Open …** link is shown.
+  Telegram and magnet links can be copied like any other link.
+- **Selected downloads** (episode checkboxes) are unchanged and ignore this setting.
+
+Needs migrations `0009_link_behavior` and `0010_link_copy_website` (both additive:
+one new column each). Apply them with `npm run db:migrate` before deploying code
+that reads the columns.
 
 ## Verification
 

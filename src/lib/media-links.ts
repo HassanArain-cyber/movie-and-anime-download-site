@@ -1,9 +1,14 @@
-import type { DownloadLink, StorageProvider, VideoQuality } from "./types";
+import type { DownloadLink, LinkBehavior, StorageProvider, VideoQuality } from "./types";
 
 // `quality` is already stored as varchar(10), so these additional presets do
 // not require a schema change. Keep the order high-to-low for public choices.
 export const QUALITIES: VideoQuality[] = ["4320p", "2160p", "1440p", "1080p", "720p", "480p", "360p", "other"];
 export const QUALITY_ORDER: VideoQuality[] = [...QUALITIES];
+
+export const LINK_BEHAVIORS: { value: LinkBehavior; label: string }[] = [
+  { value: "open", label: "Open Link (Default)" },
+  { value: "copy", label: "Copy Link" },
+];
 
 export type BulkQualityChoice = "best" | VideoQuality | "unspecified";
 
@@ -54,6 +59,23 @@ export function safeExternalUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** A page to open in a new tab after copying: plain http(s), never credentials or script URLs. */
+export function safeWebsiteUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    return ["http:", "https:"].includes(url.protocol) && url.hostname && !url.username && !url.password ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Display name of an already validated website, e.g. "terabox.example". */
+export function websiteHost(website: string): string {
+  return new URL(website).hostname.replace(/^www\./, "");
 }
 
 export function getLinkProvider(link: Pick<DownloadLink, "url" | "storageProvider">): StorageProvider {

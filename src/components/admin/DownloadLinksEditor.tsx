@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CompletedUpload, DownloadLink, LinkBehavior, StorageStatus, VideoQuality } from "@/lib/types";
-import { formatBytes, getLinkProvider, getProviderLabel, getQuality, QUALITIES, qualityDisplay } from "@/lib/media-links";
+import { formatBytes, getLinkProvider, getProviderLabel, getQuality, LINK_BEHAVIORS, QUALITIES, qualityDisplay, safeWebsiteUrl, websiteHost } from "@/lib/media-links";
 import { uploadToR2, UploadError } from "@/lib/upload-client";
 
 interface Props {
@@ -16,17 +16,13 @@ interface Props {
 
 const inputClass = "min-h-11 min-w-0 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-700";
 
-const LINK_BEHAVIORS: { value: LinkBehavior; label: string }[] = [
-  { value: "open", label: "Open Link (Default)" },
-  { value: "copy", label: "Copy Link" },
-];
-
 export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, links, onChange, kind = "video" }: Props) {
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [fileSize, setFileSize] = useState("");
   const [quality, setQuality] = useState<VideoQuality>("1080p");
   const [linkBehavior, setLinkBehavior] = useState<LinkBehavior>("open");
+  const [afterCopyUrl, setAfterCopyUrl] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -40,6 +36,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
   const fileRef = useRef<HTMLInputElement>(null);
   const editingLink = links.find((link) => link.id === editingId);
   const editingStored = editingLink ? ["r2", "local"].includes(getLinkProvider(editingLink)) : false;
+  const stored = !!completed || editingStored; // stored files always download directly
 
   useEffect(() => {
     let active = true;
@@ -49,7 +46,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
 
   const reset = () => {
     abortRef.current?.abort(); abortRef.current = null;
-    setLabel(""); setUrl(""); setFileSize(""); setQuality("1080p"); setLinkBehavior("open"); setEditingId(null);
+    setLabel(""); setUrl(""); setFileSize(""); setQuality("1080p"); setLinkBehavior("open"); setAfterCopyUrl(""); setEditingId(null);
     setCompleted(null); setSelectedFile(null); setResumeId(undefined); setProgress(0); setErr("");
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -85,6 +82,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
       const target = { mediaId, seasonId: seasonId ?? null, episodeId: episodeId ?? null, quality };
       const payload = {
         ...target, label: label.trim() || quality, fileSize: fileSize.trim() || null, linkBehavior,
+        ...(linkBehavior === "copy" && !stored ? { afterCopyUrl: afterCopyUrl.trim() || null } : {}),
         ...(completed ? { r2UploadId: completed.id, url: completed.url } : editingStored ? {} : { url: url.trim() }),
       };
       const res = await fetch(editingId ? `/api/download-links/${editingId}` : "/api/download-links", {
@@ -108,7 +106,7 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
   const startEdit = (link: DownloadLink) => {
     abortRef.current?.abort(); abortRef.current = null; setUploading(false);
     setEditingId(link.id); setLabel(link.label || ""); setUrl(link.url); setFileSize(link.fileSize || "");
-    setQuality(getQuality(link) || "other"); setLinkBehavior(link.linkBehavior === "copy" ? "copy" : "open"); setCompleted(null); setSelectedFile(null); setResumeId(undefined); setErr("");
+    setQuality(getQuality(link) || "other"); setLinkBehavior(link.linkBehavior === "copy" ? "copy" : "open"); setAfterCopyUrl(link.afterCopyUrl ?? ""); setCompleted(null); setSelectedFile(null); setResumeId(undefined); setErr("");
   };
 
   const scope = episodeId ? "episode" : seasonId ? "complete season" : "movie";
@@ -128,12 +126,13 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
         {links.map((link) => {
           const provider = getLinkProvider(link);
           const linkQuality = getQuality(link);
+          const ownSite = safeWebsiteUrl(link.afterCopyUrl);
           return (
             <div key={link.id} className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-900 p-3 ring-1 ring-neutral-800">
               <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs font-medium text-neutral-200">{link.label || "Download"}</span>
               {linkQuality && <span className="rounded bg-purple-950/60 px-2 py-0.5 text-xs text-purple-300">{qualityDisplay(linkQuality)}</span>}
               <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase text-neutral-400">{getProviderLabel(provider)}</span>
-              {link.linkBehavior === "copy" && <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase text-neutral-300">Copy link</span>}
+              {link.linkBehavior === "copy" && <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase text-neutral-300">Copy link{ownSite && ` → ${websiteHost(ownSite)}`}</span>}
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-400" title={link.url}>{provider === "r2" ? link.objectKey || link.url : link.url}</span>
               {link.fileSize && <span className="text-xs text-neutral-500">{link.fileSize}</span>}
               <button type="button" onClick={() => startEdit(link)} className="rounded border border-neutral-800 px-2 py-0.5 text-xs text-neutral-400 hover:text-white">Edit</button>
@@ -164,6 +163,11 @@ export default function DownloadLinksEditor({ mediaId, seasonId, episodeId, link
           </label>
           </div></details>
         </div>
+        {linkBehavior === "copy" && (stored
+          ? <p className="text-xs text-neutral-500">Stored files always download directly, so Copy Link does not apply to them.</p>
+          : <label className="block space-y-1 text-xs text-neutral-400">Website to Open After Copying
+            <input type="url" inputMode="url" value={afterCopyUrl} onChange={(event) => setAfterCopyUrl(event.target.value)} placeholder="Optional — blank uses the saved default website" maxLength={2048} className={`${inputClass} mt-1 w-full`} />
+          </label>)}
 
         <div className="rounded-md border border-dashed border-neutral-700 bg-neutral-950 p-3">
           <div className="flex flex-wrap items-center gap-2">

@@ -22,13 +22,19 @@ let binItems = [
   ...Array.from({ length: 3 }, (_, i) => ({ kind: "episode", id: 24001 + i, mediaId: 400, mediaTitle: "Blocked series", seasonId: 401, seasonNumber: 1, episodeNumber: i + 1, title: `Blocked series · Season 1 · Episode ${i + 1}`, type: "series", parentDeleted: true })),
 ].map((item) => ({ ...item, deletedAt: "2026-11-07T00:00:00Z" }));
 const items = [], writes = [], unexpected = [], external = [], errors = [];
+let copyWebsite = null;
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://fixture.test");
   const json = (data, status = 200) => { res.statusCode = status; res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(data)); };
   let body = {};
   try {
-    if (["POST", "PATCH", "DELETE"].includes(req.method)) { let raw = ""; for await (const chunk of req) raw += chunk; body = raw ? JSON.parse(raw) : {}; writes.push({ path: url.pathname, body }); }
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) { let raw = ""; for await (const chunk of req) raw += chunk; body = raw ? JSON.parse(raw) : {}; writes.push({ path: url.pathname, body }); }
     if (url.pathname === "/api/site-settings") return json({ wallpaperUrl: null, wallpaperOverlay: 65, wallpaperBlur: 0 });
+    if (url.pathname === "/api/site-settings/copy-website") {
+      if (req.method === "PUT") { if (!String(body.url ?? "").trim()) return json({ error: "Enter a website address, or use Remove to delete the saved one" }, 400); copyWebsite = body.url.trim(); }
+      if (req.method === "DELETE") copyWebsite = null;
+      return json({ url: copyWebsite });
+    }
     if (url.pathname === "/api/auth/session") return json({ authed: true });
     if (url.pathname === "/api/categories") return json([{ id: 1, name: "Action", slug: "action" }]);
     if (url.pathname === "/api/storage/status") return json({ configured: false, missing: ["test R2 configuration"], maxVideoBytes: 100000, maxImageBytes: 100000, partSizeBytes: 5242880, privateDownloads: true });
@@ -133,6 +139,7 @@ try {
     await assertFits("final setup step");
   };
   await create("movie", "Wizard movie");
+  await page.getByLabel("Link behavior", { exact: true }).selectOption("copy");
   await page.getByLabel("Download link 1", { exact: true }).fill("javascript:bad");
   await page.getByRole("button", { name: "Save movie", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "Use HTTP(S)" }).waitFor(); assert.equal(items.length, 0, "invalid links cannot create a title");
@@ -144,6 +151,7 @@ try {
   await page.getByRole("button", { name: "Retry setup", exact: true }).click();
   await page.getByRole("button", { name: "Edit details", exact: true }).waitFor();
   assert.equal(items.length, 1, "retry does not recreate the movie"); assert.equal(items[0].downloadLinks.length, 1);
+  assert.equal(items[0].downloadLinks[0].linkBehavior, "copy", "the wizard saves the chosen Link Behavior");
   await page.getByRole("button", { name: "Edit details", exact: true }).click();
   await page.getByLabel("Title", { exact: true }).fill("Edited wizard movie");
   await page.getByRole("button", { name: "Save Changes", exact: true }).click();
@@ -181,6 +189,8 @@ try {
   const ids = series.seasons[1].episodes.map((episode) => episode.id);
   for (const quality of ["720p", "1080p"]) {
     await page.getByLabel("Batch link quality").selectOption(quality);
+    await page.getByLabel("Batch link behavior").selectOption(quality === "720p" ? "copy" : "open");
+    assert.equal(await page.getByText(/Links saved now copy the download link/).count(), quality === "720p" ? 1 : 0);
     await page.getByLabel("Link for episode 1", { exact: true }).fill(`https://example.com/episode1-${quality}`);
     if (quality === "720p") failLink = true;
     await page.getByRole("button", { name: "Save All", exact: true }).click();
@@ -192,6 +202,7 @@ try {
   }
   assert.deepEqual(series.seasons[1].episodes.map((episode) => episode.id), ids);
   assert.deepEqual(series.seasons[1].episodes[0].downloadLinks.map((link) => link.quality), ["720p", "1080p"]);
+  assert.deepEqual(series.seasons[1].episodes[0].downloadLinks.map((link) => link.linkBehavior), ["copy", "open"], "each batch saves the behavior chosen for it");
   await page.getByLabel("Batch link quality").selectOption("720p");
   assert.equal(await page.getByLabel("Link for episode 1", { exact: true }).isDisabled(), true);
   for (const width of [320, 360, 390, 768, 1280]) {
@@ -354,6 +365,28 @@ try {
   assert.equal(await wallpaperHeading.evaluate((element) => getComputedStyle(element).fontSize), "18px", "Wallpaper retains original typography, not the Admin density overrides");
   assert.equal(await wallpaperHeading.evaluate((element) => !!element.closest('[class*="AdminCompact"]')), false, "Wallpaper has no compact-style ancestor");
   assert.equal(await page.getByRole("heading", { name: "Admin Dashboard", exact: true }).evaluate((element) => getComputedStyle(element).fontSize), "24px", "Wallpaper dashboard header keeps original size");
+  // Saved Copy Link website: mobile-friendly, explicit save/remove, and it survives a refresh.
+  const copySettings = page.getByRole("region", { name: "Copy Link website", exact: true });
+  const websiteField = copySettings.getByLabel("Website to Open After Copying");
+  const websiteLoaded = websiteField.and(page.locator(":enabled")); // disabled until the saved value has loaded
+  await websiteLoaded.waitFor();
+  assert.equal(await websiteField.inputValue(), "", "nothing saved yet");
+  assert.equal(await copySettings.getByRole("button", { name: "Remove", exact: true }).isDisabled(), true, "nothing to remove yet");
+  assert.equal(await copySettings.getByRole("button", { name: "Save website", exact: true }).isDisabled(), true, "blank cannot be saved");
+  await assertFits("Copy Link website settings");
+  await websiteField.fill("https://downloader.example/open");
+  await copySettings.getByRole("button", { name: "Save website", exact: true }).click();
+  await copySettings.getByText("Saved website: https://downloader.example/open", { exact: true }).waitFor();
+  assert.deepEqual(writes.filter((entry) => entry.path === "/api/site-settings/copy-website").map((entry) => entry.body), [{ url: "https://downloader.example/open" }]);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "appearance", exact: true }).click();
+  await websiteLoaded.waitFor();
+  assert.equal(await websiteField.inputValue(), "https://downloader.example/open", "the saved website is still there after a refresh");
+  assert.equal(await copySettings.getByRole("button", { name: "Update website", exact: true }).isDisabled(), true, "unchanged value is not re-saved");
+  await copySettings.getByRole("button", { name: "Remove", exact: true }).click();
+  await copySettings.getByText("Website removed. Copy Link buttons only copy.", { exact: true }).waitFor();
+  assert.equal(await websiteField.inputValue(), "");
+  await assertFits("Copy Link website settings");
   // Compact bin: full metadata across >100 items; zero mounted episode rows
   // while collapsed. All mutations here hit fixture APIs, never a real DB/R2.
   await page.getByRole("button", { name: "Recycle Bin", exact: true }).click();
