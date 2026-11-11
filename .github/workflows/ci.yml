@@ -126,6 +126,9 @@ jobs:
       # real service), so the postgres service container is bridged onto 127.0.0.1 rather than
       # loosening that guard. A plain TCP relay: no DNS, no package mirror, nothing to install.
       - name: Bridge 127.0.0.1:5432 to the postgres service container
+        # A job that runs in a container defaults to `sh`, where `set -o pipefail` and bash
+        # arrays do not exist. This step is written for bash on purpose.
+        shell: bash
         run: |
           set -euo pipefail
           # Detached, so the relay outlives this step and every later step can use it.
