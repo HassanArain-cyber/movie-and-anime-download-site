@@ -73,7 +73,12 @@ jobs:
 
   e2e:
     name: Browser and API E2E (disposable PostgreSQL + mock R2)
-    runs-on: ubuntu-latest
+    # Pinned on purpose: ubuntu-latest is migrating to Ubuntu 26.04 (actions/runner-images#14748,
+    # Oct 19 - Nov 19 2026). On the new image `playwright-core install-deps chromium` has to fetch
+    # ~25 MB of packages the image does not carry, and that step fails on the runner's package
+    # mirrors ("Could not resolve" / no installation candidate) before any test runs. 24.04 is the
+    # image this suite is verified on; move it forward only after install-deps is proven there.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     services:
