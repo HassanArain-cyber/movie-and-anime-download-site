@@ -238,12 +238,17 @@ try {
   // This Chromium build runs single-process and crashes if a popup opens while another context is
   // alive, so the phone visitor gets a browser of its own.
   phone = await playwright.launch({ executablePath, args: chromium.args, headless: true });
-  const visitor = await phone.newContext({
+  // Reused by the restart test, which must be the same profile with only its storage kept.
+  const phoneOptions = {
     viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
     userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
     permissions: ["clipboard-read", "clipboard-write"], extraHTTPHeaders: { "x-e2e-client-ip": "198.51.100.234" },
-  });
-  for (const site of [DEFAULT_SITE, OWN_SITE, NEWER_SITE]) await visitor.route(`${new URL(site).origin}/**`, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Mock downloader</title><p>Paste the link here</p>" }));
+  };
+  const mockSites = async (context) => {
+    for (const site of [DEFAULT_SITE, OWN_SITE, NEWER_SITE]) await context.route(`${new URL(site).origin}/**`, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Mock downloader</title><p>Paste the link here</p>" }));
+  };
+  let visitor = await phone.newContext(phoneOptions);
+  await mockSites(visitor);
   const shopper = await visitor.newPage(); const visitorErrors = []; shopper.on("pageerror", (error) => visitorErrors.push(error.message));
   const clipboard = () => shopper.evaluate(() => navigator.clipboard.readText());
   const button = (name) => shopper.getByRole("button", { name });
@@ -288,10 +293,21 @@ try {
     await tab.close(); await shopper.bringToFront();
     assert.equal(await clipboard(), copied, "the clipboard holds the download link, never the website");
   };
+  // Once the two confirmations are spent, a copy goes straight to the website: no /copy tab.
+  const tapAndExpectDirectOpen = async (target, site, copied) => {
+    const [tab] = await Promise.all([visitor.waitForEvent("page"), target.tap()]);
+    await tab.waitForURL(site, { timeout: 20000 });
+    assert.equal(new URL(tab.url()).pathname, new URL(site).pathname, "the website itself opens, with no confirmation step");
+    assert.equal(await tab.evaluate(() => window.opener === null), true, "the website tab has no handle on the download page");
+    await tab.close(); await shopper.bringToFront();
+    assert.equal(await clipboard(), copied, "the clipboard still holds the download link");
+  };
   const noNewTab = async () => { await shopper.waitForTimeout(400); assert.equal(visitor.pages().length, 1, "no tab was opened"); };
   const openMoviePage = async () => { await shopper.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" }); };
 
   await openMoviePage();
+  // A brand-new browser profile: the confirmation introduction starts here.
+  await shopper.evaluate(() => localStorage.clear());
   // The original page also confirms the copy, in one shared toast.
   const toast = shopper.getByTestId("copy-toast");
   const toastText = "Link copied. Continue in the new tab to download.";
@@ -306,14 +322,14 @@ try {
       "the confirmation is announced from a polite live region",
     );
   } });
-  await tapAndExpectConfirm(button(/Own site/), OWN_SITE, own.url, { onOpened: async () => {
+  // The second and last confirmation: the manual Continue button is not decorative, it navigates.
+  await tapAndExpectConfirm(button(/Own site/), OWN_SITE, own.url, { manual: true, onOpened: async () => {
     await shopper.getByTestId("copy-toast").getByText(toastText).waitFor();
-  } });
-  // The manual Continue button is not only decorative: it navigates too.
-  await tapAndExpectConfirm(button(/Telegram copy/), DEFAULT_SITE, telegram.url, { manual: true });
-  await tapAndExpectConfirm(button(/Magnet copy/), DEFAULT_SITE, magnet.url, { onOpened: async () => {
     assert.equal(await shopper.getByTestId("copy-toast").count(), 1, "only one confirmation is on screen at a time");
   } });
+  // Two confirmations are spent for this whole browser: every later copy opens the website directly.
+  await tapAndExpectDirectOpen(button(/Telegram copy/), DEFAULT_SITE, telegram.url);
+  await tapAndExpectDirectOpen(button(/Magnet copy/), DEFAULT_SITE, magnet.url);
   // Normal external pages and stored files keep navigating; websites never apply to them.
   const plain = shopper.getByRole("link", { name: /Plain open/ });
   assert.equal(await plain.getAttribute("href"), "https://example.com/plain-open");
@@ -343,7 +359,7 @@ try {
   // Clipboard API denied: the legacy copy command still copies, then the website opens.
   await openMoviePage();
   await shopper.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new DOMException("Write permission denied.", "NotAllowedError")); });
-  await tapAndExpectConfirm(button(/Inherits default/), DEFAULT_SITE, inherited.url);
+  await tapAndExpectDirectOpen(button(/Inherits default/), DEFAULT_SITE, inherited.url);
 
   // Nothing can copy: nothing opens, and the visitor gets the original link to copy by hand.
   await openMoviePage();
@@ -393,15 +409,15 @@ try {
   await settings.getByRole("button", { name: "Update website", exact: true }).click();
   await settings.getByText("Saved website: https://newer-downloader.example/", { exact: true }).waitFor();
   await openMoviePage();
-  await tapAndExpectConfirm(button(/Inherits default/), NEWER_SITE, inherited.url);
-  await tapAndExpectConfirm(button(/Own site renamed/), OWN_SITE, own.url);
+  await tapAndExpectDirectOpen(button(/Inherits default/), NEWER_SITE, inherited.url);
+  await tapAndExpectDirectOpen(button(/Own site renamed/), OWN_SITE, own.url);
 
   // Anime page: season archive and episode links get the same behavior and website.
   await shopper.goto(`${base}/anime/${anime.slug}`, { waitUntil: "networkidle" });
-  await tapAndExpectConfirm(button(/Season archive/), OWN_SITE, "https://example.com/season-1.zip");
+  await tapAndExpectDirectOpen(button(/Season archive/), OWN_SITE, "https://example.com/season-1.zip");
   await shopper.locator(`#episode-${ep1.id} button[aria-expanded]`).tap();
-  await tapAndExpectConfirm(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /1080p/ }), NEWER_SITE, "https://example.com/ep1-1080.mp4");
-  await tapAndExpectConfirm(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /Ep1 own site/ }), OWN_SITE, "https://example.com/ep1-720.mp4");
+  await tapAndExpectDirectOpen(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /1080p/ }), NEWER_SITE, "https://example.com/ep1-1080.mp4");
+  await tapAndExpectDirectOpen(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /Ep1 own site/ }), OWN_SITE, "https://example.com/ep1-720.mp4");
   assert.equal(await shopper.locator(`#episode-${ep1.id}`).getByRole("link", { name: /720p/ }).count(), 0, "Open Link episodes elsewhere are unaffected");
   assert.equal(await shopper.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the phone layout does not overflow");
 
@@ -427,10 +443,65 @@ try {
   await shopper.getByTestId("copy-toast").waitFor({ state: "detached", timeout: 15000 });
   assert.equal(await shopper.getByTestId("copy-toast").count(), 0, "the confirmation disappears on its own");
   await noNewTab();
-  await tapAndExpectConfirm(button(/Own site renamed/), OWN_SITE, own.url);
+  await tapAndExpectDirectOpen(button(/Own site renamed/), OWN_SITE, own.url);
   ok(await admin(SETTING, { method: "DELETE" }));
   assert.deepEqual(ok(await admin(SETTING)), { url: null }, "removing nothing is harmless");
 
+  // ---- The two confirmations belong to the browser, not to a tab, a title, a reload or a session.
+  const STORAGE_KEY = "vault:copy-confirmations";
+  const countedIn = (target) => target.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+  assert.equal(await countedIn(shopper), "2", "exactly two confirmation pages were shown in this browser");
+
+  // 1. Another tab reads the same website-wide count.
+  const otherTab = await visitor.newPage();
+  await otherTab.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" });
+  const [fromOtherTab] = await Promise.all([visitor.waitForEvent("page"), otherTab.getByRole("button", { name: /Own site renamed/ }).tap()]);
+  await fromOtherTab.waitForURL(OWN_SITE);
+  assert.equal(await countedIn(otherTab), "2", "a second tab shares the count and skips the confirmation");
+  await fromOtherTab.close(); await otherTab.close(); await shopper.bringToFront();
+
+  // 2. A refresh does not reset it.
+  await openMoviePage();
+  await tapAndExpectDirectOpen(button(/Own site renamed/), OWN_SITE, own.url);
+  assert.equal(await countedIn(shopper), "2", "reloading the page changes nothing");
+
+  // 3. Closing and reopening the browser keeps it: localStorage is the only state.
+  const savedState = await visitor.storageState();
+  const savedCount = savedState.origins?.find((entry) => entry.origin === new URL(base).origin)?.localStorage?.find((item) => item.name === STORAGE_KEY)?.value;
+  assert.equal(savedCount, "2", "the count lives in localStorage, so it outlives the session");
+  // A real second browser, started with only the saved storage: this is the reopen case.
+  const restartedBrowser = await playwright.launch({ executablePath, args: chromium.args, headless: true });
+  try {
+    const restarted = await restartedBrowser.newContext({ ...phoneOptions, storageState: savedState });
+    await mockSites(restarted);
+    const restartedPage = await restarted.newPage();
+    await restartedPage.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" });
+    const [afterRestart] = await Promise.all([restarted.waitForEvent("page"), restartedPage.getByRole("button", { name: /Own site renamed/ }).tap()]);
+    await afterRestart.waitForURL(OWN_SITE);
+    assert.equal(await countedIn(restartedPage), "2", "a reopened browser still remembers both confirmations");
+    await afterRestart.close(); await restarted.close();
+  } finally { await restartedBrowser.close(); }
+
+  // 4. A blocked tab never spends a confirmation: a fresh browser still gets its introduction.
+  // A brand-new browser profile, where both confirmations are still available.
+  const cleanBrowser = await playwright.launch({ executablePath, args: chromium.args, headless: true });
+  try {
+    const clean = await cleanBrowser.newContext(phoneOptions);
+    await mockSites(clean);
+    const freshPage = await clean.newPage();
+    await freshPage.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" });
+    await freshPage.evaluate(() => { window.open = () => null; });
+    await freshPage.getByRole("button", { name: /Own site renamed/ }).tap();
+    await freshPage.getByTestId("copy-toast").getByText(/Your browser blocked the new tab/).waitFor();
+    assert.equal(await countedIn(freshPage), null, "a blocked tab is not a confirmation opening");
+    await freshPage.reload({ waitUntil: "networkidle" });
+    const [firstEver] = await Promise.all([clean.waitForEvent("page"), freshPage.getByRole("button", { name: /Own site renamed/ }).tap()]);
+    await firstEver.waitForURL(/\/copy$/, { timeout: 20000 });
+    await firstEver.getByRole("heading", { name: "Link Copied Successfully!" }).waitFor();
+    assert.equal(await countedIn(freshPage), "1", "and the first real confirmation is counted exactly once");
+    await firstEver.close(); await clean.close();
+  } finally { await cleanBrowser.close(); }
+
   assert.deepEqual(pageErrors, []); assert.deepEqual(visitorErrors, []);
-  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, confirmation tab with a live 5,4,3,2,1 countdown that redirects to the website after 5s (Continue fallback, clean URL, none on failure or popup block) plus the shared toast and popup-blocker/clipboard fallbacks, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
+  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, the confirmation page shown only for the first two copies per browser (live 5,4,3,2,1 countdown, 5s redirect, Continue fallback, clean URL) then every later copy opening the website directly across other tabs, refreshes and a browser restart, blocked tabs and failed copies never spending a confirmation, none on failure or popup block, the shared toast, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
 } finally { await phone?.close(); await browser?.close(); await pool.end(); }

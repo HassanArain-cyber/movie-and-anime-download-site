@@ -2,7 +2,7 @@
 
 export type CopyOutcome =
   | "copied"  // copied; no website is configured
-  | "opened"  // copied, then the confirmation tab opened (that tab redirects to the website)
+  | "opened"  // copied; a tab opened (the confirmation page, or the website once it is no longer shown)
   | "blocked" // copied, but the browser refused to open the new tab
   | "failed"; // could not copy; nothing was opened
 
@@ -12,6 +12,13 @@ export const COPY_CONFIRM_PATH = "/copy";
 export const COPY_DESTINATION_KEY = "vault:copy-destination";
 /** A destination older than this is ignored, so a reused tab can never redirect. */
 export const COPY_DESTINATION_MAX_AGE_MS = 60_000;
+/**
+ * The confirmation is an introduction, not a permanent step: a browser sees it for its
+ * first COPY_CONFIRM_LIMIT successful copies and then goes straight to the website.
+ * Stored in localStorage so it is shared by every tab and survives a restart.
+ */
+export const COPY_CONFIRM_STORAGE_KEY = "vault:copy-confirmations";
+export const COPY_CONFIRM_LIMIT = 2;
 
 /** Clipboard API first, then the legacy command for insecure contexts and in-app browsers. */
 async function copyText(text: string): Promise<boolean> {
@@ -82,6 +89,32 @@ export function readCopyDestination(now = Date.now()): string | null {
   }
 }
 
+/** How many confirmation pages this browser has already been shown (0 when unknown). */
+export function confirmationsShown(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.localStorage.getItem(COPY_CONFIRM_STORAGE_KEY);
+    if (!raw) return 0;
+    const count = Number.parseInt(raw, 10);
+    return Number.isFinite(count) && count > 0 ? count : 0;
+  } catch {
+    return 0; // storage refused: act as if nothing was shown yet
+  }
+}
+
+/** True while this browser still gets the confirmation page. */
+export function shouldShowConfirmation(): boolean {
+  return confirmationsShown() < COPY_CONFIRM_LIMIT;
+}
+
+/** Called only once a confirmation tab has really opened, so refusals never count. */
+function recordConfirmation(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COPY_CONFIRM_STORAGE_KEY, String(confirmationsShown() + 1));
+  } catch { /* storage refused or full: nothing to persist, the flow still works */ }
+}
+
 /**
  * Copy the ORIGINAL download URL, then open the confirmation tab that tells the
  * visitor the link is ready and redirects itself to the website after a moment.
@@ -92,17 +125,19 @@ export function readCopyDestination(now = Date.now()): string | null {
 export async function copyThenConfirm(downloadUrl: string, website: string | null): Promise<CopyOutcome> {
   if (!(await copyText(downloadUrl))) return "failed";
   if (!website) return "copied";
-  // Without session storage the confirmation page could not learn the website, so
-  // keep the previous behaviour rather than showing a dead end.
-  const staged = stageCopyDestination(website);
+  // Only the first copies in a browser get the confirmation; later ones go straight to
+  // the website. Without session storage the confirmation page could not learn the
+  // website either, so that case keeps the previous behaviour instead of a dead end.
+  const confirm = shouldShowConfirmation() && stageCopyDestination(website);
   let tab: Window | null;
   try {
     // No "noopener" feature: it makes open() return null, hiding popup blockers.
-    tab = window.open(staged ? COPY_CONFIRM_PATH : website, "_blank");
+    tab = window.open(confirm ? COPY_CONFIRM_PATH : website, "_blank");
   } catch {
     return "blocked";
   }
   if (!tab || tab.closed) return "blocked"; // some blockers hand back an already closed window
+  if (confirm) recordConfirmation(); // only a confirmation that really opened is counted
   // Neither the confirmation page nor the site it redirects to needs this page.
   try { tab.opener = null; } catch { /* already cross-origin: nothing left to detach */ }
   return "opened";

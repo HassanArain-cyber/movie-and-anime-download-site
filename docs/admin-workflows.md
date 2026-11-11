@@ -65,7 +65,11 @@ a website, e.g. a TeraBox downloader, so the visitor can paste it there.
   *Paste the copied link on the next website to download* — and redirects itself to
   the website after five seconds. A **Continue to download website** button is always
   there for browsers that refuse the automatic redirect. The confirmation page never
-  puts the download link or the website in its address bar. The original page also
+  puts the download link or the website in its address bar. It is an introduction, not
+  a permanent step: a browser sees it for its first two successful copies and afterwards
+  every Copy Link button goes straight to the website. The count is kept in the browser's
+  local storage, so it is shared by every tab and survives refreshes and restarts; a
+  blocked tab or a failed copy never counts towards it. The original page also
   shows a brief toast ("Link copied…"), announced politely to screen readers,
   dismissible, gone after a few seconds. If the browser blocks the new tab that
   toast carries an **Open …** link instead. If copying is refused no tab opens, no

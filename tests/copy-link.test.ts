@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  COPY_CONFIRM_PATH, COPY_DESTINATION_KEY, COPY_DESTINATION_MAX_AGE_MS,
-  copyThenConfirm, readCopyDestination, stageCopyDestination,
+  COPY_CONFIRM_LIMIT, COPY_CONFIRM_PATH, COPY_CONFIRM_STORAGE_KEY, COPY_DESTINATION_KEY,
+  COPY_DESTINATION_MAX_AGE_MS, confirmationsShown, copyThenConfirm, readCopyDestination,
+  shouldShowConfirmation, stageCopyDestination,
 } from "../src/lib/copy-link";
 import { safeWebsiteUrl, websiteHost } from "../src/lib/media-links";
 import { ApiError, websiteUrl } from "../src/lib/validation";
@@ -14,10 +15,12 @@ type Fake = {
   clipboard?: "ok" | "denied" | "missing"; legacy?: boolean | "throws";
   open?: "tab" | "closed" | "blocked" | "throws";
   hold?: boolean; sealedTab?: boolean; storage?: boolean;
+  /** localStorage: absent, throwing, or a working store shared by every call (one profile). */
+  local?: "ok" | "missing" | "throws";
 };
 
 /** Install fake browser globals for one scenario; `events` records what the code did, in order. */
-function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true }: Fake = {}) {
+function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true, local = "ok" }: Fake = {}, profile = new Map<string, string>()) {
   const events: string[] = [];
   const tab: { opener: unknown; closed?: boolean } = { opener: "the page" };
   if (open === "closed") tab.closed = true;
@@ -43,6 +46,18 @@ function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, 
         setItem: (key: string, value: string) => { events.push(`stage:${key}`); stored.set(key, value); },
         removeItem: (key: string) => { stored.delete(key); },
       } } : {}),
+      // localStorage is the website-wide counter: it outlives tabs and restarts.
+      ...(local === "missing" ? {} : { localStorage: {
+        getItem: (key: string) => {
+          if (local === "throws") throw new DOMException("Storage is denied.", "SecurityError");
+          return profile.get(key) ?? null;
+        },
+        setItem: (key: string, value: string) => {
+          if (local === "throws") throw new DOMException("Storage is denied.", "SecurityError");
+          profile.set(key, value);
+        },
+        removeItem: (key: string) => { profile.delete(key); },
+      } }),
     },
     document: {
       body: { appendChild: () => events.push("append") },
@@ -61,13 +76,17 @@ function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, 
   const original = Object.keys(fakes).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   for (const [name, value] of Object.entries(fakes)) Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
   const restore = () => { for (const [name, descriptor] of original) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete (globalThis as Record<string, unknown>)[name]; } };
-  return { events, tab, fields, stored, release, restore };
+  return { events, tab, fields, stored, profile, release, restore };
 }
 
-async function run(fake: Fake, website: string | null = SITE) {
-  const env = install(fake);
+async function run(fake: Fake, website: string | null = SITE, profile = new Map<string, string>()) {
+  const env = install(fake, profile);
   try { return { outcome: await copyThenConfirm(DOWNLOAD, website), ...env }; } finally { env.restore(); }
 }
+
+/** The URL the code handed to window.open on that call. */
+const openedUrl = (events: string[]) => (events.find((event) => event.startsWith("open:")) ?? "open:").slice(5).split("|")[0];
+const stagedTwice = (events: string[]) => events.filter((event) => event.startsWith("stage:")).length;
 
 test("copies the ORIGINAL download link, then opens the confirmation page instead of the website", async () => {
   const { outcome, events, tab, stored } = await run({});
@@ -174,6 +193,107 @@ test("stale, tampered and unusable destinations are refused and dropped", () => 
       env.stored.set(COPY_DESTINATION_KEY, typeof bad === "string" ? bad : JSON.stringify(bad));
       assert.equal(readCopyDestination(now), null, JSON.stringify(bad));
     }
+  } finally { env.restore(); }
+});
+
+test("only the first two successful copies show the confirmation, then the website opens straight away", async () => {
+  const profile = new Map<string, string>(); // one browser: shared by every tab and page
+  const opened: string[] = [];
+  for (let copy = 1; copy <= 5; copy += 1) {
+    const { events, outcome, profile: after } = await run({}, SITE, profile);
+    opened.push(openedUrl(events));
+    assert.equal(outcome, "opened", `copy ${copy}`);
+    assert.equal(after.get(COPY_CONFIRM_STORAGE_KEY), String(Math.min(copy, COPY_CONFIRM_LIMIT)), `copy ${copy} counts up to the limit, then stops`);
+  }
+  assert.deepEqual(opened, [COPY_CONFIRM_PATH, COPY_CONFIRM_PATH, SITE, SITE, SITE], "two confirmations, then the website itself");
+});
+
+test("nothing is staged for a copy that skips the confirmation", async () => {
+  const profile = new Map<string, string>();
+  const visits = [];
+  for (let copy = 1; copy <= 3; copy += 1) {
+    const { events } = await run({}, SITE, profile);
+    visits.push(stagedTwice(events));
+  }
+  assert.deepEqual(visits, [1, 1, 0], "the destination is written for both confirmation tabs, and never for a direct open");
+});
+
+test("the limit is per browser, so it holds across pages, refreshes, new tabs and restarts", async () => {
+  const profile = new Map<string, string>();
+  await run({}, "https://downloader.example/anime-1", profile); // anime 1, first copy
+  await run({}, "https://downloader.example/anime-1", profile); // the same page again
+  // A different anime, then a refresh, then a fresh tab of a movie page, then a restarted browser:
+  // every call reads the same localStorage, so all of them skip the confirmation.
+  for (const site of ["https://downloader.example/anime-2", "https://downloader.example/anime-3", "https://downloader.example/movie-7"]) {
+    const { events } = await run({}, site, profile);
+    assert.equal(openedUrl(events), site, "the website opens immediately, on every other title too");
+  }
+  assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), "2", "and the count never moves past the limit");
+  assert.equal(confirmationsShown(), 0, "outside a browser the counter is simply zero");
+});
+
+test("a blocked tab or a failed copy never spends one of the two confirmations", async () => {
+  const profile = new Map<string, string>();
+  for (const open of ["blocked", "closed", "throws"] as const) {
+    const { outcome } = await run({ open }, SITE, profile);
+    assert.equal(outcome, "blocked", open);
+    assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, `a refused tab (${open}) is not a confirmation`);
+  }
+  for (const fake of [{ clipboard: "denied", legacy: false }, { clipboard: "missing", legacy: "throws" }] as Fake[]) {
+    const { outcome } = await run(fake, SITE, profile);
+    assert.equal(outcome, "failed");
+    assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, "a failed copy is not a confirmation");
+  }
+  for (let copy = 1; copy <= COPY_CONFIRM_LIMIT; copy += 1) {
+    const { events } = await run({}, SITE, profile);
+    assert.equal(openedUrl(events), COPY_CONFIRM_PATH, "both confirmations are still available");
+  }
+  const { events } = await run({}, SITE, profile);
+  assert.equal(openedUrl(events), SITE, "and only then does the website take over");
+});
+
+test("copy-only links never spend a confirmation", async () => {
+  const profile = new Map<string, string>();
+  for (let copy = 1; copy <= 3; copy += 1) {
+    const { outcome } = await run({}, null, profile);
+    assert.equal(outcome, "copied");
+  }
+  assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, "a link with no website has nothing to confirm");
+  const { events } = await run({}, SITE, profile);
+  assert.equal(openedUrl(events), COPY_CONFIRM_PATH, "so the first real website still gets its confirmation");
+});
+
+test("a stored counter that is corrupt or already full is handled safely", async () => {
+  const cases: [string, string][] = [["abc", COPY_CONFIRM_PATH], ["-3", COPY_CONFIRM_PATH], ["0", COPY_CONFIRM_PATH], ["1", COPY_CONFIRM_PATH], ["1.9", COPY_CONFIRM_PATH], ["2", SITE], ["99", SITE]];
+  for (const [stored, expected] of cases) {
+    const profile = new Map([[COPY_CONFIRM_STORAGE_KEY, stored]]);
+    const { events } = await run({}, SITE, profile);
+    assert.equal(openedUrl(events), expected, `stored ${JSON.stringify(stored)}`);
+  }
+});
+
+test("without usable storage the confirmation still works, it just cannot remember", async () => {
+  for (const local of ["missing", "throws"] as const) {
+    const profile = new Map<string, string>();
+    for (let copy = 1; copy <= 3; copy += 1) {
+      const { events, outcome } = await run({ local }, SITE, profile);
+      assert.equal(outcome, "opened", local);
+      assert.equal(openedUrl(events), COPY_CONFIRM_PATH, `${local}: no counter to consult, so every copy explains itself`);
+    }
+  }
+});
+
+test("the counter helpers read storage defensively", () => {
+  // No window at all (server rendering): zero, never a throw.
+  assert.equal(confirmationsShown(), 0);
+  assert.equal(shouldShowConfirmation(), true);
+  const env = install({});
+  try {
+    assert.equal(confirmationsShown(), 0, "a fresh browser starts at zero");
+    assert.equal(shouldShowConfirmation(), true);
+    env.profile.set(COPY_CONFIRM_STORAGE_KEY, String(COPY_CONFIRM_LIMIT));
+    assert.equal(confirmationsShown(), COPY_CONFIRM_LIMIT);
+    assert.equal(shouldShowConfirmation(), false, "at the limit the website opens directly");
   } finally { env.restore(); }
 });
 
