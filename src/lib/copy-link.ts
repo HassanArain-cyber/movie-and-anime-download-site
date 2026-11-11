@@ -18,6 +18,9 @@ export const COPY_DESTINATION_MAX_AGE_MS = 60_000;
  * Stored in localStorage so it is shared by every tab and survives a restart.
  */
 export const COPY_CONFIRM_STORAGE_KEY = "vault:copy-confirmations";
+const COPY_CONFIRM_LOCK = "vault:copy-confirmations-lock";
+/** A reservation that could not be written: the page is shown, but nothing is remembered. */
+export const UNTRACKED_CONFIRMATION = 0;
 export const COPY_CONFIRM_LIMIT = 2;
 
 /** Clipboard API first, then the legacy command for insecure contexts and in-app browsers. */
@@ -89,14 +92,20 @@ export function readCopyDestination(now = Date.now()): string | null {
   }
 }
 
-/** How many confirmation pages this browser has already been shown (0 when unknown). */
+/**
+ * How many confirmation pages this browser has already been shown.
+ *
+ * Only a plain unsigned integer is accepted: "2" counts, while junk such as "2abc",
+ * "1.9", "+3", " 2", "-1" or "Infinity" is treated as "nothing recorded yet" instead
+ * of being loosely parsed into a wrong (or permanently full) count.
+ */
 export function confirmationsShown(): number {
   if (typeof window === "undefined") return 0;
   try {
     const raw = window.localStorage.getItem(COPY_CONFIRM_STORAGE_KEY);
-    if (!raw) return 0;
-    const count = Number.parseInt(raw, 10);
-    return Number.isFinite(count) && count > 0 ? count : 0;
+    if (raw === null || !/^\d+$/.test(raw)) return 0;
+    const count = Number(raw);
+    return Number.isSafeInteger(count) && count > 0 ? Math.min(count, COPY_CONFIRM_LIMIT) : 0;
   } catch {
     return 0; // storage refused: act as if nothing was shown yet
   }
@@ -107,12 +116,60 @@ export function shouldShowConfirmation(): boolean {
   return confirmationsShown() < COPY_CONFIRM_LIMIT;
 }
 
-/** Called only once a confirmation tab has really opened, so refusals never count. */
-function recordConfirmation(): void {
-  if (typeof window === "undefined") return;
+/** Write the count, or drop the key when the browser has no confirmations left to record. */
+function writeConfirmations(count: number): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    window.localStorage.setItem(COPY_CONFIRM_STORAGE_KEY, String(confirmationsShown() + 1));
-  } catch { /* storage refused or full: nothing to persist, the flow still works */ }
+    if (count <= 0) window.localStorage.removeItem(COPY_CONFIRM_STORAGE_KEY);
+    else window.localStorage.setItem(COPY_CONFIRM_STORAGE_KEY, String(count));
+    return true;
+  } catch {
+    return false; // storage refused or full: nothing to persist, the flow still works
+  }
+}
+
+/**
+ * Reserve-then-open keeps simultaneous tabs honest: the slot is claimed before the tab
+ * opens, and the Web Locks API makes read-modify-write exclusive across every tab of
+ * the profile. Without it the claim falls back to a verified write, and a tab that
+ * loses the race simply skips the confirmation instead of showing a third.
+ */
+async function withConfirmationLock<T>(run: () => T): Promise<T | null> {
+  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  if (!locks || typeof locks.request !== "function") return run();
+  try {
+    return await locks.request(COPY_CONFIRM_LOCK, async () => run()) as T;
+  } catch {
+    return null; // a broken lock manager must never make the page exceed the limit
+  }
+}
+
+/**
+ * Claim one of the browser's confirmation slots. `null` means both are already used;
+ * UNTRACKED_CONFIRMATION means storage is unusable, so the page is still shown but
+ * nothing can be remembered (the pre-existing behaviour for such browsers).
+ */
+export async function reserveConfirmation(): Promise<number | null> {
+  if (typeof window === "undefined") return null;
+  const claimed = await withConfirmationLock(() => {
+    const shown = confirmationsShown();
+    if (shown >= COPY_CONFIRM_LIMIT) return null;
+    if (!writeConfirmations(shown + 1)) return UNTRACKED_CONFIRMATION;
+    // Read back: with no lock another tab may have written between read and write.
+    return confirmationsShown() === shown + 1 ? shown + 1 : null;
+  });
+  return typeof claimed === "number" ? claimed : null;
+}
+
+/** Hand a reserved slot back when the confirmation tab never opened. */
+export async function releaseConfirmation(slot: number | null): Promise<void> {
+  if (slot === null || slot <= UNTRACKED_CONFIRMATION || typeof window === "undefined") return;
+  await withConfirmationLock(() => {
+    // Only the reservation that is still on top can be given back: a later tab has
+    // already claimed its own slot and must keep it.
+    if (confirmationsShown() === slot) writeConfirmations(slot - 1);
+    return null;
+  });
 }
 
 /**
@@ -126,18 +183,24 @@ export async function copyThenConfirm(downloadUrl: string, website: string | nul
   if (!(await copyText(downloadUrl))) return "failed";
   if (!website) return "copied";
   // Only the first copies in a browser get the confirmation; later ones go straight to
-  // the website. Without session storage the confirmation page could not learn the
-  // website either, so that case keeps the previous behaviour instead of a dead end.
-  const confirm = shouldShowConfirmation() && stageCopyDestination(website);
+  // the website. The slot is reserved first so two tabs clicking at once cannot both
+  // show one more confirmation than the limit allows, and it is handed back whenever the
+  // tab does not actually open.
+  const slot = shouldShowConfirmation() ? await reserveConfirmation() : null;
+  const confirm = slot !== null && stageCopyDestination(website);
+  if (slot !== null && !confirm) await releaseConfirmation(slot); // no destination: give the slot back
   let tab: Window | null;
   try {
     // No "noopener" feature: it makes open() return null, hiding popup blockers.
     tab = window.open(confirm ? COPY_CONFIRM_PATH : website, "_blank");
   } catch {
+    if (confirm) await releaseConfirmation(slot);
     return "blocked";
   }
-  if (!tab || tab.closed) return "blocked"; // some blockers hand back an already closed window
-  if (confirm) recordConfirmation(); // only a confirmation that really opened is counted
+  if (!tab || tab.closed) { // some blockers hand back an already closed window
+    if (confirm) await releaseConfirmation(slot);
+    return "blocked";
+  }
   // Neither the confirmation page nor the site it redirects to needs this page.
   try { tab.opener = null; } catch { /* already cross-origin: nothing left to detach */ }
   return "opened";

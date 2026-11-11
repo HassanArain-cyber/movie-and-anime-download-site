@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   COPY_CONFIRM_LIMIT, COPY_CONFIRM_PATH, COPY_CONFIRM_STORAGE_KEY, COPY_DESTINATION_KEY,
-  COPY_DESTINATION_MAX_AGE_MS, confirmationsShown, copyThenConfirm, readCopyDestination,
-  shouldShowConfirmation, stageCopyDestination,
+  COPY_DESTINATION_MAX_AGE_MS, UNTRACKED_CONFIRMATION, confirmationsShown, copyThenConfirm,
+  readCopyDestination, releaseConfirmation, reserveConfirmation, shouldShowConfirmation,
+  stageCopyDestination,
 } from "../src/lib/copy-link";
 import { safeWebsiteUrl, websiteHost } from "../src/lib/media-links";
 import { ApiError, websiteUrl } from "../src/lib/validation";
@@ -17,10 +18,16 @@ type Fake = {
   hold?: boolean; sealedTab?: boolean; storage?: boolean;
   /** localStorage: absent, throwing, or a working store shared by every call (one profile). */
   local?: "ok" | "missing" | "throws";
+  /** Serialising Web Locks manager, the way a real browser keeps tabs of a profile in order. */
+  locks?: boolean;
 };
 
 /** Install fake browser globals for one scenario; `events` records what the code did, in order. */
-function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true, local = "ok" }: Fake = {}, profile = new Map<string, string>()) {
+function install(
+  { clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true, local = "ok", locks = false }: Fake = {},
+  profile = new Map<string, string>(),
+  overrides: { localStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void } } = {},
+) {
   const events: string[] = [];
   const tab: { opener: unknown; closed?: boolean } = { opener: "the page" };
   if (open === "closed") tab.closed = true;
@@ -29,12 +36,24 @@ function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, 
   const stored = new Map<string, string>();
   let release = () => {};
   const gate = hold ? new Promise<void>((resolve) => { release = resolve; }) : Promise.resolve();
+  // One queue per lock name: requests run strictly one after another, like the real API.
+  const lockQueues = new Map<string, Promise<unknown>>();
+  const locksManager = {
+    request: (name: string, callback: () => unknown) => {
+      const queued = (lockQueues.get(name) ?? Promise.resolve()).then(() => callback());
+      lockQueues.set(name, queued.then(() => undefined, () => undefined));
+      return queued;
+    },
+  };
   const fakes: Record<string, unknown> = {
-    navigator: clipboard === "missing" ? {} : { clipboard: { writeText: async (text: string) => {
-      events.push(`copy:${text}`);
-      await gate;
-      if (clipboard === "denied") throw new DOMException("Write permission denied.", "NotAllowedError");
-    } } },
+    navigator: {
+      ...(clipboard === "missing" ? {} : { clipboard: { writeText: async (text: string) => {
+        events.push(`copy:${text}`);
+        await gate;
+        if (clipboard === "denied") throw new DOMException("Write permission denied.", "NotAllowedError");
+      } } }),
+      ...(locks ? { locks: locksManager } : {}),
+    },
     window: {
       open: (...args: unknown[]) => {
         events.push(`open:${args.join("|")}`);
@@ -47,7 +66,7 @@ function install({ clipboard = "ok", legacy = true, open = "tab", hold = false, 
         removeItem: (key: string) => { stored.delete(key); },
       } } : {}),
       // localStorage is the website-wide counter: it outlives tabs and restarts.
-      ...(local === "missing" ? {} : { localStorage: {
+      ...(local === "missing" ? {} : { localStorage: overrides.localStorage ?? {
         getItem: (key: string) => {
           if (local === "throws") throw new DOMException("Storage is denied.", "SecurityError");
           return profile.get(key) ?? null;
@@ -263,13 +282,33 @@ test("copy-only links never spend a confirmation", async () => {
   assert.equal(openedUrl(events), COPY_CONFIRM_PATH, "so the first real website still gets its confirmation");
 });
 
-test("a stored counter that is corrupt or already full is handled safely", async () => {
-  const cases: [string, string][] = [["abc", COPY_CONFIRM_PATH], ["-3", COPY_CONFIRM_PATH], ["0", COPY_CONFIRM_PATH], ["1", COPY_CONFIRM_PATH], ["1.9", COPY_CONFIRM_PATH], ["2", SITE], ["99", SITE]];
-  for (const [stored, expected] of cases) {
+test("only a plain unsigned integer is read back; every other stored value counts as fresh", async () => {
+  // Values a loose parseInt would have accepted, plus plain junk: all are "nothing recorded yet".
+  const invalid = ["", " ", "2abc", "1.9", "+3", " 2", "2 ", "-3", "0x2", "1e1", "Infinity", "NaN", "true", "{}", "２"];
+  for (const stored of invalid) {
+    const profile = new Map([[COPY_CONFIRM_STORAGE_KEY, stored]]);
+    const { events } = await run({}, SITE, profile);
+    assert.equal(openedUrl(events), COPY_CONFIRM_PATH, `stored ${JSON.stringify(stored)} must not be trusted`);
+  }
+  // Real counts are still honoured: "1" leaves one confirmation, "2" or more is full.
+  for (const [stored, expected] of [["0", COPY_CONFIRM_PATH], ["1", COPY_CONFIRM_PATH], ["2", SITE], ["7", SITE]] as [string, string][]) {
     const profile = new Map([[COPY_CONFIRM_STORAGE_KEY, stored]]);
     const { events } = await run({}, SITE, profile);
     assert.equal(openedUrl(events), expected, `stored ${JSON.stringify(stored)}`);
   }
+});
+
+test("a stored counter never reads above the limit", () => {
+  const env = install({});
+  try {
+    const cases: [string, number][] = [["1", 1], ["2", COPY_CONFIRM_LIMIT], ["999999999999999", COPY_CONFIRM_LIMIT]];
+    for (const [stored, expected] of cases) {
+      env.profile.set(COPY_CONFIRM_STORAGE_KEY, stored);
+      assert.equal(confirmationsShown(), expected, `stored ${stored}`);
+    }
+    env.profile.set(COPY_CONFIRM_STORAGE_KEY, "9007199254740993"); // beyond Number.MAX_SAFE_INTEGER
+    assert.equal(confirmationsShown(), 0, "an unsafe integer is not a count");
+  } finally { env.restore(); }
 });
 
 test("without usable storage the confirmation still works, it just cannot remember", async () => {
@@ -294,6 +333,76 @@ test("the counter helpers read storage defensively", () => {
     env.profile.set(COPY_CONFIRM_STORAGE_KEY, String(COPY_CONFIRM_LIMIT));
     assert.equal(confirmationsShown(), COPY_CONFIRM_LIMIT);
     assert.equal(shouldShowConfirmation(), false, "at the limit the website opens directly");
+  } finally { env.restore(); }
+});
+
+test("simultaneous tabs can never show more than two confirmations", async () => {
+  const profile = new Map<string, string>();
+  const env = install({ locks: true }, profile);
+  try {
+    // Four tabs clicking at the same moment, all serialised through the profile-wide lock.
+    const outcomes = await Promise.all([1, 2, 3, 4].map(() => copyThenConfirm(DOWNLOAD, SITE)));
+    assert.deepEqual(outcomes, ["opened", "opened", "opened", "opened"], "every click still copies and opens something");
+    const confirmations = env.events.filter((event) => event === `open:${COPY_CONFIRM_PATH}|_blank`).length;
+    const direct = env.events.filter((event) => event === `open:${SITE}|_blank`).length;
+    assert.equal(confirmations, COPY_CONFIRM_LIMIT, "exactly two confirmation pages, never three");
+    assert.equal(direct, 2, "the other two tabs opened the website directly");
+    assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), String(COPY_CONFIRM_LIMIT));
+  } finally { env.restore(); }
+});
+
+test("a tab that loses the race without the lock API skips the confirmation instead of adding one", async () => {
+  const store = new Map<string, string>();
+  const env = install({}, store, {
+    // Another tab writes the next count right after ours: the read-back must refuse to trust it.
+    localStorage: {
+      getItem: (key) => store.get(key) ?? null,
+      setItem: (key, value) => { store.set(key, value); if (value === "1") store.set(key, "2"); },
+      removeItem: (key) => { store.delete(key); },
+    },
+  });
+  try {
+    assert.equal(await copyThenConfirm(DOWNLOAD, SITE), "opened");
+    assert.equal(openedUrl(env.events), SITE, "the confirmation is dropped rather than shown a third time");
+  } finally { env.restore(); }
+});
+
+test("a blocked tab gives its reserved slot back, so both confirmations stay available", async () => {
+  const profile = new Map<string, string>();
+  for (const open of ["blocked", "closed", "throws"] as const) {
+    const env = install({ open, locks: true }, profile);
+    try { assert.equal(await copyThenConfirm(DOWNLOAD, SITE), "blocked", open); } finally { env.restore(); }
+    assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, `${open}: the reservation was released`);
+  }
+  const opened: string[] = [];
+  for (let copy = 1; copy <= 3; copy += 1) {
+    const env = install({ locks: true }, profile);
+    try { await copyThenConfirm(DOWNLOAD, SITE); opened.push(openedUrl(env.events)); } finally { env.restore(); }
+  }
+  assert.deepEqual(opened, [COPY_CONFIRM_PATH, COPY_CONFIRM_PATH, SITE], "two confirmations are still there for the real copies");
+});
+
+test("giving a slot back never cancels a later tab's confirmation", async () => {
+  const profile = new Map<string, string>();
+  const tabA = install({ locks: true }, profile);
+  const slotA = await reserveConfirmation();
+  tabA.restore();
+  const tabB = install({ locks: true }, profile);
+  const slotB = await reserveConfirmation();
+  tabB.restore();
+  assert.deepEqual([slotA, slotB], [1, 2], "two tabs reserved the two slots");
+  const release = install({ locks: true }, profile);
+  await releaseConfirmation(slotA); // tab A was blocked after tab B had already claimed its slot
+  release.restore();
+  assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), "2", "tab B keeps the confirmation it already opened");
+});
+
+test("reserving is skipped entirely when storage cannot record anything", async () => {
+  const env = install({ local: "throws" });
+  try {
+    assert.equal(await reserveConfirmation(), UNTRACKED_CONFIRMATION, "the page is shown, but nothing is remembered");
+    await releaseConfirmation(UNTRACKED_CONFIRMATION);
+    assert.equal(env.profile.size, 0, "and releasing writes nothing either");
   } finally { env.restore(); }
 });
 
