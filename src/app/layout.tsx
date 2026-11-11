@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import UpdatesProvider from "@/components/UpdatesProvider";
 import Navbar from "@/components/Navbar";
+import CopyToast from "@/components/CopyToast";
 import PwaRegister from "@/components/PwaRegister";
 import WallpaperBackground from "@/components/WallpaperBackground";
 import "./globals.css";
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a href="#main-content" className="vault-skip">Skip to content</a>
         <UpdatesProvider>
         <Navbar />
+        <CopyToast />
         <PwaRegister />
         <main id="main-content" className="relative z-10 mx-auto w-full max-w-7xl px-4 py-6 pb-10 sm:px-6 lg:px-8">
           {children}

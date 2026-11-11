@@ -131,6 +131,7 @@ try {
   await run(process.execPath, ["tests/notifications-e2e.mjs"]);
   await run(process.execPath, ["tests/recycle-bin-e2e.mjs"]);
   await run(process.execPath, ["tests/admin-delete-all-e2e.mjs"]);
+  await run(process.execPath, ["tests/copy-link-e2e.mjs"]);
 } catch (error) {
   failure = error;
 } finally {

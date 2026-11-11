@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { episodeRange, qualityLinks, saveEpisodeQualityLink, validateEpisodeLink } from "../src/lib/episode-quality-batch";
 import type { EpisodeWithLinks, DownloadLink } from "../src/lib/types";
 
-const link = (quality: "720p" | "1080p", url = "https://example.com/old.mp4"): DownloadLink => ({ id: 1, mediaId: 1, seasonId: 1, episodeId: 1, quality, url, label: quality, fileSize: null, isUploaded: false, storageProvider: "external", objectKey: null, sizeBytes: null });
+const link = (quality: "720p" | "1080p", url = "https://example.com/old.mp4"): DownloadLink => ({ id: 1, mediaId: 1, seasonId: 1, episodeId: 1, quality, url, label: quality, fileSize: null, isUploaded: false, storageProvider: "external", objectKey: null, sizeBytes: null, linkBehavior: "open", afterCopyUrl: null });
 const episode = (links: DownloadLink[] = []): EpisodeWithLinks => ({ id: 1, mediaId: 1, seasonId: 1, episodeNumber: 1, title: "Episode 1", duration: null, downloadLinks: links });
 
 test("inclusive ranges adapt to existing batch API and allow 1–100 without a schema change", () => {

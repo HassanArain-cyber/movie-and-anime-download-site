@@ -36,7 +36,7 @@ function choiceLabel(choice: BulkQualityChoice): string {
   return qualityDisplay(choice);
 }
 
-export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWithLinks[]; mediaId: number }) {
+export default function EpisodeList({ episodes, mediaId, copyWebsite }: { episodes: EpisodeWithLinks[]; mediaId: number; copyWebsite?: string | null }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [bulkQuality, setBulkQuality] = useState<BulkQualityChoice>("best");
@@ -215,7 +215,7 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
                 <span className="min-w-0 flex-1 truncate text-neutral-400">{item.title}</span>
                 <span className={item.status === "completed" ? "text-green-400" : item.status === "failed" ? "text-red-400" : "text-amber-400"}>{item.status}</span>
                 <span className="w-full text-neutral-500">{item.message}</span>
-                {item.status === "failed" && item.link && <DownloadButton link={item.link} />}
+                {item.status === "failed" && item.link && <DownloadButton link={item.link} copyWebsite={copyWebsite} />}
                 {item.status === "skipped" && episode?.downloadLinks?.length ? (
                   <button type="button" onClick={() => setOpenId(episode.id)} className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:text-white">View episode links</button>
                 ) : null}
@@ -253,7 +253,7 @@ export default function EpisodeList({ episodes, mediaId }: { episodes: EpisodeWi
               </div>
               {open && <div className="space-y-3 border-t border-neutral-800 bg-neutral-950 px-3 py-3 sm:px-4">
                 {!ep.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links for this episode.</p>}
-                {!!ep.downloadLinks?.length && <DownloadOptions links={ep.downloadLinks} />}
+                {!!ep.downloadLinks?.length && <DownloadOptions links={ep.downloadLinks} copyWebsite={copyWebsite} />}
                 <CommentSection mediaId={mediaId} episodeId={ep.id} enabled={ep.commentsEnabled !== false} />
               </div>}
             </div>

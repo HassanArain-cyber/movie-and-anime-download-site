@@ -1,0 +1,1 @@
+ALTER TABLE "download_links" ADD COLUMN "link_behavior" varchar(8) DEFAULT 'open' NOT NULL;

@@ -64,6 +64,20 @@
       "when": 1793987509285,
       "tag": "0008_recycle_bin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794201122863,
+      "tag": "0009_link_behavior",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794250036478,
+      "tag": "0010_link_copy_website",
+      "breakpoints": true
     }
   ]
 }

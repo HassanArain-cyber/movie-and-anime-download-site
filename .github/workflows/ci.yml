@@ -73,8 +73,21 @@ jobs:
 
   e2e:
     name: Browser and API E2E (disposable PostgreSQL + mock R2)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The whole job runs inside Playwright's official image, pinned to the playwright-core version
+    # in package-lock.json. That image already carries Chromium, its system libraries and fonts, so
+    # the job never reaches a package mirror at run time - and that install is the step that keeps
+    # failing: `playwright-core install-deps chromium` cannot resolve the Ubuntu archive hosts from
+    # these runners, on ubuntu-24.04 just as on ubuntu-latest (actions/runner-images#14748 only
+    # made it worse), so pinning the runner image is not a fix. The runner now only runs Docker,
+    # and it stays on 24.04 so a migrating ubuntu-latest cannot change anything else here.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      # Chromium needs more than Docker's default 64 MB of /dev/shm, and --init reaps the
+      # child processes the suite leaves behind.
+      options: --ipc=host --init
 
     services:
       postgres:
@@ -83,8 +96,9 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: app_db
-        ports:
-          - 5432:5432
+        # No published ports: a job that runs in a container reaches a service by its name
+        # ("postgres") on the job's own network. The suite's loopback guard is kept intact and
+        # served by the bridge step below.
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -108,8 +122,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install browser system dependencies
-        run: sudo npx playwright-core install-deps chromium
+      # The E2E runner refuses any non-loopback database target (it must never be able to touch a
+      # real service), so the postgres service container is bridged onto 127.0.0.1 rather than
+      # loosening that guard. A plain TCP relay: no DNS, no package mirror, nothing to install.
+      - name: Bridge 127.0.0.1:5432 to the postgres service container
+        # A job that runs in a container defaults to `sh`, where `set -o pipefail` and bash
+        # arrays do not exist. This step is written for bash on purpose.
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Detached, so the relay outlives this step and every later step can use it.
+          launcher=(setsid)
+          command -v setsid >/dev/null 2>&1 || launcher=()
+          "${launcher[@]}" node -e 'const net = require("node:net"); net.createServer((client) => { const upstream = net.connect(5432, "postgres"); client.pipe(upstream).pipe(client); const close = () => { client.destroy(); upstream.destroy(); }; client.on("error", close); upstream.on("error", close); }).listen(5432, "127.0.0.1");' >/tmp/pg-bridge.log 2>&1 </dev/null &
+          node -e '
+          const pg = require("pg");
+          const deadline = Date.now() + 60_000;
+          const probe = async () => {
+            const client = new pg.Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 2000 });
+            try {
+              await client.connect();
+              await client.query("SELECT 1");
+              return true;
+            } catch {
+              return false;
+            } finally {
+              try { await client.end(); } catch { /* already closed */ }
+            }
+          };
+          void (async () => {
+            while (Date.now() < deadline) {
+              if (await probe()) { console.log("postgres is reachable through 127.0.0.1:5432"); process.exit(0); }
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            console.error("postgres never answered through the 127.0.0.1:5432 bridge");
+            process.exit(1);
+          })();
+          '
 
       - name: Apply additive migrations
         run: npm run db:migrate

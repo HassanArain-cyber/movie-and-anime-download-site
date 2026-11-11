@@ -1140,7 +1140,7 @@ await page.getByRole("button", { name: "Edit details", exact: true }).waitFor();
 const wizardMovie = (await pool.query("SELECT id,poster_url FROM media WHERE title=$1", [`Wizard Movie ${run}`])).rows[0];
 assert.ok(wizardMovie.poster_url.startsWith("/api/image?"), "wizard poster stays private via image handler");
 const movieUploadForm = page.getByRole("form", { name: "Download link form movie", exact: true });
-await movieUploadForm.locator("select").selectOption("2160p");
+await movieUploadForm.getByLabel("Quality").selectOption("2160p");
 await movieUploadForm.locator('input[type="file"]').setInputFiles({ name: "wizard-movie-2160.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048, 6) });
 await page.getByText(/Uploaded and verified in R2/).waitFor();
 await movieUploadForm.getByRole("button", { name: "Add link", exact: true }).click();

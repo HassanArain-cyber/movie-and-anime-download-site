@@ -43,7 +43,7 @@ test("quality values accept common resolutions and 2K/4K/8K aliases", () => {
 
 test("bulk selection picks the chosen quality, highest available, and legacy unspecified links", () => {
   const base: Omit<DownloadLink, "id" | "url" | "quality" | "label" | "storageProvider"> = {
-    mediaId: 1, seasonId: null, episodeId: 10, fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null,
+    mediaId: 1, seasonId: null, episodeId: 10, fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null, linkBehavior: "open", afterCopyUrl: null,
   };
   const links: DownloadLink[] = [
     { ...base, id: 1, url: "https://example.com/720.mp4", label: "720p", quality: "720p", storageProvider: "external" },
@@ -58,7 +58,7 @@ test("bulk selection picks the chosen quality, highest available, and legacy uns
 
 test("bulk queue preserves all three selected episodes and reports missing qualities", () => {
   const base: Omit<DownloadLink, "id" | "url" | "quality" | "label" | "storageProvider"> = {
-    mediaId: 5, seasonId: 2, episodeId: null, fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null,
+    mediaId: 5, seasonId: 2, episodeId: null, fileSize: null, isUploaded: false, objectKey: null, sizeBytes: null, linkBehavior: "open", afterCopyUrl: null,
   };
   const episodes = [1, 2, 3].map((number) => ({
     id: number, episodeNumber: number, title: null,

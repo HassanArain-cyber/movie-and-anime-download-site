@@ -52,7 +52,7 @@ export default async function DetailPage({ params }: PageProps) {
           {item.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-300">{item.description}</p>}
           {(item.downloadLinks?.length || 0) > 0 && <div className="space-y-3 pt-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{item.type === "movie" ? "Available downloads · choose a quality" : "Additional links"}</h2>
-            <DownloadOptions links={item.downloadLinks!} />
+            <DownloadOptions links={item.downloadLinks!} copyWebsite={item.copyWebsite} />
           </div>}
           {item.type === "movie" && !item.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links available yet.</p>}
         </div>
@@ -70,9 +70,9 @@ export default async function DetailPage({ params }: PageProps) {
           <div className="space-y-4 border-t border-white/5 p-3 sm:p-5">
           {season.downloadLinks.length > 0 && <div className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Complete season downloads</h3>
-            <DownloadOptions links={season.downloadLinks} />
+            <DownloadOptions links={season.downloadLinks} copyWebsite={item.copyWebsite} />
           </div>}
-          <EpisodeList mediaId={item.id} episodes={season.episodes} />
+          <EpisodeList mediaId={item.id} episodes={season.episodes} copyWebsite={item.copyWebsite} />
           </div>
         </details>)}
       </div>}

@@ -1,0 +1,1 @@
+ALTER TABLE "download_links" ADD COLUMN "after_copy_url" text;

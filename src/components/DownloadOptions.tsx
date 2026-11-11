@@ -8,7 +8,7 @@ type GroupKey = VideoQuality | "unspecified";
 const GROUP_ORDER: GroupKey[] = [...QUALITY_ORDER, "unspecified"];
 
 /** Render every independently selectable version while keeping legacy links visible. */
-export default function DownloadOptions({ links }: { links: DownloadLink[] }) {
+export default function DownloadOptions({ links, copyWebsite }: { links: DownloadLink[]; copyWebsite?: string | null }) {
   const groups = new Map<GroupKey, DownloadLink[]>();
   for (const link of links) {
     const key = getQuality(link) || "unspecified";
@@ -26,7 +26,7 @@ export default function DownloadOptions({ links }: { links: DownloadLink[] }) {
               <span className="text-xs text-neutral-500">{versions.length} {versions.length === 1 ? "version" : "versions"}</span>
             </div>
             <div className="flex min-w-0 flex-wrap gap-2">
-              {versions.map((link) => <DownloadButton key={link.id} link={link} />)}
+              {versions.map((link) => <DownloadButton key={link.id} link={link} copyWebsite={copyWebsite} />)}
             </div>
           </section>
         );

@@ -4,6 +4,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, downloadLinks, episodes, media, seasons } from "@/db/schema";
 import { ApiError, optionalId, quality as parseQuality } from "./validation";
+import { getCopyWebsite } from "./site-settings";
 import type { DownloadLink, EpisodeWithLinks, MediaWithRelations, SeasonWithEpisodes, StorageProvider, VideoQuality } from "./types";
 import type { UploadTarget } from "./storage";
 
@@ -43,7 +44,12 @@ export async function resolveTarget(body: Record<string, unknown>, allowImageWit
 }
 
 function normalizeLink(row: typeof downloadLinks.$inferSelect): DownloadLink {
-  return { ...row, quality: row.quality as VideoQuality | null, storageProvider: row.storageProvider as StorageProvider | null };
+  return {
+    ...row,
+    quality: row.quality as VideoQuality | null,
+    storageProvider: row.storageProvider as StorageProvider | null,
+    linkBehavior: row.linkBehavior === "copy" ? "copy" : "open",
+  };
 }
 
 /** Four bounded queries instead of one query per episode. */
@@ -75,5 +81,6 @@ export async function getMediaDetails(mediaId: number): Promise<MediaWithRelatio
     type: item.type as MediaWithRelations["type"],
     seasons: seasonList,
     downloadLinks: linkRows.filter((link) => link.episodeId === null && link.seasonId === null),
+    copyWebsite: await getCopyWebsite(),
   };
 }

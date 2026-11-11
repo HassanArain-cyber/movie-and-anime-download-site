@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isIP } from "node:net";
-import { normalizeQuality, safeExternalUrl } from "./media-links";
-import type { MediaType, VideoQuality } from "./types";
+import { normalizeQuality, safeExternalUrl, safeWebsiteUrl } from "./media-links";
+import type { LinkBehavior, MediaType, VideoQuality } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -82,6 +82,13 @@ export function mediaType(value: unknown): MediaType {
   return value;
 }
 
+export function linkBehavior(value: unknown): LinkBehavior {
+  if (value !== "open" && value !== "copy") {
+    throw new ApiError(400, "Choose Open Link or Copy Link");
+  }
+  return value;
+}
+
 export function year(value: unknown): number | null {
   if (value === undefined || value === null || value === "") return null;
   const number = Number(value);
@@ -92,6 +99,13 @@ export function year(value: unknown): number | null {
 export function externalUrl(value: unknown): string {
   const result = text(value, "URL", 8192, true)!;
   if (!safeExternalUrl(result)) throw new ApiError(400, "Use an HTTPS, HTTP, Telegram, or magnet link. Upload files to R2 instead of entering a local path.");
+  return result;
+}
+
+/** Optional website opened after copying. Blank means "none / inherit the default". */
+export function websiteUrl(value: unknown): string | null {
+  const result = text(value, "Website to Open After Copying", 2048);
+  if (result !== null && !safeWebsiteUrl(result)) throw new ApiError(400, "Website to Open After Copying must be a full http:// or https:// address");
   return result;
 }
 

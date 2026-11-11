@@ -4,6 +4,9 @@ export type MediaType = "movie" | "anime" | "series";
 export type VideoQuality = "360p" | "480p" | "720p" | "1080p" | "1440p" | "2160p" | "4320p" | "other";
 export type UploadKind = "image" | "video" | "archive";
 export type StorageProvider = "r2" | "local" | "external" | "telegram";
+// How a public download button behaves. "open" navigates to the link (the
+// historical behaviour); "copy" copies the URL to the clipboard instead.
+export type LinkBehavior = "open" | "copy";
 
 export interface Media {
   isAnimeMovie?: boolean;
@@ -52,6 +55,9 @@ export interface DownloadLink {
   storageProvider: StorageProvider | null;
   objectKey: string | null;
   sizeBytes: number | null;
+  linkBehavior: LinkBehavior;
+  /** Per-link website opened after copying; null inherits the site-wide default. */
+  afterCopyUrl: string | null;
 }
 
 export interface Category {
@@ -63,6 +69,8 @@ export interface Category {
 export interface MediaWithRelations extends Media {
   seasons?: SeasonWithEpisodes[];
   downloadLinks?: DownloadLink[];
+  /** Saved site-wide website opened after a Copy Link click, if any. */
+  copyWebsite?: string | null;
 }
 
 export interface EpisodeWithLinks extends Episode {

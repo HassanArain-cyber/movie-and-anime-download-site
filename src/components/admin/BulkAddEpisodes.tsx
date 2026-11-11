@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Media, MediaWithRelations, SeasonWithEpisodes, VideoQuality } from "@/lib/types";
+import type { LinkBehavior, Media, MediaWithRelations, SeasonWithEpisodes, VideoQuality } from "@/lib/types";
 import { BulkApiError, guessEpisodeNumber, processBulkEpisode, validateBulkEpisodes, type BulkEpisodeRow } from "@/lib/bulk-episodes";
-import { QUALITIES } from "@/lib/media-links";
+import { LINK_BEHAVIORS, QUALITIES } from "@/lib/media-links";
 import { uploadToR2, UploadError } from "@/lib/upload-client";
 
 const control = "min-h-10 w-full min-w-0 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white";
@@ -22,6 +22,7 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
   const [details, setDetails] = useState<MediaWithRelations | null>(null);
   const [seasonId, setSeasonId] = useState("");
   const [rows, setRows] = useState<BulkEpisodeRow[]>([]);
+  const [linkBehavior, setLinkBehavior] = useState<LinkBehavior>("open");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,7 +91,7 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
             return episode.downloadLinks;
           },
           attach: async (entry) => { await json("/api/download-links", { ...post({ mediaId: Number(mediaId), seasonId: selected.id, episodeId: entry.episodeId, quality: entry.quality, label: entry.quality,
-            ...(entry.completed ? { r2UploadId: entry.completed.id } : { url: entry.url.trim() }) }), signal: controller.signal }); },
+            ...(entry.completed ? { r2UploadId: entry.completed.id } : { url: entry.url.trim(), linkBehavior }) }), signal: controller.signal }); },
         }, (checkpoint) => update(row.id, checkpoint));
       }
       setNotice("Batch finished. Successful rows are saved; retry only failed rows below. Keep this page open to preserve retry checkpoints.");
@@ -110,6 +111,7 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
       <label className="min-w-0 text-xs text-neutral-400">Anime / series<select aria-label="Bulk anime or series" value={mediaId} disabled={targetLocked || loading} onChange={(event) => void chooseMedia(event.target.value)} className={`${control} mt-1`}><option value="">Select a title</option>{items.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
       <label className="min-w-0 text-xs text-neutral-400">Season<select aria-label="Bulk season" value={seasonId} disabled={targetLocked || loading || !details} onChange={(event) => setSeasonId(event.target.value)} className={`${control} mt-1`}><option value="">Select a season</option>{details?.seasons?.map((entry: SeasonWithEpisodes) => <option key={entry.id} value={entry.id}>Season {entry.seasonNumber}{entry.name ? ` — ${entry.name}` : ""}</option>)}</select></label>
     </div>
+    <label className="block min-w-0 text-xs text-neutral-400 sm:max-w-xs">Link behavior for pasted links<select aria-label="Bulk link behavior" value={linkBehavior} disabled={busy} onChange={(event) => setLinkBehavior(event.target.value as LinkBehavior)} className={`${control} mt-1`}>{LINK_BEHAVIORS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     {loading && <p role="status" className="text-sm text-neutral-400">Loading titles / seasons…</p>}
     {details && !details.seasons?.length && <p className="text-sm text-amber-300">Create a season in Media first, then return here.</p>}
     <p className="text-xs leading-relaxed text-neutral-400">Files go directly to R2 using the existing secure multipart upload. Numbers are guessed from names such as S01E03.mp4; check them before submitting. Leave either the link or file empty. Duration is optional. Do not close this page during processing.</p>

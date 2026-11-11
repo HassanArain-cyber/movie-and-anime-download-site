@@ -78,6 +78,10 @@ export const downloadLinks = pgTable("download_links", {
   storageProvider: varchar("storage_provider", { length: 16 }),
   objectKey: text("object_key").unique(),
   sizeBytes: bigint("size_bytes", { mode: "number" }),
+  // Public button behaviour. Legacy rows predate the column and read as "open".
+  linkBehavior: varchar("link_behavior", { length: 8 }).notNull().default("open"),
+  // Website opened after copying; null inherits the saved site-wide default.
+  afterCopyUrl: text("after_copy_url"),
 }, (table) => [
   index("download_links_media_id_idx").on(table.mediaId),
   index("download_links_season_id_idx").on(table.seasonId),
