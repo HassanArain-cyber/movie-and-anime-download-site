@@ -178,30 +178,42 @@ export async function releaseConfirmation(slot: number | null): Promise<void> {
  *
  * Nothing opens unless the copy succeeded, and both calls happen inside the same
  * click so browsers still treat them as user-initiated. Never throws.
+ *
+ * Order matters. The decision, the staged destination and window.open() are all
+ * synchronous: awaiting the profile-wide lock (or anything else that a busy tab can
+ * delay) first would leave the click's transient user activation behind, and Android
+ * Chrome / Safari would then treat the new tab as an unsolicited popup and block it.
+ * The slot is claimed AFTER the tab exists, so the stored count can only ever record
+ * confirmation pages that really opened.
  */
 export async function copyThenConfirm(downloadUrl: string, website: string | null): Promise<CopyOutcome> {
   if (!(await copyText(downloadUrl))) return "failed";
   if (!website) return "copied";
   // Only the first copies in a browser get the confirmation; later ones go straight to
-  // the website. The slot is reserved first so two tabs clicking at once cannot both
-  // show one more confirmation than the limit allows, and it is handed back whenever the
-  // tab does not actually open.
-  const slot = shouldShowConfirmation() ? await reserveConfirmation() : null;
-  const confirm = slot !== null && stageCopyDestination(website);
-  if (slot !== null && !confirm) await releaseConfirmation(slot); // no destination: give the slot back
+  // the website. This read is advisory: two tabs may both see "one left" here, and the
+  // reservation below decides which of them really gets it.
+  const confirm = shouldShowConfirmation() && stageCopyDestination(website);
   let tab: Window | null;
   try {
     // No "noopener" feature: it makes open() return null, hiding popup blockers.
     tab = window.open(confirm ? COPY_CONFIRM_PATH : website, "_blank");
   } catch {
-    if (confirm) await releaseConfirmation(slot);
-    return "blocked";
+    return "blocked"; // nothing was reserved yet, so nothing was spent
   }
-  if (!tab || tab.closed) { // some blockers hand back an already closed window
-    if (confirm) await releaseConfirmation(slot);
-    return "blocked";
-  }
+  if (!tab || tab.closed) return "blocked"; // some blockers hand back an already closed window
   // Neither the confirmation page nor the site it redirects to needs this page.
   try { tab.opener = null; } catch { /* already cross-origin: nothing left to detach */ }
+  if (!confirm) return "opened";
+  const slot = await reserveConfirmation();
+  if (slot === null) {
+    // Both slots went to other tabs while this one was opening: it must not become a
+    // third confirmation, so the tab it already owns is sent to the website instead.
+    try { tab.location.replace(website); } catch { try { tab.close(); } catch { /* already gone */ } }
+    return "opened";
+  }
+  if (tab.closed) { // closed before anyone could see it, so it was never a confirmation
+    await releaseConfirmation(slot);
+    return "blocked";
+  }
   return "opened";
 }

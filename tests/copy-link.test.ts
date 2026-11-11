@@ -20,16 +20,28 @@ type Fake = {
   local?: "ok" | "missing" | "throws";
   /** Serialising Web Locks manager, the way a real browser keeps tabs of a profile in order. */
   locks?: boolean;
+  /** Keeps every lock request pending until the test calls releaseLock() (a busy profile). */
+  locksHeld?: boolean;
+  /** What the opener's handle on the tab does when it must be sent to the website instead. */
+  navigate?: "ok" | "throws";
 };
 
 /** Install fake browser globals for one scenario; `events` records what the code did, in order. */
 function install(
-  { clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true, local = "ok", locks = false }: Fake = {},
+  { clipboard = "ok", legacy = true, open = "tab", hold = false, sealedTab = false, storage = true, local = "ok", locks = false, locksHeld = false, navigate = "ok" }: Fake = {},
   profile = new Map<string, string>(),
   overrides: { localStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void } } = {},
 ) {
   const events: string[] = [];
-  const tab: { opener: unknown; closed?: boolean } = { opener: "the page" };
+  const tab: { opener: unknown; closed?: boolean; location: { replace(url: string): void }; close(): void } = {
+    opener: "the page",
+    // The opener keeps a handle on the tab it created, so it can still send it elsewhere.
+    location: { replace: (url: string) => {
+      if (navigate === "throws") throw new DOMException("Navigation refused.", "SecurityError");
+      events.push(`navigate:${url}`);
+    } },
+    close: () => { events.push("close"); tab.closed = true; },
+  };
   if (open === "closed") tab.closed = true;
   if (sealedTab) Object.defineProperty(tab, "opener", { get: () => "the page", set: () => { throw new DOMException("cross-origin", "SecurityError"); } });
   const fields: { value: string; removed: boolean }[] = [];
@@ -37,9 +49,12 @@ function install(
   let release = () => {};
   const gate = hold ? new Promise<void>((resolve) => { release = resolve; }) : Promise.resolve();
   // One queue per lock name: requests run strictly one after another, like the real API.
+  let releaseLock = () => {};
+  const lockGate = locksHeld ? new Promise<void>((resolve) => { releaseLock = resolve; }) : null;
   const lockQueues = new Map<string, Promise<unknown>>();
   const locksManager = {
-    request: (name: string, callback: () => unknown) => {
+    request: async (name: string, callback: () => unknown) => {
+      await lockGate; // a contended lock: this tab waits for another tab to finish
       const queued = (lockQueues.get(name) ?? Promise.resolve()).then(() => callback());
       lockQueues.set(name, queued.then(() => undefined, () => undefined));
       return queued;
@@ -95,7 +110,7 @@ function install(
   const original = Object.keys(fakes).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   for (const [name, value] of Object.entries(fakes)) Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
   const restore = () => { for (const [name, descriptor] of original) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete (globalThis as Record<string, unknown>)[name]; } };
-  return { events, tab, fields, stored, profile, release, restore };
+  return { events, tab, fields, stored, profile, release, releaseLock, restore };
 }
 
 async function run(fake: Fake, website: string | null = SITE, profile = new Map<string, string>()) {
@@ -340,18 +355,21 @@ test("simultaneous tabs can never show more than two confirmations", async () =>
   const profile = new Map<string, string>();
   const env = install({ locks: true }, profile);
   try {
-    // Four tabs clicking at the same moment, all serialised through the profile-wide lock.
+    // Four tabs clicking at the same moment. The choice has to be made synchronously (see the
+    // user-activation tests), so all four open a tab; the profile-wide lock then decides which
+    // two keep the confirmation, and the two losers are sent on to the website.
     const outcomes = await Promise.all([1, 2, 3, 4].map(() => copyThenConfirm(DOWNLOAD, SITE)));
     assert.deepEqual(outcomes, ["opened", "opened", "opened", "opened"], "every click still copies and opens something");
-    const confirmations = env.events.filter((event) => event === `open:${COPY_CONFIRM_PATH}|_blank`).length;
-    const direct = env.events.filter((event) => event === `open:${SITE}|_blank`).length;
-    assert.equal(confirmations, COPY_CONFIRM_LIMIT, "exactly two confirmation pages, never three");
-    assert.equal(direct, 2, "the other two tabs opened the website directly");
+    const confirmTabs = env.events.filter((event) => event === `open:${COPY_CONFIRM_PATH}|_blank`).length;
+    const redirected = env.events.filter((event) => event === `navigate:${SITE}`).length;
+    assert.equal(confirmTabs, 4, "four tabs were opened inside their own clicks");
+    assert.equal(redirected, 2, "the two that lost the race were sent to the website");
+    assert.equal(confirmTabs - redirected, COPY_CONFIRM_LIMIT, "exactly two confirmation pages stay on screen, never three");
     assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), String(COPY_CONFIRM_LIMIT));
   } finally { env.restore(); }
 });
 
-test("a tab that loses the race without the lock API skips the confirmation instead of adding one", async () => {
+test("a tab that loses the race without the lock API is sent to the website instead of adding a confirmation", async () => {
   const store = new Map<string, string>();
   const env = install({}, store, {
     // Another tab writes the next count right after ours: the read-back must refuse to trust it.
@@ -363,7 +381,10 @@ test("a tab that loses the race without the lock API skips the confirmation inst
   });
   try {
     assert.equal(await copyThenConfirm(DOWNLOAD, SITE), "opened");
-    assert.equal(openedUrl(env.events), SITE, "the confirmation is dropped rather than shown a third time");
+    assert.deepEqual(env.events.filter((event) => !event.startsWith("stage:")), [
+      `copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`, `navigate:${SITE}`,
+    ], "the tab it already opened is sent to the website rather than showing a third confirmation");
+    assert.equal(store.get(COPY_CONFIRM_STORAGE_KEY), "2", "and the count is left to the tabs that really showed it");
   } finally { env.restore(); }
 });
 
@@ -395,6 +416,94 @@ test("giving a slot back never cancels a later tab's confirmation", async () => 
   await releaseConfirmation(slotA); // tab A was blocked after tab B had already claimed its slot
   release.restore();
   assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), "2", "tab B keeps the confirmation it already opened");
+});
+
+test("the tab is opened while the click is still active, before the profile lock is awaited", async () => {
+  // Android Chrome and Safari drop the click's transient user activation as soon as an await
+  // hops tasks, so anything awaited before window.open() can turn the tab into a blocked popup.
+  // The profile-wide lock is deliberately busy here: the tab must open regardless.
+  const profile = new Map<string, string>();
+  const env = install({ locks: true, locksHeld: true }, profile);
+  try {
+    const pending = copyThenConfirm(DOWNLOAD, SITE);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(env.events.filter((event) => !event.startsWith("stage:")), [
+      `copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`,
+    ], "window.open() runs synchronously; a busy lock cannot delay it or spend the activation");
+    assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, "the slot is claimed after the tab exists, not before");
+    env.releaseLock();
+    assert.equal(await pending, "opened");
+    assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), "1", "and only then is the confirmation counted");
+  } finally { env.restore(); }
+});
+
+test("a blocked tab does not spend the slot of a tab that opened", async () => {
+  // Tab A is refused, then tab B really opens: the count must say 1, so the second
+  // confirmation stays available. Reserving before the open would record A and leave only 2.
+  const profile = new Map<string, string>();
+  const tabA = install({ open: "blocked", locks: true }, profile);
+  try { assert.equal(await copyThenConfirm(DOWNLOAD, SITE), "blocked"); } finally { tabA.restore(); }
+  assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, "the refused tab was never counted");
+  const tabB = install({ locks: true }, profile);
+  try { assert.equal(await copyThenConfirm(DOWNLOAD, SITE), "opened"); } finally { tabB.restore(); }
+  assert.equal(openedUrl(tabB.events), COPY_CONFIRM_PATH);
+  assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), "1", "one confirmation opened, so one is recorded");
+  const later = install({ locks: true }, profile);
+  try { assert.equal(await copyThenConfirm(DOWNLOAD, SITE), "opened"); } finally { later.restore(); }
+  assert.equal(openedUrl(later.events), COPY_CONFIRM_PATH, "the remaining confirmation is still available");
+  assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), "2");
+});
+
+test("the stored count only ever matches the confirmation pages that really opened", async () => {
+  const profile = new Map<string, string>();
+  const steps = [
+    { open: "blocked", count: null, url: null },
+    { open: "throws", count: null, url: null },
+    { open: "tab", count: "1", url: COPY_CONFIRM_PATH },
+    { open: "blocked", count: "1", url: null },
+    { open: "tab", count: "2", url: COPY_CONFIRM_PATH },
+    { open: "tab", count: "2", url: SITE },
+  ] as const;
+  for (const [index, step] of steps.entries()) {
+    const env = install({ open: step.open, locks: true }, profile);
+    try { await copyThenConfirm(DOWNLOAD, SITE); } finally { env.restore(); }
+    const where = `copy ${index + 1} (${step.open})`;
+    assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY) ?? null, step.count, where);
+    if (step.url) assert.equal(openedUrl(env.events), step.url, where);
+  }
+});
+
+test("a tab that is gone before its confirmation could be seen hands the slot back", async () => {
+  const profile = new Map<string, string>();
+  const env = install({ locks: true, locksHeld: true }, profile);
+  try {
+    const pending = copyThenConfirm(DOWNLOAD, SITE);
+    await new Promise((resolve) => setImmediate(resolve));
+    env.tab.closed = true; // the browser (or the visitor) closed it while the lock was queued
+    env.releaseLock();
+    assert.equal(await pending, "blocked");
+    assert.equal(profile.has(COPY_CONFIRM_STORAGE_KEY), false, "an unseen confirmation is not counted");
+  } finally { env.restore(); }
+});
+
+test("a tab sent on to the website is closed when the browser refuses that redirect", async () => {
+  for (const navigate of ["ok", "throws"] as const) {
+    const profile = new Map<string, string>();
+    const env = install({ locks: true, locksHeld: true, navigate }, profile);
+    try {
+      const pending = copyThenConfirm(DOWNLOAD, SITE);
+      await new Promise((resolve) => setImmediate(resolve));
+      // Two other tabs claimed both slots while this one was waiting for the lock.
+      profile.set(COPY_CONFIRM_STORAGE_KEY, String(COPY_CONFIRM_LIMIT));
+      env.releaseLock();
+      assert.equal(await pending, "opened", navigate);
+      assert.deepEqual(env.events.filter((event) => !event.startsWith("stage:")), navigate === "ok"
+        ? [`copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`, `navigate:${SITE}`]
+        : [`copy:${DOWNLOAD}`, `open:${COPY_CONFIRM_PATH}|_blank`, "close"],
+      `${navigate}: the tab is never left on a confirmation it did not earn`);
+      assert.equal(profile.get(COPY_CONFIRM_STORAGE_KEY), String(COPY_CONFIRM_LIMIT), `${navigate}: the count is untouched`);
+    } finally { env.restore(); }
+  }
 });
 
 test("reserving is skipped entirely when storage cannot record anything", async () => {

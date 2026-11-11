@@ -499,9 +499,22 @@ try {
     await firstEver.waitForURL(/\/copy$/, { timeout: 20000 });
     await firstEver.getByRole("heading", { name: "Link Copied Successfully!" }).waitFor();
     assert.equal(await countedIn(freshPage), "1", "and the first real confirmation is counted exactly once");
+
+    // 5. A busy profile cannot delay the tab. The confirmation tab is opened inside the click,
+    //    before the profile-wide lock is awaited, so the click still counts as user activation
+    //    (a lock request first would lose it on Android Chrome / Safari). The lock here is never
+    //    granted, exactly like another tab holding it: the tab must still open and stay on /copy.
+    const busyPage = await clean.newPage();
+    await busyPage.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" });
+    await busyPage.evaluate(() => { LockManager.prototype.request = () => new Promise(() => {}); });
+    const [whileBusy] = await Promise.all([clean.waitForEvent("page"), busyPage.getByRole("button", { name: /Own site renamed/ }).tap()]);
+    await whileBusy.waitForURL(/\/copy$/, { timeout: 20000 });
+    await whileBusy.getByRole("heading", { name: "Link Copied Successfully!" }).waitFor();
+    assert.equal(await countedIn(busyPage), "1", "the slot is claimed only once the lock is really granted");
+    await whileBusy.close(); await busyPage.close();
     await firstEver.close(); await clean.close();
   } finally { await cleanBrowser.close(); }
 
   assert.deepEqual(pageErrors, []); assert.deepEqual(visitorErrors, []);
-  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, the confirmation page shown only for the first two copies per browser (live 5,4,3,2,1 countdown, 5s redirect, Continue fallback, clean URL) then every later copy opening the website directly across other tabs, refreshes and a browser restart, blocked tabs and failed copies never spending a confirmation, none on failure or popup block, the shared toast, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
+  console.log("Copy Link E2E PASS: admin-only validated default website, per-link override, Link Behavior in the movie/quick-episode/bulk/wizard/archive/episode editors, bulk saves keep existing settings, mobile copy, the confirmation page shown only for the first two copies per browser (live 5,4,3,2,1 countdown, 5s redirect, Continue fallback, clean URL) then every later copy opening the website directly across other tabs, refreshes and a browser restart, blocked tabs and failed copies never spending a confirmation, a tab opened inside the click even while the profile lock is busy, none on failure or popup block, the shared toast, Open Link/R2/Telegram/magnet unchanged, persistence across reload/logout/content edits, explicit removal back to copy-only.");
 } finally { await phone?.close(); await browser?.close(); await pool.end(); }
