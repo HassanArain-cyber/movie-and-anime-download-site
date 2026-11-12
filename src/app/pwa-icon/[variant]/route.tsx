@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ var
 
   const size = variant === "192" ? 192 : 512;
   const maskable = variant === "maskable-512";
-  const inset = maskable ? Math.round(size * 0.13) : Math.round(size * 0.022);
+  const inset = maskable ? Math.round(size * 0.10) : 0;
   let imageData: string;
   try {
     const bytes = await readFile(join(process.cwd(), "public", "icons", "anime_tracker_app_icon.png"));
@@ -25,15 +25,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ var
     imageData = "data:image/png;base64," + Buffer.from(await asset.arrayBuffer()).toString("base64");
   }
 
-  const radius = Math.round(size * 0.18);
   const frame = size - inset * 2;
-  const border = Math.max(2, Math.round(size * 0.012));
   return new ImageResponse(
     (
-      <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#10071f" }}>
-        <div style={{ width: frame, height: frame, display: "flex", borderRadius: radius, overflow: "hidden", border: `${border}px solid #d28cff`, backgroundColor: "#270b40" }}>
+      <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "transparent" }}>
+        <div style={{ width: frame, height: frame, display: "flex", backgroundColor: "transparent" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageData} alt="" width={frame} height={frame} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img src={imageData} alt="" width={frame} height={frame} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
       </div>
     ),
