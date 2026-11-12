@@ -5,7 +5,6 @@ import Navbar from "@/components/Navbar";
 import CopyToast from "@/components/CopyToast";
 import PwaRegister from "@/components/PwaRegister";
 import WallpaperBackground from "@/components/WallpaperBackground";
-import VaultStartupSplash from "@/components/VaultStartupSplash";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,7 +32,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className="dark">
       <body className="relative min-h-screen bg-neutral-950 text-neutral-200 antialiased">
         <WallpaperBackground />
-        <VaultStartupSplash />
         <a href="#main-content" className="vault-skip">Skip to content</a>
         <UpdatesProvider>
         <Navbar />
