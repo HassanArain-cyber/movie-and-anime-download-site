@@ -12,8 +12,8 @@
     "minimal-ui"
   ],
   "orientation": "any",
-  "background_color": "#09090b",
-  "theme_color": "#09090b",
+  "background_color": "#200c38",
+  "theme_color": "#200c38",
   "categories": [
     "entertainment",
     "video"
@@ -21,19 +21,19 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/pwa-icon/192",
+      "src": "/pwa-icon/192?v=2",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-icon/512",
+      "src": "/pwa-icon/512?v=2",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-icon/maskable-512",
+      "src": "/pwa-icon/maskable-512?v=2",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
