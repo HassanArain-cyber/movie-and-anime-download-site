@@ -17,15 +17,20 @@ export default function VaultStartupSplash() {
       aria-hidden="true"
       className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090b] transition-opacity duration-200 motion-reduce:transition-none ${ready ? "pointer-events-none opacity-0" : "opacity-100"}`}
     >
-      <Image
-        src="/images/anime_tracker_loading_screen-1.png"
-        width={900}
-        height={900}
-        alt=""
-        priority
-        unoptimized
-        className="max-h-[75vh] w-[min(85vw,440px)] rounded-2xl object-contain"
-      />
+      <div className="relative isolate aspect-square w-[min(84vw,420px)]">
+        <div aria-hidden="true" className="absolute inset-1 rounded-[18%] bg-violet-500/70 blur-2xl" />
+        <div className="relative h-full w-full overflow-hidden rounded-[18%] border-[3px] border-fuchsia-300 shadow-[0_0_35px_rgba(179,75,255,0.70),0_0_75px_rgba(126,34,206,0.30)]">
+          <Image
+            src="/images/anime_tracker_loading_screen-1.png"
+            fill
+            sizes="(max-width: 500px) 84vw, 420px"
+            alt=""
+            priority
+            unoptimized
+            className="object-cover"
+          />
+        </div>
+      </div>
     </div>
   );
 }
