@@ -14,17 +14,17 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/pwa-icon/192", sizes: "192x192", type: "image/png" },
-      { url: "/pwa-icon/512", sizes: "512x512", type: "image/png" },
+      { url: "/pwa-icon/192?v=2", sizes: "192x192", type: "image/png" },
+      { url: "/pwa-icon/512?v=2", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/pwa-icon/512", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "/pwa-icon/512?v=2", sizes: "512x512", type: "image/png" }],
   },
   appleWebApp: { capable: true, title: "Vault", statusBarStyle: "black-translucent" },
   other: { "mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: "#200c38",
   colorScheme: "dark",
 };
 
