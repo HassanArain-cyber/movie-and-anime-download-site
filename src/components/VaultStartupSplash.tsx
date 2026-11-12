@@ -18,7 +18,7 @@ export default function VaultStartupSplash() {
       className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090b] transition-opacity duration-200 motion-reduce:transition-none ${ready ? "pointer-events-none opacity-0" : "opacity-100"}`}
     >
       <Image
-        src="/images/vault-startup-final.png"
+        src="/images/anime_tracker_loading_screen-1.png"
         width={864}
         height={1536}
         alt=""

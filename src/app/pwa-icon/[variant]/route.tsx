@@ -17,10 +17,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ var
   const inset = maskable ? Math.round(size * 0.10) : 0;
   let imageData: string;
   try {
-    const bytes = await readFile(join(process.cwd(), "public", "icons", "vault-icon-final.png"));
+    const bytes = await readFile(join(process.cwd(), "public", "icons", "anime_tracker_app_icon.png"));
     imageData = "data:image/png;base64," + bytes.toString("base64");
   } catch {
-    const asset = await fetch(new URL("/icons/vault-icon-final.png", request.url));
+    const asset = await fetch(new URL("/icons/anime_tracker_app_icon.png", request.url));
     if (!asset.ok) return new Response("Icon unavailable", { status: 503 });
     imageData = "data:image/png;base64," + Buffer.from(await asset.arrayBuffer()).toString("base64");
   }
