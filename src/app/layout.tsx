@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import CopyToast from "@/components/CopyToast";
 import PwaRegister from "@/components/PwaRegister";
 import WallpaperBackground from "@/components/WallpaperBackground";
+import VaultStartupSplash from "@/components/VaultStartupSplash";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,10 +14,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/anime_tracker_app_icon.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/anime_tracker_app_icon.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [{ url: "/icons/anime_tracker_app_icon.png", sizes: "512x512", type: "image/png" }],
   },
   appleWebApp: { capable: true, title: "Vault", statusBarStyle: "black-translucent" },
   other: { "mobile-web-app-capable": "yes" },
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className="dark">
       <body className="relative min-h-screen bg-neutral-950 text-neutral-200 antialiased">
         <WallpaperBackground />
+        <VaultStartupSplash />
         <a href="#main-content" className="vault-skip">Skip to content</a>
         <UpdatesProvider>
         <Navbar />
