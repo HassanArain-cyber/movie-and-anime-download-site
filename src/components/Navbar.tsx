@@ -235,7 +235,7 @@ export default function Navbar() {
             {searchOpen && query.trim() && (
               <div
                 id="search-suggestions"
-                className="absolute left-0 top-full z-50 mt-2 w-[min(42rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50"
+                className="absolute left-0 top-full z-50 mt-2 w-[min(42rem,calc(100vw-2rem))] lg:left-1/2 lg:-translate-x-1/2 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50"
               >
                 {searchLoading ? (
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">Searching titles…</p>
