@@ -551,7 +551,7 @@ page.on("pageerror", (error) => errors.push(String(error)));
 await page.goto(`${base}/`, { waitUntil: "networkidle" });
 assert.equal(await page.getByTestId("brand-scroll-top").count(), 0, "brand icon must be removed");
 assert.equal(await page.getByRole("link", { name: "Gojo's Vault" }).count(), 0, "brand title must be removed");
-const introToggle = page.getByText("Show or hide Vault introduction");
+const introToggle = page.locator("summary").filter({ hasText: "Show or hide Vault introduction" });
 assert.equal(await page.locator(".vault-hero").isVisible(), false, "hero starts collapsed");
 await introToggle.click();
 assert.equal(await page.locator(".vault-hero").isVisible(), true, "chevron expands the original hero");
