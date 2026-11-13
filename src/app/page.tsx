@@ -94,12 +94,12 @@ export default async function Home({ searchParams }: HomeProps) {
   return (
     <div className="space-y-8">
       {!hasBrowseFilters ? (
-        <details className="group">
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-2 rounded-lg border border-purple-500/40 bg-neutral-900/80 px-3 py-2 text-sm text-purple-200 marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&::-webkit-details-marker]:hidden">
+        <details className="group -mx-4 sm:mx-0">
+          <summary className="flex h-8 w-7 cursor-pointer list-none items-center justify-center rounded-r-md border border-l-0 border-purple-500/40 bg-neutral-900/80 p-0 text-sm text-purple-200 marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 sm:rounded-md sm:border-l [&::-webkit-details-marker]:hidden">
             <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">&gt;</span>
             <span className="sr-only">Show or hide Vault introduction</span>
           </summary>
-          <section className="vault-hero mt-3">
+          <section className="vault-hero mx-4 mt-3 sm:mx-0">
           <div className="relative z-10 max-w-3xl">
             <span className="vault-badge"><span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" /> Your next obsession awaits</span>
             <h1 className="mt-6 text-4xl font-bold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
