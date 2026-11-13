@@ -122,7 +122,7 @@ export default async function Home({ searchParams }: HomeProps) {
                   <span className="vault-eyebrow">THE COLLECTION</span>
                   <span className="sr-only">Show or hide Vault introduction</span>
                 </summary>
-          <section className="vault-hero mt-3">
+          <section className="vault-hero mt-3 w-full">
           <div className="relative z-10 max-w-3xl">
             <span className="vault-badge"><span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" /> Your next obsession awaits</span>
             <h1 className="mt-6 text-4xl font-bold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
