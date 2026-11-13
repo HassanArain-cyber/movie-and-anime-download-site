@@ -184,7 +184,7 @@ export default function Navbar() {
       }`}
     >
       <div className="vault-nav mx-auto flex max-w-7xl flex-nowrap items-center gap-2 px-4 py-2 sm:px-6">
-        <nav className="hidden items-center gap-1 lg:flex">
+        <nav className={`${searchExpanded ? "hidden" : "hidden lg:flex"} items-center gap-1`}>
           {NAV_LINKS.map((link) => {
             const active =
               link.href === "/"
@@ -206,7 +206,7 @@ export default function Navbar() {
           })}
         </nav>
 
-        <form ref={searchRef} onSubmit={handleSearch} role="search" className={`relative min-w-0 ${searchExpanded ? "flex-1" : "w-[38px] shrink-0"} lg:ml-auto lg:max-w-xs`}>
+        <form ref={searchRef} onSubmit={handleSearch} role="search" className={`relative min-w-0 ${searchExpanded ? "flex-1" : "w-[38px] shrink-0"} ${searchExpanded ? "lg:max-w-none" : "lg:ml-auto lg:max-w-xs"}`}>
           <div className="relative">
             <div className={searchStyles.shell} data-open={searchExpanded} data-testid="public-search-shell">
               <button ref={searchToggle} type="button" aria-label="Open anime search" title="Search movies, anime, and series" aria-expanded={searchExpanded} aria-controls="public-search-field" onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)} className={searchStyles.toggle}>
@@ -292,7 +292,7 @@ export default function Navbar() {
           </div>
         </form>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className={`${searchExpanded ? "hidden" : "ml-auto flex"} shrink-0 items-center gap-2`}>
           <RequestContact />
           <NotificationBell />
 
@@ -301,7 +301,7 @@ export default function Navbar() {
           aria-label="Admin"
           className="vault-signin shrink-0 rounded-lg px-2 py-2 text-xs font-semibold text-white lg:ml-0"
         >
-          Ad
+          Admin
         </Link>
         </div>
       </div>
