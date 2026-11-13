@@ -93,13 +93,30 @@ export default async function Home({ searchParams }: HomeProps) {
 
   return (
     <div className="space-y-8">
-      {!hasBrowseFilters ? (
-        <details className="group -mx-4 sm:mx-0">
-          <summary className="flex h-5 w-4 cursor-pointer list-none items-center justify-center border-0 bg-transparent p-0 text-xs font-semibold text-purple-200 marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&::-webkit-details-marker]:hidden">
-            <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">&gt;</span>
-            <span className="sr-only">Show or hide Vault introduction</span>
-          </summary>
-          <section className="vault-hero mx-4 mt-3 sm:mx-0">
+      {hasBrowseFilters ? (
+        <section>
+          <h1 className="text-2xl font-bold text-white">
+            {q ? (
+              <>Search results for <span className="text-purple-400">&ldquo;{q}&rdquo;</span></>
+            ) : typeFilter ? (
+              typeFilter === "movie" ? "Movies" : typeFilter === "anime" ? "Anime" : "TV Series"
+            ) : categorySlug ? (
+              <>Category: <span className="text-purple-400">{cats.find(c => c.slug === categorySlug)?.name}</span></>
+            ) : (
+              "Browse"
+            )
+
+      <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {!hasBrowseFilters ? (
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-2 marker:hidden [&::-webkit-details-marker]:hidden">
+                  <span aria-hidden="true" className="shrink-0 text-xs font-semibold text-purple-200 transition-transform group-open:rotate-90">&gt;</span>
+                  <span className="vault-eyebrow">THE COLLECTION</span>
+                  <span className="sr-only">Show or hide Vault introduction</span>
+                </summary>
+          <section className="vault-hero mt-3">
           <div className="relative z-10 max-w-3xl">
             <span className="vault-badge"><span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" /> Your next obsession awaits</span>
             <h1 className="mt-6 text-4xl font-bold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
@@ -119,29 +136,10 @@ export default async function Home({ searchParams }: HomeProps) {
             </div>
           </div>
           </section>
-        </details>
-      ) : (
-        <section>
-          <h1 className="text-2xl font-bold text-white">
-            {q ? (
-              <>Search results for <span className="text-purple-400">&ldquo;{q}&rdquo;</span></>
-            ) : typeFilter ? (
-              typeFilter === "movie" ? "Movies" : typeFilter === "anime" ? "Anime" : "TV Series"
-            ) : categorySlug ? (
-              <>Category: <span className="text-purple-400">{cats.find(c => c.slug === categorySlug)?.name}</span></>
-            ) : (
-              "Browse"
-            )}
-          </h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            {items.length} {items.length === 1 ? "item" : "items"} found
-          </p>
-        </section>
-      )}
-
-      <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
-        <div className="flex items-end justify-between gap-3">
-          <div><p className="vault-eyebrow">THE COLLECTION</p><h2 className="mt-1 text-xl font-bold text-white sm:text-2xl">Find your next favorite</h2></div>
+              </details>
+            ) : <p className="vault-eyebrow">THE COLLECTION</p>}
+            <h2 className="mt-1 text-xl font-bold text-white sm:text-2xl">Find your next favorite</h2>
+          </div>
           <span className="shrink-0 text-xs text-neutral-400">{items.length} titles</span>
         </div>
         <CategoryFilter categories={cats} years={years} activeSlug={resolvedCategory?.slug} activeYear={yearFilter} activeSort={sortOption} baseQuery={{ q, type: typeFilter, year: yearFilter, sort: explicitSort }} />
