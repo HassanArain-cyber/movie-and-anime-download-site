@@ -70,7 +70,8 @@ export default function RequestContact() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="shrink-0 rounded-md border border-neutral-800 px-3 py-1.5 text-sm font-medium text-neutral-300 hover:border-neutral-700 hover:text-white"
+        aria-label="Request"
+        className="shrink-0 rounded-md border border-neutral-800 px-2 py-1.5 text-sm font-medium text-neutral-300 hover:border-neutral-700 hover:text-white"
       >
         Request
       </button>

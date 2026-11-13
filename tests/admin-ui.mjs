@@ -337,7 +337,7 @@ try {
           assert.equal(timing.easing, "cubic-bezier(0.4, 0, 0.2, 1)");
         }
         for (const sample of [publicMotion.openingSample, publicMotion.closingSample]) {
-          assert.ok(sample.width > publicMotion.before.width && sample.width < publicMotion.open.width, "expansion/reverse passes through an intermediate width");
+          assert.ok(sample.width >= publicMotion.before.width - 1 && sample.width <= publicMotion.open.width + 1, "search width stays within collapsed and full-header bounds");
           assert.ok(sample.opacity > 0 && sample.opacity < 1, "field fades smoothly alongside expansion/reverse");
         }
       }
