@@ -73,7 +73,7 @@ export default function RequestContact() {
         aria-label="Request"
         className="shrink-0 rounded-md border border-neutral-800 px-2 py-1.5 text-sm font-medium text-neutral-300 hover:border-neutral-700 hover:text-white"
       >
-        Req
+        Request
       </button>
       {open && createPortal(
         <div
