@@ -104,7 +104,13 @@ export default async function Home({ searchParams }: HomeProps) {
               <>Category: <span className="text-purple-400">{cats.find(c => c.slug === categorySlug)?.name}</span></>
             ) : (
               "Browse"
-            )
+            )}
+          </h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            {items.length} {items.length === 1 ? "item" : "items"} found
+          </p>
+        </section>
+      ) : null}
 
       <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
         <div className="flex items-end justify-between gap-3">
