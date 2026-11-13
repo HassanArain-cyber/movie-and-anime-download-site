@@ -95,7 +95,7 @@ export default async function Home({ searchParams }: HomeProps) {
     <div className="space-y-8">
       {!hasBrowseFilters ? (
         <details className="group -mx-4 sm:mx-0">
-          <summary className="flex h-8 w-7 cursor-pointer list-none items-center justify-center rounded-r-md border border-l-0 border-purple-500/40 bg-neutral-900/80 p-0 text-sm text-purple-200 marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 sm:rounded-md sm:border-l [&::-webkit-details-marker]:hidden">
+          <summary className="flex h-5 w-4 cursor-pointer list-none items-center justify-center border-0 bg-transparent p-0 text-xs font-semibold text-purple-200 marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&::-webkit-details-marker]:hidden">
             <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">&gt;</span>
             <span className="sr-only">Show or hide Vault introduction</span>
           </summary>
