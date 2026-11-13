@@ -235,7 +235,7 @@ export default function Navbar() {
             {searchOpen && query.trim() && (
               <div
                 id="search-suggestions"
-                className="absolute left-1/2 top-full z-50 mt-2 w-[min(42rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] -translate-x-1/2 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50"
+                className="absolute left-0 top-full z-50 mt-2 w-[min(42rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50"
               >
                 {searchLoading ? (
                   <p role="status" className="px-3 py-3 text-sm text-neutral-400">Searching titles…</p>
@@ -292,8 +292,9 @@ export default function Navbar() {
           </div>
         </form>
 
-        <RequestContact />
-        <NotificationBell />
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <RequestContact />
+          <NotificationBell />
 
         <Link
           href="/admin"
@@ -301,6 +302,7 @@ export default function Navbar() {
         >
           Admin
         </Link>
+        </div>
       </div>
 
       {/* Mobile nav */}
