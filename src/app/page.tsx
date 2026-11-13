@@ -113,8 +113,8 @@ export default async function Home({ searchParams }: HomeProps) {
       ) : null}
 
       <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1">
+        <div className="relative">
+          <div className="min-w-0 w-full">
             {!hasBrowseFilters ? (
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-2 marker:hidden [&::-webkit-details-marker]:hidden">
@@ -144,9 +144,9 @@ export default async function Home({ searchParams }: HomeProps) {
           </section>
               </details>
             ) : <p className="vault-eyebrow">THE COLLECTION</p>}
-            <h2 className="mt-1 text-xl font-bold text-white sm:text-2xl">Find your next favorite</h2>
+            <h2 className="mt-1 pr-16 text-xl font-bold text-white sm:text-2xl">Find your next favorite</h2>
           </div>
-          <span className="shrink-0 text-xs text-neutral-400">{items.length} titles</span>
+          <span className="absolute bottom-1 right-0 text-xs text-neutral-400">{items.length} titles</span>
         </div>
         <CategoryFilter categories={cats} years={years} activeSlug={resolvedCategory?.slug} activeYear={yearFilter} activeSort={sortOption} baseQuery={{ q, type: typeFilter, year: yearFilter, sort: explicitSort }} />
       </section>
