@@ -9,10 +9,11 @@ import MediaManager from "./MediaManager";
 import CategoryManager from "./CategoryManager";
 import AppearanceSettings from "./AppearanceSettings";
 import CopyLinkSettings from "./CopyLinkSettings";
+import DiscoverySourcesManager from "./DiscoverySourcesManager";
 import ContactRequestsManager from "./ContactRequestsManager";
 import CommentModerationManager from "./CommentModerationManager";
 
-type Tab = "recycle" | "links" | "bulk" | "media" | "categories" | "appearance" | "requests" | "moderation";
+type Tab = "recycle" | "links" | "bulk" | "media" | "categories" | "appearance" | "requests" | "moderation" | "discover";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [linksOpened, setLinksOpened] = useState(false);
@@ -64,7 +65,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div ref={navigation} role="navigation" aria-label="Admin sections" className={`${styles.navigation} flex gap-1 overflow-x-auto border-b border-neutral-800`}>
-        {(["media", "links", "bulk", "categories", "appearance", "requests", "moderation", "recycle"] as Tab[]).map((t) => (
+        {(["media", "links", "bulk", "categories", "appearance", "requests", "moderation", "discover", "recycle"] as Tab[]).map((t) => (
           <button
             key={t}
             disabled={bulkBusy}
@@ -76,7 +77,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 : "border-transparent text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            {t === "recycle" ? "Recycle Bin" : t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t}
+            {t === "recycle" ? "Recycle Bin" : t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t === "discover" ? "Discover sources" : t}
           </button>
         ))}
       </div>
@@ -84,7 +85,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div ref={panel} className="min-w-0">
       {linksOpened && <div hidden={tab !== "links"}><BulkEpisodeLinks onBusyChange={setBulkBusy} /></div>}
       {bulkOpened && <div hidden={tab !== "bulk"}><BulkAddEpisodes onBusyChange={setBulkBusy} /></div>}
-      {tab === "bulk" || tab === "links" ? null : tab === "recycle" ? <RecycleBin onBusyChange={setBulkBusy} /> : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <div className="space-y-6"><AppearanceSettings /><CopyLinkSettings /></div> : tab === "requests" ? <ContactRequestsManager onBusyChange={setBulkBusy} /> : <CommentModerationManager onBusyChange={setBulkBusy} />}
+      {tab === "bulk" || tab === "links" ? null : tab === "recycle" ? <RecycleBin onBusyChange={setBulkBusy} /> : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "discover" ? <DiscoverySourcesManager /> : tab === "categories" ? <CategoryManager /> : tab === "appearance" ? <div className="space-y-6"><AppearanceSettings /><CopyLinkSettings /></div> : tab === "requests" ? <ContactRequestsManager onBusyChange={setBulkBusy} /> : <CommentModerationManager onBusyChange={setBulkBusy} />}
       </div>
     </div>
   );
