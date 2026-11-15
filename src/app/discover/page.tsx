@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 type Anime = {
   id: number;
@@ -12,10 +12,10 @@ type Anime = {
   format: string | null;
 };
 
-async function getAnime(): Promise<Anime[]> {
-  const query = `query {
+async function getAnime(search: string): Promise<Anime[]> {
+  const query = `query ($search: String) {
     Page(page: 1, perPage: 30) {
-      media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+      media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, search: $search) {
         id title { english romaji } coverImage { large }
         episodes seasonYear siteUrl format
       }
@@ -25,7 +25,7 @@ async function getAnime(): Promise<Anime[]> {
     const response = await fetch("https://graphql.anilist.co", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, variables: { search: search || null } }),
       next: { revalidate: 3600 },
       signal: AbortSignal.timeout(8000),
     });
@@ -38,8 +38,10 @@ async function getAnime(): Promise<Anime[]> {
   }
 }
 
-export default async function DiscoverAnimePage() {
-  const anime = await getAnime();
+export default async function DiscoverAnimePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await searchParams;
+  const search = (q || "").trim().slice(0, 100);
+  const anime = await getAnime(search);
   return (
     <main className="space-y-6">
       <div>
@@ -50,6 +52,10 @@ export default async function DiscoverAnimePage() {
         </p>
         <p className="mt-1 text-xs text-neutral-500">Episode counts are metadata, not playable streams. Audio language and subtitles are not verified here.</p>
       </div>
+      <form action="/discover" method="get" role="search" className="flex gap-2">
+        <input name="q" type="search" defaultValue={search} placeholder="Search anime..." aria-label="Search anime" maxLength={100} className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-white" />
+        <button type="submit" className="rounded-lg bg-purple-600 px-4 py-3 font-medium text-white">Search</button>
+      </form>
       {anime.length === 0 ? (
         <p className="rounded-lg border border-neutral-800 p-5 text-sm text-neutral-400">
           Anime discovery is temporarily unavailable. Your Vault library still works normally.
@@ -57,8 +63,8 @@ export default async function DiscoverAnimePage() {
       ) : (
         <div className="vault-poster-grid vault-editorial-grid grid">
           {anime.map((item) => (
-            <a key={item.id} href={item.siteUrl} target="_blank" rel="noopener noreferrer"
-              className="vault-card group block min-w-0" aria-label={`View ${item.title.english || item.title.romaji} on AniList`}>
+            <Link key={item.id} href={`/discover/${item.id}`}
+              className="vault-card group block min-w-0" aria-label={`View ${item.title.english || item.title.romaji} in Vault`}>
               <div className="vault-card-poster relative aspect-[2/3] overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-white/10">
                 {item.coverImage.large ? (
                   // External AniList images are rendered without changing Next image allowlists.
@@ -73,7 +79,7 @@ export default async function DiscoverAnimePage() {
                   {[item.seasonYear, item.episodes ? `${item.episodes} episodes` : null].filter(Boolean).join(" · ")}
                 </p>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       )}
