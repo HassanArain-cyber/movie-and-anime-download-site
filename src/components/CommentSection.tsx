@@ -187,25 +187,20 @@ export default function CommentSection({ mediaId, episodeId, enabled }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
-            {episodeId === undefined ? "Community comments" : "Episode discussion"} <span className="ml-1 text-sm font-normal text-neutral-500">({count})</span>
+            Comments <span className="ml-1 text-sm font-normal text-neutral-500">({count})</span>
           </h2>
-          <p className="mt-1 text-xs text-neutral-500">{episodeId === undefined ? "Comments about this title" : "Comments for this episode only"}</p>
+
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="min-h-9 rounded-md border border-neutral-800 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-900 disabled:opacity-50">Refresh</button>
+
       </div>
 
-      <p className="text-xs leading-relaxed text-neutral-500">
-        Keep discussion respectful and on-topic. No harassment, spam, illegal links, or personal information. Mark spoilers and report concerns. You can reply to any comment or reply.
-      </p>
 
       {error && <p role="alert" className="rounded-md border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-300">{error}</p>}
       {notice && <p role="status" className="text-sm text-emerald-300">{notice}</p>}
 
       {loading ? (
         <p role="status" className="rounded-md border border-neutral-800 p-3 text-sm text-neutral-500">Loading comments…</p>
-      ) : items.length === 0 ? (
-        <p className="rounded-md border border-dashed border-neutral-800 p-3 text-center text-sm text-neutral-500">No comments yet. Start a respectful discussion.</p>
-      ) : (
+      ) : items.length === 0 ? null : (
         <div className="min-w-0 space-y-2">
           {tree.map((node) => <CommentNode key={node.id} node={node} actions={actions} />)}
         </div>
