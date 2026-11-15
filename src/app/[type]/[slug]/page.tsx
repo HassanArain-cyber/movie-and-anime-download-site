@@ -2,13 +2,14 @@ import { activeContent } from "@/lib/content-state";
 import { notFound } from "next/navigation";
 import PosterImage from "@/components/PosterImage";
 import Link from "next/link";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, ne, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { animeFollows, media } from "@/db/schema";
 import DownloadOptions from "@/components/DownloadOptions";
 import FollowButton from "@/components/FollowButton";
 import EpisodeList from "@/components/EpisodeList";
 import CommentSection from "@/components/CommentSection";
+import MediaCard from "@/components/MediaCard";
 import { getMediaDetails } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ export default async function DetailPage({ params }: PageProps) {
     const pgError = error as { code?: string; cause?: { code?: string } };
     if ((pgError.code || pgError.cause?.code) !== "42P01") throw error;
   }
+  const recommendations = await db.select().from(media).where(and(eq(media.type, item.type), ne(media.id, item.id), await activeContent("media", media.id))).orderBy(desc(media.createdAt)).limit(10);
   const typeLabel = item.type === "movie" ? "Movie" : item.type === "anime" ? "Anime" : "Series";
 
   return (
@@ -78,6 +80,18 @@ export default async function DetailPage({ params }: PageProps) {
       </div>}
 
       <CommentSection mediaId={item.id} enabled={item.commentsEnabled !== false} />
+      {recommendations.length > 0 && (
+        <section aria-label="Recommended titles" className="space-y-4 py-4">
+          <h2 className="border-l-4 border-violet-500 pl-3 text-xl font-bold text-white">Recommended {item.type === "movie" ? "Movies" : item.type === "anime" ? "Anime" : "Series"}</h2>
+          <div className="-mx-2 flex snap-x snap-mandatory gap-3 overflow-x-auto px-2 pb-3 [scrollbar-width:none] sm:gap-4">
+            {recommendations.map((recommended) => (
+              <div key={recommended.id} className="w-[44%] max-w-[210px] shrink-0 snap-start sm:w-[25%]">
+                <MediaCard item={recommended} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
