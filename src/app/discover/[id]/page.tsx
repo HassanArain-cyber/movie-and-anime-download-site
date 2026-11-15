@@ -42,6 +42,11 @@ export default async function AnimeDiscoveryDetail({ params }: { params: Promise
   }
   if (!anime) return <main className="space-y-4"><Link href="/discover" className="text-purple-300">← Back to Discover</Link><p className="text-neutral-400">Anime details temporarily unavailable.</p></main>;
   const title = anime.title.english || anime.title.romaji || "Anime";
+  // Only explicitly observed source URLs; never fabricate episode URLs.
+  const source = anime.id === 113415 ? {
+    series: "https://animesalt.cx/series/jujutsu-kaisen/",
+    episodes: [{ season: 1, episode: 1, title: "Ryomen Sukuna", url: "https://animesalt.cx/episode/jujutsu-kaisen-1x1/" }],
+  } : null;
   return <main className="space-y-6">
     <Link href="/discover" className="text-sm text-purple-300">← Back to Discover</Link>
     <div className="flex gap-5">
@@ -59,6 +64,19 @@ export default async function AnimeDiscoveryDetail({ params }: { params: Promise
     <section className="space-y-3">
       <h2 className="text-xl font-semibold text-white">Episodes & watching</h2>
       <p className="text-sm text-neutral-400">AniList episode totals are informational. Streaming links are only shown when supplied by the catalog; playback and language support depend on the provider.</p>
+      {source && (
+        <div className="space-y-3 rounded-xl border border-violet-500/30 bg-neutral-900/60 p-4">
+          <h3 className="font-semibold text-white">AnimeSalt · External source</h3>
+          <p className="text-xs text-neutral-400">Opens the original provider. Playback and download options are managed by AnimeSalt, not Vault.</p>
+          <a href={source.series} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg border border-violet-500/50 px-3 py-2 text-sm text-violet-200">View all seasons ↗</a>
+          {source.episodes.map((ep) => (
+            <div key={ep.url} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 p-3">
+              <span className="text-sm text-neutral-200">S{ep.season} E{ep.episode} · {ep.title}</span>
+              <a href={ep.url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Watch / Download at source ↗</a>
+            </div>
+          ))}
+        </div>
+      )}
       {anime.streamingEpisodes.length ? (
         <div className="space-y-2">
           {anime.streamingEpisodes.filter(ep => ep.url && /^https:\/\//i.test(ep.url)).map((ep, index) => (
