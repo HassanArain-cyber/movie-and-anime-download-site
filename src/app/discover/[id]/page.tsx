@@ -1,3 +1,7 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { siteSettings } from "@/db/schema";
+import type { SourceOverride } from "@/app/api/discovery-sources/route";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -41,7 +45,12 @@ export default async function AnimeDiscoveryDetail({ params }: { params: Promise
     // Keep discovery failures isolated from manual Vault content.
   }
   if (!anime) return <main className="space-y-4"><Link href="/discover" className="text-purple-300">← Back to Discover</Link><p className="text-neutral-400">Anime details temporarily unavailable.</p></main>;
-  const title = anime.title.english || anime.title.romaji || "Anime";
+  let override: SourceOverride | null = null;
+  try {
+    const [row] = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, "discovery_source_" + anime.id)).limit(1);
+    if (row) override = JSON.parse(row.value) as SourceOverride;
+  } catch { /* External source settings are optional. */ }
+  const title = override?.title || anime.title.english || anime.title.romaji || "Anime";
   // Only explicitly observed source URLs; never fabricate episode URLs.
   const source = anime.id === 113415 ? {
     series: "https://animesalt.cx/series/jujutsu-kaisen/",
@@ -50,9 +59,9 @@ export default async function AnimeDiscoveryDetail({ params }: { params: Promise
   return <main className="space-y-6">
     <Link href="/discover" className="text-sm text-purple-300">← Back to Discover</Link>
     <div className="flex gap-5">
-      {anime.coverImage.large && (
+      {(override?.posterUrl || anime.coverImage.large) && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={anime.coverImage.large} alt="" className="h-44 w-28 shrink-0 rounded-lg object-cover sm:h-64 sm:w-44" />
+        <img src={override?.posterUrl || anime.coverImage.large || ""} alt="" className="h-44 w-28 shrink-0 rounded-lg object-cover sm:h-64 sm:w-44" />
       )}
       <div className="space-y-3">
         <h1 className="text-2xl font-bold text-white">{title}</h1>
@@ -60,11 +69,23 @@ export default async function AnimeDiscoveryDetail({ params }: { params: Promise
         <p className="text-sm text-neutral-400">Audio and subtitle availability is not confirmed.</p>
       </div>
     </div>
-    {anime.description && <p className="whitespace-pre-line text-sm leading-7 text-neutral-300">{anime.description.replace(/<[^>]*>/g, "")}</p>}
+    {(override?.description || anime.description) && <p className="whitespace-pre-line text-sm leading-7 text-neutral-300">{(override?.description || anime.description || "").replace(/<[^>]*>/g, "")}</p>}
     <section className="space-y-3">
       <h2 className="text-xl font-semibold text-white">Episodes & watching</h2>
       <p className="text-sm text-neutral-400">AniList episode totals are informational. Streaming links are only shown when supplied by the catalog; playback and language support depend on the provider.</p>
-      {source && (
+      {override?.seriesUrl && <a href={override.seriesUrl} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg border border-violet-500 px-4 py-2 text-sm text-violet-200">View external source seasons ↗</a>}
+      {!!override?.episodes?.length && (
+        <div className="space-y-3">
+          <h3 className="font-semibold text-white">External episode links</h3>
+          {override.episodes.filter(ep => /^https:\/\//i.test(ep.url)).sort((a,b) => a.season-b.season || a.episode-b.episode).map((ep,index) => (
+            <div key={index} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 p-3">
+              <span className="text-sm text-neutral-200">S{ep.season} E{ep.episode} · {ep.title || "Episode"} · {ep.provider}</span>
+              <a href={ep.url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-violet-600 px-3 py-2 text-sm text-white">Watch / Download at source ↗</a>
+            </div>
+          ))}
+        </div>
+      )}
+      {source && !override?.episodes?.length && !override?.seriesUrl && (
         <div className="space-y-3 rounded-xl border border-violet-500/30 bg-neutral-900/60 p-4">
           <h3 className="font-semibold text-white">AnimeSalt · External source</h3>
           <p className="text-xs text-neutral-400">Opens the original provider. Playback and download options are managed by AnimeSalt, not Vault.</p>
