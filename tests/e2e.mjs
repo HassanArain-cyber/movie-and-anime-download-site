@@ -804,13 +804,14 @@ await page.getByRole("heading", { name: /Search results for/ }).waitFor();
 // within desktop and narrow mobile viewports for title and episode discussions.
 await page.goto(`${base}/movie/${movie.slug}`);
 const titleCommentPanel = page.locator('[aria-label="Title comments"]');
-await titleCommentPanel.getByRole("heading", { name: /Community comments/ }).waitFor();
+await titleCommentPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).waitFor();
 const desktopCommentBounds = await titleCommentPanel.boundingBox();
 assert.ok(desktopCommentBounds && desktopCommentBounds.x >= 0 && desktopCommentBounds.x + desktopCommentBounds.width <= 1280, "desktop title comments should fit the viewport");
 await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).click();
 await titleCommentPanel.getByText("The final scene reveals the hidden truth.", { exact: true }).waitFor();
-await page.getByRole("textbox", { name: "Write a comment" }).fill(`Browser comment ${run}`);
+await titleCommentPanel.getByRole("button", { name: "Add a comment" }).click();
+await titleCommentPanel.getByRole("textbox", { name: "Write a comment" }).fill(`Browser comment ${run}`);
 await page.getByRole("button", { name: "Post comment" }).click();
 await titleCommentPanel.getByRole("status").getByText("Comment posted.").waitFor();
 await titleCommentPanel.getByText(`Browser comment ${run}`, { exact: true }).waitFor();
@@ -827,7 +828,7 @@ await page.goto(`${base}/anime/${anime.slug}`);
 const targetEpisodeRow = page.locator(`#episode-${ep1.id}`);
 await targetEpisodeRow.locator("button[aria-expanded]").click();
 const episodeCommentPanel = page.locator('[aria-label="Episode comments"]');
-await episodeCommentPanel.getByRole("heading", { name: /Episode discussion/ }).waitFor();
+await episodeCommentPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await episodeCommentPanel.getByText("This episode has great pacing.", { exact: true }).waitFor();
 const mobileEpisodeCommentBounds = await episodeCommentPanel.boundingBox();
 assert.ok(mobileEpisodeCommentBounds && mobileEpisodeCommentBounds.x >= 0 && mobileEpisodeCommentBounds.x + mobileEpisodeCommentBounds.width <= 390, "mobile episode discussion should stay inside the viewport");
@@ -847,7 +848,7 @@ await pool.query(
 // inline reply composer on every node and indentation capped for narrow screens.
 await page.goto(`${base}/movie/${nestedMedia.slug}`);
 const nestedPanel = page.locator('[aria-label="Title comments"]');
-await nestedPanel.getByRole("heading", { name: /Community comments/ }).waitFor();
+await nestedPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await nestedPanel.locator(`[data-comment-id="${deepestId}"]`).waitFor();
 assert.equal(await nestedPanel.locator('[data-testid="comment-node"]').count(), deepChain.length + 1, "the seeded previous-year comment is rendered too");
 const nestedDepths = await nestedPanel.locator('[data-testid="comment-node"]').evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute("data-depth"))));
