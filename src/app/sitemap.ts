@@ -14,7 +14,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: BASE + "/movies", changeFrequency: "weekly", priority: 0.7 },
     { url: BASE + "/anime", changeFrequency: "weekly", priority: 0.7 },
     { url: BASE + "/series", changeFrequency: "weekly", priority: 0.7 },
-    { url: BASE + "/request", changeFrequency: "monthly", priority: 0.3 },
   ];
   const entries = await db.select({
     type: media.type, slug: media.slug, updatedAt: media.updatedAt, createdAt: media.createdAt,
