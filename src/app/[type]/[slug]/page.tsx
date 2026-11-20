@@ -75,7 +75,7 @@ export default async function DetailPage({ params }: PageProps) {
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Complete season downloads</h3>
             <DownloadOptions links={season.downloadLinks} copyWebsite={item.copyWebsite} />
           </div>}
-          <EpisodeList mediaId={item.id} episodes={season.episodes} copyWebsite={item.copyWebsite} />
+          <EpisodeList mediaId={item.id} episodes={season.episodes} copyWebsite={item.copyWebsite} mediaTitle={item.title} mediaSlug={item.slug} mediaType={item.type === "anime" ? "anime" : "series"} />
           </div>
         </details>)}
       </div>}
