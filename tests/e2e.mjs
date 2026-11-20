@@ -673,13 +673,20 @@ const activeLibraryFilters = page.locator('#library [aria-label="Library filters
 await activeLibraryFilters.waitFor({ state: "visible", timeout: 15000 });
 const libraryFilterBounds = await activeLibraryFilters.boundingBox();
 assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
-// The type dropdown must retain compatible filters; reset clears the entire query.
-await chooseFilter(page.getByRole("combobox", { name: "Filter by content type" }), "movie");
-await page.waitForURL((url) => url.searchParams.get("type") === "movie" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-active"), "true");
+// Main content types now live in the side drawer, never in a duplicate filter.
+assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).count(), 0);
+assert.equal(await page.locator('#library [aria-label="Library filters"]').last().getByRole("combobox").count(), 3, "only tag, year and sort filters remain");
+await page.getByRole("button", { name: "Open navigation menu" }).click();
+const mobileDrawer = page.getByRole("navigation", { name: "Site navigation" });
+await mobileDrawer.locator('a[href="/movie"]').click();
+await page.waitForURL((url) => url.pathname === "/movie");
+await page.getByRole("heading", { name: "Movies", exact: true }).waitFor();
+assert.equal(await page.getByRole("navigation", { name: "Site navigation" }).count(), 0, "drawer closes after navigation");
+await chooseFilter(page.getByRole("combobox", { name: "Sort library" }), "az");
+await page.waitForURL((url) => url.pathname === "/movie" && url.searchParams.get("sort") === "az");
 await page.getByRole("button", { name: "Reset filters" }).click();
 await page.waitForURL((url) => url.pathname === "/" && url.search === "");
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-value"), "");
+assert.equal(await page.getByRole("combobox", { name: "Sort library" }).getAttribute("data-value"), "newest");
 for (let index = 0; index < 20; index++) ok(await api("/api/categories", { method: "POST", body: { name: `Menu category ${run} ${index}`, slug: `menu-${run}-${index}` } }), 201);
 await page.reload({ waitUntil: "networkidle" });
 for (const width of [360, 390, 768, 1280]) {
@@ -693,7 +700,8 @@ for (const width of [360, 390, 768, 1280]) {
     return { heroHeight: hero.getBoundingClientRect().height, filterHeights: selects.map((rect) => rect.height), filterTops: selects.map((rect) => rect.top), actionHeights: actions.map((rect) => rect.height) };
   });
   assert.ok(compactLayout.filterHeights.every((height) => height <= 38), 'filter controls should stay compact');
-  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the four filters should fit on one row');
+  assert.equal(compactLayout.filterTops.length, 3, "content types appear only in the side drawer");
+  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the three catalog filters should fit on one row');
   if (width <= 390) {
     assert.ok(compactLayout.heroHeight <= 410, `hero should be compact at ${width}px`);
     assert.ok(compactLayout.actionHeights.every((height) => height >= 44), 'hero actions should retain usable tap targets');
@@ -1220,6 +1228,11 @@ assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection rema
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 await page.goto(`${base}/movie/${movie.slug}`);
 for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
+const detailBounds = await page.locator(".vault-detail").boundingBox();
+const downloadBounds = await page.locator('[aria-label="Available downloads"]').boundingBox();
+assert.ok(detailBounds && downloadBounds, "movie page has its detail and download sections");
+assert.ok(downloadBounds.width >= detailBounds.width - 2, "download panel must use the full content width, not the narrow poster-side column");
+assert.ok(downloadBounds.y >= detailBounds.y + detailBounds.height - 2, "downloads appear below the poster and synopsis");
 // Dedicated bulk creation: validation, duplicate numbers, partial failure/retry, and real multi-file R2 upload.
 const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
 const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);
