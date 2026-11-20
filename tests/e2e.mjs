@@ -1015,6 +1015,21 @@ assert.ok(mobileDeepestBounds && mobileDeepestBounds.x >= 0 && mobileDeepestBoun
 await page.setViewportSize({ width: 1280, height: 900 });
 
 await page.goto(`${base}/admin`);
+await page.getByRole("button", { name: "Release Calendar", exact: true }).click();
+const calendarEditor = page.locator("#calendar-admin-editor");
+await calendarEditor.getByLabel("Anime / release title").fill("UI Calendar Fixture");
+await calendarEditor.getByLabel("Date and time (your device local time)").fill("2027-02-14T19:00");
+await calendarEditor.getByLabel("Episode number").fill("5");
+await calendarEditor.getByRole("button", { name: "Add to calendar" }).click();
+await page.getByText("Release added to calendar.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+await calendarEditor.getByLabel("Episode number").fill("6");
+await calendarEditor.getByRole("button", { name: "Save changes" }).click();
+await page.getByText("Release updated.", { exact: true }).waitFor();
+page.once("dialog", (dialog) => dialog.accept());
+await page.getByRole("button", { name: "Delete calendar release UI Calendar Fixture" }).click();
+await page.getByText("Release deleted.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "media", exact: true }).click();
 await page.getByRole("button", { name: "Request" }).click();
 await page.getByRole("dialog", { name: "Send a request" }).waitFor();
 const desktopModalLayout = await page.getByRole("dialog").evaluate((dialog) => {
