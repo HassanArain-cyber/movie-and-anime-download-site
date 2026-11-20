@@ -1238,7 +1238,7 @@ for (const episode of browserEpisodes.filter((item) => item.episode_number > 1))
 }
 await page.goto(`${base}/anime/browser-anime-${run}`);
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
-await page.getByText("Episode 1", { exact: true }).click();
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).click();
 await page.locator('a[title="Cloudflare R2"]').first().waitFor();
 await page.getByRole("button", { name: "Open navigation menu" }).click();
 await page.getByRole("navigation", { name: "Site navigation" }).getByRole("link", { name: "Anime & Movies" }).waitFor();
@@ -1250,7 +1250,7 @@ await page.goto(`${base}/`);
 await page.getByRole("heading", { name: "Continue Watching" }).waitFor();
 await page.getByRole("link", { name: /Return to Browser Anime .* episode 1/ }).waitFor();
 await page.goto(`${base}/anime/browser-anime-${run}`);
-await page.getByText("Episode 1", { exact: true }).click();
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).click();
 
 await page.getByRole("heading", { name: "720p", exact: true }).waitFor();
 await page.getByRole("heading", { name: "1080p", exact: true }).waitFor();
