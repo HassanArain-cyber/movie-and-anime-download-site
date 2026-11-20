@@ -1,18 +1,27 @@
 # Vault experience upgrades
 
-This branch introduces an initial set of UI upgrades without changing the database or existing Follow/Watching/Completed workflows.
+This pull request refines the existing public experience **without altering production data or database migrations**.
 
-- Download options show actual available quality groups, file size (when stored), source labels and open/copy behavior. No file sizes or servers are invented.
-- App-router loading skeleton shows poster placeholders while a route loads.
+## Implemented in this branch
 
-## Still to implement and verify
+- **Download chooser:** responsive deep-violet download/copy buttons, quality shortcuts, distinct real source rows, stored file sizes (when known), safe unavailable-link state. The original per-link open/copy choice, R2 handling, 5-second copy confirmation and existing links remain intact.
+- **Right-hand navigation:** compact 3-line menu on desktop and mobile; category links, Following and Calendar are moved out of the crowded header. Escape, outside click and route changes dismiss the menu.
+- **Continue Watching shortcuts:** automatically remembers the last opened episode per series/anime in this browser, now showing the real media poster when available and a Remove control. This tracks opened episodes, **not actual watched minutes**; no fake percentage or playback data.
+- **Skeleton loading:** app-router loading placeholders keep the library layout stable.
+- **Advanced library browse:** existing title/episode search, type, category/tag, release-year and sort filters retained.
+- **Release Calendar:** published-episode history displayed by actual publication date (UTC); it does not invent upcoming broadcast schedules.
+- **Recommendations & Watchlist:** existing related titles by content type/category and Following/Watching/Completed workflows retained, without duplicating the watchlist.
 
-- Continue Watching requires a reliable episode progress signal. Follow/Watching/Completed status alone is not playback progress.
-- Advanced search already has type, category, year and sort filters. Genre/language filtering requires suitable stored metadata.
-- Release Calendar requires trustworthy episode release dates and timezone handling; existing episode rows do not expose a scheduled release field.
-- Smart recommendations currently have related-title cards. Personalization requires explicit user preference/history data and privacy considerations.
-- Watchlist is already covered by Following and watch statuses; do not duplicate it.
+## Requires additional data or product support
+
+- Separate video/audio tabs cannot safely classify all links without stored media-type metadata.
+- Genre/language filters need admin-managed, queryable genre/language fields; current categories can already act as tags.
+- Actual playback progress bars require a player/progress event source. Download-only links do not report watch duration.
+- Future episode countdown/calendar dates need admin-provided scheduled release timestamps, not publication dates.
+- Personalized recommendations require an explicit history/preference signal; current related-title recommendations use available catalog metadata.
 
 ## Verification
 
-CI and preview/browser checks must pass before merge. No production deployment is implied by opening this PR.
+- Existing end-to-end tests cover distinct download qualities, R2 links, bulk download handling and phone widths.
+- This branch adds E2E checks for the navigation drawer and last-opened episode shortcuts.
+- CI, Preview and browser validation are required before merge. **Do not merge without owner approval**.
