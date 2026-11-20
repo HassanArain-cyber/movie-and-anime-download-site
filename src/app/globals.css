@@ -156,3 +156,23 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; width: 100%; max-width: 100%; min-width: 0; }
 .vault-filters > label { flex: 0 1 8rem; min-width: 0; max-width: 100%; }
 @media (max-width: 480px) { .vault-filters > label { flex: 1 1 calc(50% - .4rem); } .vault-filters .vault-filter-reset { flex: 1 1 100%; } }
+
+/* Preserve four compact library filters in a single row on narrow screens.
+   Existing flex-wrap rules apply on tablets and desktop. */
+@media (max-width: 639px) {
+  .vault-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, .85fr) minmax(0, 1fr);
+    gap: .3rem;
+    align-items: start;
+  }
+  .vault-filters > .vault-select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 36px;
+    padding: .35rem .35rem;
+    font-size: .6875rem;
+  }
+  .vault-filters > .vault-filter-reset { grid-column: 1 / -1; justify-self: start; }
+}
