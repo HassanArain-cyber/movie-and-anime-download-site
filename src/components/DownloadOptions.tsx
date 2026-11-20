@@ -29,13 +29,13 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
               {versions.map((link) => (
                 <div key={link.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
                   <div className="min-w-0 space-y-1">
-                    <p className="truncate text-xs font-medium text-neutral-200">{link.label?.trim() || (link.storageProvider === "r2" ? "Vault download" : "Download source")}</p>
+                    <p className="truncate text-xs font-medium text-neutral-200">{link.storageProvider === "r2" ? "Vault storage" : link.storageProvider === "telegram" ? "Telegram" : "External source"}</p>
                     <p className="text-[11px] text-neutral-400">
                       {link.fileSize?.trim() || (link.sizeBytes != null && link.sizeBytes > 0 ? `${(link.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : "Size unavailable")}
                       <span className="mx-1.5 text-neutral-600">·</span>{link.linkBehavior === "copy" ? "Copy link" : "Open link"}
                     </p>
                   </div>
-                  <DownloadButton link={link} copyWebsite={copyWebsite} />
+                  <DownloadButton link={link} copyWebsite={copyWebsite} compact />
                 </div>
               ))}
             </div>
