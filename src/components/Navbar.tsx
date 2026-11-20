@@ -46,7 +46,6 @@ export default function Navbar() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
