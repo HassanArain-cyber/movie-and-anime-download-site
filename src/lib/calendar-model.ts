@@ -1,5 +1,5 @@
 export type CalendarKind = "episode" | "new-series" | "movie" | "special";
-export type CalendarSource = "anilist" | "manual" | "vault";
+export type CalendarSource = "anilist" | "jikan" | "manual" | "vault";
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -18,7 +18,7 @@ export type CalendarResponse = {
   year: number;
   month: number;
   events: CalendarEvent[];
-  anilistStatus: "ok" | "unavailable" | "partial" | "disabled";
+  anilistStatus: "ok" | "unavailable" | "partial" | "fallback" | "disabled";
   updatedAt: string;
   timeZone: string;
 };
