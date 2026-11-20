@@ -38,6 +38,7 @@ function ReleaseRow({ release }: { release: CalendarEvent }) {
           {release.episode ? "Episode " + release.episode : release.source === "jikan" ? "Weekly broadcast" : kind.label}
           {release.totalEpisodes ? " · " + release.totalEpisodes + " total eps" : ""}
         </p>
+        {release.source === "anilist" && typeof release.airedEpisodes === "number" && <p className="mt-1 text-[11px] font-medium text-emerald-300">~{release.airedEpisodes} episodes aired (estimate)</p>}
         <p className="mt-1 text-[11px] text-slate-400">{displayDate.format(new Date(release.airingAt))} PKT</p>
         {release.notes && <p className="mt-1 line-clamp-2 text-[10px] leading-normal text-slate-400">{release.notes}</p>}
         <p className="mt-1 text-[10px] font-medium text-slate-500">
