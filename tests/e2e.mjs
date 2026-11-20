@@ -191,7 +191,8 @@ const calendarId = createdCalendar.entries.find((entry) => entry.title === calen
 assert.ok(calendarId, "calendar entry must be saved with a unique id");
 const publicCalendar = ok(await api("/api/calendar?year=2027&month=2", { auth: false }));
 assert.equal(publicCalendar.anilistStatus, "disabled", "disposable tests never fetch external AniList/Jikan providers");
-assert.equal(publicCalendar.events.find((event) => event.id === "manual:" + calendarId)?.episode, 6, "manual future episode is visible publicly. Public: " + JSON.stringify(publicCalendar.events) + "; stored: " + JSON.stringify(ok(await api("/api/admin/calendar")).entries));
+assert.equal(ok(await api("/api/admin/calendar")).entries.some((entry) => entry.id === calendarId), true, "saved admin event persists in site settings");
+assert.equal(publicCalendar.events.find((event) => event.id === "manual:" + calendarId)?.episode, 6, "manual future episode is visible publicly");
 const updatedCalendar = ok(await api("/api/admin/calendar", { method: "PATCH", body: { ...calendarTestRelease, id: calendarId, title: "Edited Calendar Fixture", episode: 7 } }));
 assert.equal(updatedCalendar.entries.find((entry) => entry.id === calendarId)?.episode, 7, "editing a saved release is persistent");
 assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.find((event) => event.id === "manual:" + calendarId)?.title, "Edited Calendar Fixture");
