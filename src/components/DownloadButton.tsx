@@ -6,7 +6,7 @@ import { getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisp
 import { copyThenConfirm } from "@/lib/copy-link";
 import { copyOutcomeEffects, showCopyToast } from "@/lib/copy-toast";
 
-export default function DownloadButton({ link, copyWebsite }: { link: DownloadLink; copyWebsite?: string | null }) {
+export default function DownloadButton({ link, copyWebsite, compact = false }: { link: DownloadLink; copyWebsite?: string | null; compact?: boolean }) {
   const href = getLinkHref(link);
   const provider = getLinkProvider(link);
   const stored = provider === "r2" || provider === "local";
@@ -30,11 +30,11 @@ export default function DownloadButton({ link, copyWebsite }: { link: DownloadLi
     <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
     </svg>
-    <span className="min-w-0 [overflow-wrap:anywhere]">{link.label || "Download"}</span>
-    {quality && <span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] uppercase">{qualityDisplay(quality)}</span>}
-    {link.fileSize && <span className="min-w-0 text-xs text-neutral-400 [overflow-wrap:anywhere]">({link.fileSize})</span>}
-    {provider === "telegram" && <span className="text-[10px] uppercase text-neutral-400">Telegram</span>}
-    {copy && <span className="text-[10px] uppercase text-neutral-400">Copy</span>}
+    <span className="min-w-0 [overflow-wrap:anywhere]">{compact ? "Download" : (link.label || "Download")}</span>
+    {!compact && quality && <span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] uppercase">{qualityDisplay(quality)}</span>}
+    {!compact && link.fileSize && <span className="min-w-0 text-xs text-neutral-400 [overflow-wrap:anywhere]">({link.fileSize})</span>}
+    {!compact && provider === "telegram" && <span className="text-[10px] uppercase text-neutral-400">Telegram</span>}
+    {!compact && copy && <span className="text-[10px] uppercase text-neutral-400">Copy</span>}
   </>;
 
   if (!copy) {
