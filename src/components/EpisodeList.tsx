@@ -37,7 +37,7 @@ function choiceLabel(choice: BulkQualityChoice): string {
   return qualityDisplay(choice);
 }
 
-export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle, mediaSlug, mediaType }: { episodes: EpisodeWithLinks[]; mediaId: number; copyWebsite?: string | null; mediaTitle?: string; mediaSlug?: string; mediaType?: "anime" | "series" }) {
+export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle, mediaSlug, mediaType, posterUrl }: { episodes: EpisodeWithLinks[]; mediaId: number; copyWebsite?: string | null; mediaTitle?: string; mediaSlug?: string; mediaType?: "anime" | "series"; posterUrl?: string | null }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [bulkQuality, setBulkQuality] = useState<BulkQualityChoice>("best");
@@ -242,7 +242,7 @@ export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle
                     className="h-4 w-4 accent-violet-500"
                   />
                 </label>
-                <button type="button" onClick={() => setOpenId(open ? null : ep.id)} aria-expanded={open} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-1 text-left hover:bg-neutral-900 sm:px-2">
+                <button type="button" onClick={() => { setOpenId(open ? null : ep.id); if (!open && mediaSlug && mediaTitle && mediaType) saveContinueEpisode({ mediaId, title: mediaTitle, href: `/${mediaType}/${mediaSlug}#episode-${ep.id}`, episodeNumber: ep.episodeNumber, posterUrl }); }} aria-expanded={open} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-1 text-left hover:bg-neutral-900 sm:px-2">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-800 text-xs font-semibold text-neutral-300">{ep.episodeNumber}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-white">{ep.title || `Episode ${ep.episodeNumber}`}</p>
@@ -255,7 +255,7 @@ export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle
               {open && <div className="space-y-3 border-t border-neutral-800 bg-neutral-950 px-3 py-3 sm:px-4">
                 {!ep.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links for this episode.</p>}
                 {!!ep.downloadLinks?.length && <DownloadOptions links={ep.downloadLinks} copyWebsite={copyWebsite} />}
-                {mediaSlug && mediaTitle && mediaType && <button type="button" onClick={() => saveContinueEpisode({ mediaId, title: mediaTitle, href: `/${mediaType}/${mediaSlug}#episode-${ep.id}`, episodeNumber: ep.episodeNumber })} className="rounded-lg border border-violet-500/50 bg-violet-600/15 px-3 py-2 text-xs font-medium text-purple-200 hover:bg-violet-600/30">Save as current episode</button>}
+                
                 <CommentSection mediaId={mediaId} episodeId={ep.id} enabled={ep.commentsEnabled !== false} />
               </div>}
             </div>
