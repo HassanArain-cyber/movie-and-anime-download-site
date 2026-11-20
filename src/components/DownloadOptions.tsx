@@ -23,10 +23,21 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
           <section key={key} className="min-w-0 max-w-full rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-white">{key === "unspecified" ? qualityDisplay(null) : qualityDisplay(key)}</h3>
-              <span className="text-xs text-neutral-500">{versions.length} {versions.length === 1 ? "version" : "versions"}</span>
+              <span className="text-xs text-neutral-400">{versions.length} {versions.length === 1 ? "source" : "sources"}</span>
             </div>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              {versions.map((link) => <DownloadButton key={link.id} link={link} copyWebsite={copyWebsite} />)}
+            <div className="grid gap-2">
+              {versions.map((link) => (
+                <div key={link.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
+                  <div className="min-w-0 space-y-1">
+                    <p className="truncate text-xs font-medium text-neutral-200">{link.label?.trim() || (link.storageProvider === "r2" ? "Vault download" : "Download source")}</p>
+                    <p className="text-[11px] text-neutral-400">
+                      {link.fileSize?.trim() || (link.sizeBytes != null && link.sizeBytes > 0 ? `${(link.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : "Size unavailable")}
+                      <span className="mx-1.5 text-neutral-600">·</span>{link.linkBehavior === "copy" ? "Copy link" : "Open link"}
+                    </p>
+                  </div>
+                  <DownloadButton link={link} copyWebsite={copyWebsite} />
+                </div>
+              ))}
             </div>
           </section>
         );
