@@ -53,13 +53,20 @@ export default async function DetailPage({ params }: PageProps) {
           </div>
           <FollowButton mediaId={item.id} mediaType={item.type} followerCount={followerCount} />
           {item.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-300">{item.description}</p>}
-          {(item.downloadLinks?.length || 0) > 0 && <div className="space-y-3 pt-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{item.type === "movie" ? "Available downloads · choose a quality" : "Additional links"}</h2>
-            <DownloadOptions links={item.downloadLinks!} copyWebsite={item.copyWebsite} />
-          </div>}
-          {item.type === "movie" && !item.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links available yet.</p>}
+
         </div>
       </div>
+
+      {(item.downloadLinks?.length || 0) > 0 && (
+        <section id="downloads" aria-label="Available downloads" className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold tracking-tight text-white sm:text-xl">{item.type === "movie" ? "Available downloads" : "Additional downloads"}</h2>
+            <p className="text-xs text-neutral-400">Choose a quality and source</p>
+          </div>
+          <DownloadOptions links={item.downloadLinks!} copyWebsite={item.copyWebsite} />
+        </section>
+      )}
+      {item.type === "movie" && !item.downloadLinks?.length && <p className="rounded-xl border border-white/10 bg-neutral-900/50 px-4 py-3 text-sm text-neutral-400">No download links available yet.</p>}
 
       {item.type !== "movie" && <div className="space-y-4">
         <div><p className="vault-eyebrow">KEEP EXPLORING</p><h2 className="mt-1 text-xl font-bold text-white">Seasons &amp; episodes</h2></div>
