@@ -18,7 +18,7 @@ function optionalLink(value: unknown): string | null {
   throw new ApiError(400, "Link must be a public HTTPS URL or a Vault title URL");
 }
 
-export function validateCalendarEntry(body: Record<string, unknown>, id = randomUUID()): ManualCalendarEntry {
+export function validateCalendarEntry(body: Record<string, unknown>, id: string = randomUUID()): ManualCalendarEntry {
   const title = text(body.title, "Anime title", 160, true)!;
   const kind = body.kind;
   if (!["episode", "new-series", "movie", "special"].includes(String(kind))) {
