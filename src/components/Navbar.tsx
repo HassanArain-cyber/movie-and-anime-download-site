@@ -202,7 +202,7 @@ export default function Navbar() {
           : "border-transparent bg-black/40"
       }`}
     >
-      <div className="vault-nav mx-auto flex max-w-7xl flex-nowrap items-center gap-2 px-4 py-2 sm:px-6">
+      <div className="vault-nav mx-auto flex min-h-14 max-w-7xl flex-nowrap items-center gap-2 px-4 py-2 sm:px-6">
         <form ref={searchRef} onSubmit={handleSearch} role="search" className={`relative min-w-0 ${searchExpanded ? "flex-1" : "w-[38px] shrink-0"} ${searchExpanded ? "lg:max-w-none" : "lg:ml-auto lg:max-w-xs"}`}>
           <div className="relative">
             <div className={searchStyles.shell} data-open={searchExpanded} data-testid="public-search-shell">
