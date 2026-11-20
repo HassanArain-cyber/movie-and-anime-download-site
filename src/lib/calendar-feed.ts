@@ -14,6 +14,8 @@ type AnilistSchedule = {
     id: number;
     isAdult: boolean;
     episodes: number | null;
+    status: string | null;
+    nextAiringEpisode: { episode: number; airingAt: number } | null;
     siteUrl: string | null;
     title: { english: string | null; romaji: string | null };
     coverImage: { large: string | null };
@@ -25,7 +27,7 @@ const QUERY = `query VaultCalendar($start: Int, $end: Int, $page: Int) {
     pageInfo { hasNextPage }
     airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME) {
       id episode airingAt
-      media { id isAdult episodes siteUrl title { english romaji } coverImage { large } }
+      media { id isAdult episodes status nextAiringEpisode { episode airingAt } siteUrl title { english romaji } coverImage { large } }
     }
   }
 }`;
@@ -64,6 +66,10 @@ async function fetchAniList(year: number, month: number): Promise<FeedResult> {
       const key = String(anime.id) + ":" + String(slot.episode);
       if (seen.has(key)) continue;
       seen.add(key);
+      const next = anime.nextAiringEpisode;
+      const aired = next && Number.isInteger(next.episode) && next.airingAt * 1000 > Date.now()
+        ? Math.max(0, next.episode - 1)
+        : anime.status === "FINISHED" && Number.isInteger(anime.episodes) ? anime.episodes : null;
       events.push({
         id: "anilist:" + String(slot.id),
         title,
@@ -71,6 +77,7 @@ async function fetchAniList(year: number, month: number): Promise<FeedResult> {
         airingAt: new Date(slot.airingAt * 1000).toISOString(),
         episode: slot.episode,
         totalEpisodes: Number.isInteger(anime.episodes) && Number(anime.episodes) > 0 ? anime.episodes : null,
+        airedEpisodes: aired,
         posterUrl: safePublicUrl(anime.coverImage?.large),
         url: safePublicUrl(anime.siteUrl) ?? "https://anilist.co/anime/" + anime.id,
         source: "anilist",
