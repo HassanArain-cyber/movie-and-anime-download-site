@@ -14,7 +14,7 @@ export type CalendarEvent = {
   notes: string | null;
   anilistId: number | null;
 };
-export type ManualCalendarEntry = Omit<CalendarEvent, "totalEpisodes" | "source">;
+export type ManualCalendarEntry = Omit<CalendarEvent, "totalEpisodes" | "airedEpisodes" | "source">;
 export type CalendarResponse = {
   year: number;
   month: number;
