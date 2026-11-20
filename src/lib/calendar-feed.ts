@@ -106,7 +106,7 @@ const DAYS = ["sundays", "mondays", "tuesdays", "wednesdays", "thursdays", "frid
 /** MAL's Jikan API provides weekly broadcast slots, NOT reliable next episode numbers.
  * The fallback is visibly labelled as a weekly schedule rather than a confirmed episode.
  */
-async function fetchJikanFallback(year: number, month: number): Promise<FeedResult> {
+async function fetchJikanFallback(): Promise<FeedResult> {
   const list: JikanAnime[] = [];
   for (let page = 1; page <= 4; page++) {
     const response = await fetch("https://api.jikan.moe/v4/schedules?page=" + page + "&limit=25", {
@@ -121,21 +121,29 @@ async function fetchJikanFallback(year: number, month: number): Promise<FeedResu
     if (!data.pagination?.has_next_page) break;
   }
   const events: CalendarEvent[] = [];
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  // MAL's weekly grid describes CURRENT broadcasts. Projecting it through
+  // arbitrary future/past months would invent releases. Show the next 14 days only.
+  const tokyoDateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (key: string) => Number(tokyoDateParts.find((value) => value.type === key)?.value);
+  const now = Date.now();
+  const first = Date.UTC(part("year"), part("month") - 1, part("day"));
   for (const anime of list) {
-    // An unannounced timeslot is not a confirmed calendar event.
     const day = DAYS.indexOf(String(anime.broadcast?.day || "").toLowerCase());
     const time = anime.broadcast?.time?.match(/^(\d{1,2}):(\d{2})$/);
     if (day < 0 || !time || anime.broadcast?.timezone !== "Asia/Tokyo") continue;
     if (!anime.mal_id || !anime.title || /^r(?:\+|-17|x)/i.test(anime.rating ?? "")) continue;
     const hour = Number(time[1]), minute = Number(time[2]);
     if (hour > 23 || minute > 59) continue;
-    for (let date = 1; date <= daysInMonth; date++) {
-      if (new Date(Date.UTC(year, month - 1, date)).getUTCDay() !== day) continue;
-      // Jikan's official broadcast day/time is Japanese local time (JST UTC+9).
-      const iso = new Date(Date.UTC(year, month - 1, date, hour - 9, minute)).toISOString();
+    for (let offset = -1; offset <= 14; offset++) {
+      const dateUtc = first + offset * 86_400_000;
+      if (new Date(dateUtc).getUTCDay() !== day) continue;
+      const instant = dateUtc + (hour - 9) * 3_600_000 + minute * 60_000;
+      if (instant < now - 86_400_000 || instant > now + 14 * 86_400_000) continue;
+      const iso = new Date(instant).toISOString();
       events.push({
-        id: "jikan:" + anime.mal_id + ":" + date,
+        id: "jikan:" + anime.mal_id + ":" + iso.slice(0, 10),
         title: anime.title,
         kind: "episode",
         airingAt: iso,
@@ -144,7 +152,7 @@ async function fetchJikanFallback(year: number, month: number): Promise<FeedResu
         posterUrl: safePublicUrl(anime.images?.jpg?.image_url),
         url: safePublicUrl(anime.url) ?? "https://myanimelist.net/anime/" + anime.mal_id,
         source: "jikan",
-        notes: "Weekly broadcast slot · next episode number not confirmed",
+        notes: "Estimated weekly slot · episode number and exact release not confirmed",
         anilistId: null,
       });
     }
@@ -157,7 +165,7 @@ export async function getExternalCalendar(year: number, month: number): Promise<
   try { return await fetchAniList(year, month); }
   catch (error) {
     console.warn("[calendar] AniList unavailable; checking MAL weekly fallback:", error instanceof Error ? error.message : "Unknown error");
-    try { return await fetchJikanFallback(year, month); }
+    try { return await fetchJikanFallback(); }
     catch (fallbackError) {
       console.warn("[calendar] MAL fallback unavailable:", fallbackError instanceof Error ? fallbackError.message : "Unknown error");
       return { events: [], status: "unavailable" };
