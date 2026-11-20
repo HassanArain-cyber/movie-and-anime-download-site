@@ -60,6 +60,24 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [nearTop, setNearTop] = useState(true);
   const searchRef = useRef<HTMLFormElement>(null);
+  const menuToggle = useRef<HTMLButtonElement>(null);
+  const menuPanel = useRef<HTMLElement>(null);
+
+  // One compact right-side menu on desktop and mobile, dismissed accessibly.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !menuPanel.current?.contains(target) && !menuToggle.current?.contains(target)) setMenuOpen(false);
+    };
+    const closeEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMenuOpen(false); menuToggle.current?.focus(); }
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeEscape);
+    return () => { document.removeEventListener("pointerdown", closeOutside); document.removeEventListener("keydown", closeEscape); };
+  }, [menuOpen]);
 
   useEffect(() => {
     let frame = 0;
@@ -186,28 +204,6 @@ export default function Navbar() {
       }`}
     >
       <div className="vault-nav mx-auto flex max-w-7xl flex-nowrap items-center gap-2 px-4 py-2 sm:px-6">
-        <nav className={`${searchExpanded ? "hidden" : "hidden lg:flex"} items-center gap-1`}>
-          {NAV_LINKS.map((link) => {
-            const active =
-              link.href === "/"
-                ? pathname === "/"
-                : pathname?.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                  active
-                    ? "bg-neutral-800 text-white"
-                    : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
-
         <form ref={searchRef} onSubmit={handleSearch} role="search" className={`relative min-w-0 ${searchExpanded ? "flex-1" : "w-[38px] shrink-0"} ${searchExpanded ? "lg:max-w-none" : "lg:ml-auto lg:max-w-xs"}`}>
           <div className="relative">
             <div className={searchStyles.shell} data-open={searchExpanded} data-testid="public-search-shell">
@@ -305,16 +301,16 @@ export default function Navbar() {
         >
           Admin
         </Link>
-        <button type="button" aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menuOpen} aria-controls="vault-mobile-menu" onClick={() => setMenuOpen((open) => !open)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900 text-white lg:hidden">
+        <button ref={menuToggle} type="button" aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menuOpen} aria-controls="vault-nav-menu" onClick={() => setMenuOpen((open) => !open)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/30 bg-neutral-900 text-purple-100 transition hover:border-purple-400 hover:bg-violet-600/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400">
           {menuOpen ? <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 5l14 14M19 5L5 19" /></svg> : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h16" /></svg>}
         </button>
         </div>
       </div>
 
-      {menuOpen && <nav id="vault-mobile-menu" aria-label="Mobile navigation" className="absolute right-3 top-full z-50 w-[min(19rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-700 bg-neutral-950 p-2 shadow-2xl shadow-black/70 lg:hidden">
+      {menuOpen && <nav ref={menuPanel} id="vault-nav-menu" aria-label="Site navigation" className="absolute right-3 top-full z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-purple-400/20 bg-[#14111d] p-2 shadow-2xl shadow-black/80">
         {NAV_LINKS.map((link) => {
           const active = link.href === "/" ? pathname === "/" : pathname?.startsWith(link.href);
-          return <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`block rounded-lg px-4 py-3 text-sm font-medium transition ${active ? "bg-violet-600/25 text-purple-200" : "text-neutral-300 hover:bg-neutral-800 hover:text-white"}`}>{link.label}</Link>;
+          return <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`block rounded-xl px-4 py-3 text-sm font-medium transition ${active ? "bg-violet-600/25 text-purple-200" : "text-neutral-300 hover:bg-violet-500/10 hover:text-white"}`}>{link.label}</Link>;
         })}
       </nav>}
     </header>
