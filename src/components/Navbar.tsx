@@ -20,13 +20,24 @@ type SearchSuggestion = {
 };
 
 const NAV_LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/movie", label: "Movies" },
-  { href: "/anime", label: "Anime & Movies" },
-  { href: "/series", label: "Series" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/following", label: "Following" },
-];
+  { href: "/", label: "Home", description: "Explore the collection", icon: "home" },
+  { href: "/movie", label: "Movies", description: "Browse every movie", icon: "film" },
+  { href: "/anime", label: "Anime & Movies", description: "Anime and anime films", icon: "sparkles" },
+  { href: "/series", label: "Series", description: "All TV series", icon: "tv" },
+  { href: "/calendar", label: "Calendar", description: "Latest published episodes", icon: "calendar" },
+  { href: "/following", label: "Following", description: "Your saved titles", icon: "bookmark" },
+] as const;
+
+function NavGlyph({ name }: { name: (typeof NAV_LINKS)[number]["icon"] }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    {name === "home" && <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" /><path d="M9 21v-7h6v7" /></>}
+    {name === "film" && <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4m-4 6h4m10-6h4m-4 6h4" /></>}
+    {name === "sparkles" && <><path d="m12 2 1.9 5.8L20 10l-6.1 2.2L12 18l-1.9-5.8L4 10l6.1-2.2zM20 17l.8 2.2L23 20l-2.2.8L20 23l-.8-2.2L17 20l2.2-.8z" /></>}
+    {name === "tv" && <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m8 22 1-3m7 3-1-3M8 2l4 3 4-3" /></>}
+    {name === "calendar" && <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18M8 14h3m-3 3h6" /></>}
+    {name === "bookmark" && <path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4z" />}
+  </svg>;
+}
 
 const TYPE_LABELS: Record<SearchSuggestion["type"], string> = {
   movie: "Movie",
@@ -306,12 +317,63 @@ export default function Navbar() {
         </div>
       </div>
 
-      {menuOpen && <nav ref={menuPanel} id="vault-nav-menu" aria-label="Site navigation" className="absolute right-3 top-full z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-purple-400/20 bg-[#14111d] p-2 shadow-2xl shadow-black/80">
-        {NAV_LINKS.map((link) => {
-          const active = link.href === "/" ? pathname === "/" : pathname?.startsWith(link.href);
-          return <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`block rounded-xl px-4 py-3 text-sm font-medium transition ${active ? "bg-violet-600/25 text-purple-200" : "text-neutral-300 hover:bg-violet-500/10 hover:text-white"}`}>{link.label}</Link>;
-        })}
-      </nav>}
+      {menuOpen && (
+        <>
+          <button type="button" tabIndex={-1} aria-label="Dismiss navigation menu"
+            onClick={() => setMenuOpen(false)}
+            className="fixed inset-0 z-40 cursor-default bg-black/55 backdrop-blur-[2px]"
+          />
+          <nav ref={menuPanel} id="vault-nav-menu" aria-label="Site navigation"
+            className="vault-side-menu absolute right-3 top-[calc(100%+0.5rem)] z-50 w-[min(21rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-contain rounded-[22px] border border-purple-400/20 bg-[#12101c] p-3 shadow-[0_26px_80px_#000000ee] sm:right-5"
+          >
+            <div className="relative mb-3 overflow-hidden rounded-2xl border border-violet-300/15 bg-gradient-to-br from-[#33204e] via-[#20172f] to-[#161321] px-4 py-4">
+              <div className="pointer-events-none absolute -right-5 -top-9 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-2xl" />
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-purple-200/20 bg-violet-500/25 text-purple-100">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M8 4v16m8-16v16M3 9h5m-5 6h5m8-6h5m-5 6h5" /></svg>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[.2em] text-purple-300">Gojo&apos;s</span>
+                    <span className="block text-lg font-extrabold tracking-tight text-white">Vault</span>
+                  </span>
+                </div>
+                <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close navigation menu"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/20 text-neutral-200 transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 5l14 14m0-14L5 19"/></svg>
+                </button>
+              </div>
+              <p className="relative mt-3 text-xs leading-relaxed text-purple-100/65">Discover movies, anime and series.</p>
+            </div>
+            {[
+              { title: "BROWSE", links: NAV_LINKS.slice(0, 4) },
+              { title: "MY LIBRARY", links: NAV_LINKS.slice(4) },
+            ].map((group, index) => (
+              <div key={group.title} className={index ? "mt-3 border-t border-white/10 pt-3" : ""}>
+                <p className="px-3 pb-1.5 text-[10px] font-extrabold tracking-[.18em] text-neutral-500">{group.title}</p>
+                <div className="space-y-1">
+                  {group.links.map((link) => {
+                    const active = link.href === "/" ? pathname === "/" : pathname?.startsWith(link.href);
+                    return <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined}
+                      onClick={() => setMenuOpen(false)}
+                      className={`group flex min-h-[54px] items-center gap-3 rounded-xl border px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${active ? "border-violet-400/25 bg-violet-500/20 text-white" : "border-transparent text-neutral-200 hover:border-white/10 hover:bg-white/[0.06]"}`}
+                    >
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? "bg-violet-400/25 text-purple-200" : "bg-white/[0.05] text-neutral-400 group-hover:text-purple-200"}`}>
+                        <NavGlyph name={link.icon} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-semibold leading-tight">{link.label}</span>
+                        <span className={`mt-1 block truncate text-[11px] ${active ? "text-purple-200/70" : "text-neutral-500"}`}>{link.description}</span>
+                      </span>
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 ${active ? "text-purple-300" : "text-neutral-600 group-hover:text-neutral-300"}`} fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 5 7 7-7 7" /></svg>
+                    </Link>;
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </>
+      )}
     </header>
     <button
       type="button"
