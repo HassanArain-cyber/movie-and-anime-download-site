@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import DownloadButton from "@/components/DownloadButton";
 import { QUALITY_ORDER, formatBytes, getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay, isAudioOnlyDownload } from "@/lib/media-links";
 import type { DownloadLink, VideoQuality } from "@/lib/types";
@@ -20,6 +20,7 @@ function sourceTitle(link: DownloadLink, index: number, total: number): string {
 /** All real quality/source choices stay visible and usable. There are no invented links. */
 export default function DownloadOptions({ links, copyWebsite }: { links: DownloadLink[]; copyWebsite?: string | null }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const qualityId = useId();
   const [selectedKind, setSelectedKind] = useState<"video" | "audio">("video");
   const videoLinks = links.filter((link) => !isAudioOnlyDownload(link));
   const audioLinks = links.filter(isAudioOnlyDownload);
@@ -65,9 +66,9 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
         {available.length > 1 && (
           <div aria-label="Jump to download quality" className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
             {available.map((key, index) => (
-              <button key={key} type="button" onClick={() => jumpTo(index)}
+              <a key={key} href={`#${qualityId}-${key}`} onClick={(event) => { event.preventDefault(); jumpTo(index); }}
                 className="shrink-0 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-neutral-200 transition hover:border-violet-400/60 hover:bg-violet-500/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
-              >{key === "unspecified" ? "Other" : qualityDisplay(key)}</button>
+              >{key === "unspecified" ? "Other" : qualityDisplay(key)}</a>
             ))}
           </div>
         )}
@@ -76,7 +77,7 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
         {available.map((key) => {
           const versions = groups.get(key)!;
           return (
-            <section key={key} data-download-quality className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-neutral-950/55">
+            <section key={key} id={`${qualityId}-${key}`} data-download-quality className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-neutral-950/55">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] bg-white/[0.035] px-3 py-2.5 sm:px-4">
                 <h3 className="text-sm font-bold text-white">{key === "unspecified" && activeKind === "audio" ? "Audio files" : key === "unspecified" ? qualityDisplay(null) : qualityDisplay(key)}</h3>
                 <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-200">{versions.length} {versions.length === 1 ? "source" : "sources"}</span>
