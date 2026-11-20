@@ -668,9 +668,10 @@ assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Movi
 await page.goto(`${base}/anime?year=2024&category=filter-${run}&sort=az`);
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "type pages should use the same combined library filters");
 await page.setViewportSize({ width: 390, height: 844 });
-await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
-await page.getByRole("combobox", { name: "Filter by tag" }).waitFor({ state: "visible", timeout: 15000 });
-const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`, { waitUntil: "networkidle" });
+const activeLibraryFilters = page.locator('#library [aria-label="Library filters"]').last();
+await activeLibraryFilters.waitFor({ state: "visible", timeout: 15000 });
+const libraryFilterBounds = await activeLibraryFilters.boundingBox();
 assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
 // The type dropdown must retain compatible filters; reset clears the entire query.
 await chooseFilter(page.getByRole("combobox", { name: "Filter by content type" }), "movie");
