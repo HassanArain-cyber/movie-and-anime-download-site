@@ -4,7 +4,7 @@ This pull request refines the existing public experience **without altering prod
 
 ## Implemented in this branch
 
-- **Download chooser:** responsive deep-violet download/copy buttons, quality shortcuts, distinct real source rows, stored file sizes (when known), safe unavailable-link state. The original per-link open/copy choice, R2 handling, 5-second copy confirmation and existing links remain intact.
+- **Download chooser:** responsive deep-violet download/copy buttons, quality shortcuts, distinct real source rows, stored file sizes (when known), safe unavailable-link state, and conditional Video/Audio tabs for explicitly identified audio-only links. The original per-link open/copy choice, R2 handling, 5-second copy confirmation and existing links remain intact.
 - **Right-hand navigation:** compact 3-line menu on desktop and mobile; category links, Following and Calendar are moved out of the crowded header. Escape, outside click and route changes dismiss the menu.
 - **Continue Watching shortcuts:** automatically remembers the last opened episode per series/anime in this browser, now showing the real media poster when available and a Remove control. This tracks opened episodes, **not actual watched minutes**; no fake percentage or playback data.
 - **Skeleton loading:** app-router loading placeholders keep the library layout stable.
@@ -14,7 +14,7 @@ This pull request refines the existing public experience **without altering prod
 
 ## Requires additional data or product support
 
-- Separate video/audio tabs cannot safely classify all links without stored media-type metadata.
+- Video/Audio tabs appear only when actual audio-only files can be identified from their filename or label. To recognize every source reliably (including anonymous cloud-storage URLs), the admin needs an explicit audio/video field.
 - Genre/language filters need admin-managed, queryable genre/language fields; current categories can already act as tags.
 - Actual playback progress bars require a player/progress event source. Download-only links do not report watch duration.
 - Future episode countdown/calendar dates need admin-provided scheduled release timestamps, not publication dates.
