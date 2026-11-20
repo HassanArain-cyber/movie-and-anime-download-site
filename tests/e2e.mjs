@@ -175,6 +175,30 @@ assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: 
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
 
+// Admin schedules are stored in existing site settings; no production migration.
+const calendarTestRelease = {
+  title: "Upcoming Calendar Fixture", kind: "episode",
+  airingAt: "2027-02-14T14:00:00.000Z", episode: 6, anilistId: 170001,
+  posterUrl: "https://example.com/calendar-poster.jpg",
+  url: "/anime/calendar-fixture", notes: "Preview episode",
+};
+assert.equal((await api("/api/admin/calendar", { method: "POST", auth: false, body: calendarTestRelease })).res.status, 401, "anonymous clients cannot edit the release calendar");
+assert.equal((await api("/api/admin/calendar", { method: "POST", body: calendarTestRelease, headers: { Origin: "https://evil.example" } })).res.status, 403, "cross-origin calendar writes are blocked");
+assert.equal((await api("/api/admin/calendar", { method: "POST", body: { ...calendarTestRelease, url: "javascript:alert(1)" } })).res.status, 400, "calendar cannot contain script links");
+assert.equal((await api("/api/calendar?year=2027&month=13", { auth: false })).res.status, 400, "invalid months cannot query providers");
+const createdCalendar = ok(await api("/api/admin/calendar", { method: "POST", body: calendarTestRelease }), 201);
+const calendarId = createdCalendar.entries.find((entry) => entry.title === calendarTestRelease.title)?.id;
+assert.ok(calendarId, "calendar entry must be saved with a unique id");
+const publicCalendar = ok(await api("/api/calendar?year=2027&month=2", { auth: false }));
+assert.equal(publicCalendar.anilistStatus, "disabled", "disposable tests never fetch external AniList/Jikan providers");
+assert.equal(publicCalendar.events.find((event) => event.id === "manual:" + calendarId)?.episode, 6, "manual future episode is visible publicly");
+const updatedCalendar = ok(await api("/api/admin/calendar", { method: "PATCH", body: { ...calendarTestRelease, id: calendarId, title: "Edited Calendar Fixture", episode: 7 } }));
+assert.equal(updatedCalendar.entries.find((entry) => entry.id === calendarId)?.episode, 7, "editing a saved release is persistent");
+assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.find((event) => event.id === "manual:" + calendarId)?.title, "Edited Calendar Fixture");
+ok(await api("/api/admin/calendar", { method: "DELETE", body: { id: calendarId } }));
+assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.some((event) => event.id === "manual:" + calendarId), false, "deleted releases disappear from the public calendar");
+
+
 // Login hardening: origin checks, JSON content type/size, and DB-backed limits.
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { Origin: "https://evil.example" } })).res.status, 403);
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "Sec-Fetch-Site": "cross-site" } })).res.status, 403);
@@ -598,6 +622,12 @@ assert.equal(page.url(), desktopScrollUrl, "floating control must not navigate")
 assert.equal(frameNavigations.length, desktopNavigationCount, "floating control must not reload the page");
 
 await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/calendar`);
+await page.getByRole("heading", { name: "Release Calendar" }).waitFor();
+const visualCalendar = page.getByRole("region", { name: "Anime release calendar" });
+await visualCalendar.getByRole("button", { name: "Next month" }).click();
+await visualCalendar.getByRole("button", { name: "Previous month" }).click();
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "visual release calendar fits phone screen");
 await page.goto(`${base}/`);
 assert.equal(await page.locator(".vault-hero").isVisible(), false, "mobile hero starts collapsed");
 await page.locator("summary").filter({ hasText: "Show or hide Vault introduction" }).click();
