@@ -24,6 +24,7 @@ const NAV_LINKS = [
   { href: "/movie", label: "Movies" },
   { href: "/anime", label: "Anime & Movies" },
   { href: "/series", label: "Series" },
+  { href: "/calendar", label: "Calendar" },
   { href: "/following", label: "Following" },
 ];
 
