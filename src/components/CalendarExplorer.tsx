@@ -23,10 +23,9 @@ function InfoIcon({ direction }: { direction: "left" | "right" }) {
   </svg>;
 }
 
-function ReleaseRow({ release }: { release: CalendarEvent }) {
+function ReleaseRow({ release, asOf }: { release: CalendarEvent; asOf: string }) {
   const kind = COLORS[release.kind];
-  const now = Date.now();
-  const past = Date.parse(release.airingAt) <= now;
+  const past = Date.parse(release.airingAt) <= Date.parse(asOf);
   const content = (
     <div className="flex min-w-0 items-start gap-3">
       <div className="relative h-[78px] w-[58px] shrink-0 overflow-hidden rounded-lg border border-sky-400/15 bg-[#13213a] shadow-md shadow-black/20">
@@ -102,9 +101,9 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
 
   const firstDay = new Date(Date.UTC(period.year, period.month - 1, 1)).getUTCDay();
   const dayCount = new Date(Date.UTC(period.year, period.month, 0)).getUTCDate();
-  const today = todayKey();
+  const today = calendarDay(data.updatedAt);
   const currentMonth = data.year === period.year && data.month === period.month;
-  const visibleEvents = currentMonth ? data.events : [];
+  const visibleEvents = useMemo(() => currentMonth ? data.events : [], [currentMonth, data.events]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -138,7 +137,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
           <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-2xl font-extrabold text-slate-950 shadow-[0_8px_30px_#00d9aa33]">
             <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18M8 14h3m-3 3h7" /></svg>
           </span>
-          <div><p className="text-[10px] font-extrabold tracking-[.2em] text-sky-400">GOJO'S VAULT</p><h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">Release Calendar</h1>
+          <div><p className="text-[10px] font-extrabold tracking-[.2em] text-sky-400">GOJO&apos;S VAULT</p><h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">Release Calendar</h1>
             <p className="mt-1 text-xs text-slate-300 sm:text-sm">Episode air dates, new releases and your Vault updates.</p></div>
         </div>
         <p className="max-w-[9rem] -rotate-6 text-right text-sm italic leading-snug text-sky-200/80">Same Vibe,<br />More to Explore</p>
@@ -200,7 +199,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
                 <p className="text-sm font-semibold text-slate-200">No releases listed</p>
                 <p className="text-xs leading-relaxed text-slate-500">Try another date, or add a release from the Admin calendar.</p>
               </div> :
-                shown.map((release) => <ReleaseRow key={release.id} release={release} />)}
+                shown.map((release) => <ReleaseRow key={release.id} release={release} asOf={data.updatedAt} />)}
           </div>
           <p className="border-t border-sky-500/15 pt-3 text-[10px] leading-relaxed text-slate-500">Automatic schedules are provided by AniList, or estimated weekly MAL broadcast slots when AniList is unavailable. These are not confirmations that Vault has uploaded an episode.</p>
         </div>
