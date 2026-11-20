@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import DownloadButton from "@/components/DownloadButton";
-import { QUALITY_ORDER, formatBytes, getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay } from "@/lib/media-links";
+import { QUALITY_ORDER, formatBytes, getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay, isAudioOnlyDownload } from "@/lib/media-links";
 import type { DownloadLink, VideoQuality } from "@/lib/types";
 
 type GroupKey = VideoQuality | "unspecified";
@@ -17,20 +17,12 @@ function sourceTitle(link: DownloadLink, index: number, total: number): string {
   return total > 1 ? `${name} · Source ${index + 1}` : name;
 }
 
-/** Classify only explicit audio-only files; "Dual Audio 1080p" is a video. */
-function isAudioOnly(link: DownloadLink): boolean {
-  const path = link.url.split(/[?#]/)[0] || "";
-  if (/\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(path)) return true;
-  const label = link.label?.trim() || "";
-  return /^(audio|audio only|audio track|soundtrack|mp3|m4a|flac|wav)(?:\s*[-:]\s*.+)?$/i.test(label);
-}
-
 /** All real quality/source choices stay visible and usable. There are no invented links. */
 export default function DownloadOptions({ links, copyWebsite }: { links: DownloadLink[]; copyWebsite?: string | null }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [selectedKind, setSelectedKind] = useState<"video" | "audio">("video");
-  const videoLinks = links.filter((link) => !isAudioOnly(link));
-  const audioLinks = links.filter(isAudioOnly);
+  const videoLinks = links.filter((link) => !isAudioOnlyDownload(link));
+  const audioLinks = links.filter(isAudioOnlyDownload);
   const activeKind = selectedKind === "audio" && audioLinks.length ? "audio" : videoLinks.length ? "video" : "audio";
   const shownLinks = activeKind === "audio" ? audioLinks : videoLinks;
   const groups = new Map<GroupKey, DownloadLink[]>();
