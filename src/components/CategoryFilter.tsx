@@ -38,13 +38,7 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
   };
 
   const filtered = Boolean(activeSlug || activeYear || activeSort !== "newest" || baseQuery.type || baseQuery.q);
-  return <details className="group relative w-full" aria-label="Advanced library filters">
-    <summary className="ml-auto flex w-fit cursor-pointer list-none items-center gap-2 rounded-lg border border-violet-500/40 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-purple-200 hover:bg-neutral-800 [&::-webkit-details-marker]:hidden">
-      <span aria-hidden="true">☷</span> Filters {filtered ? "• Active" : ""} <span aria-hidden="true" className="transition group-open:rotate-180">⌄</span>
-    </summary>
-    <div className="mt-2 rounded-xl border border-neutral-700 bg-neutral-950/95 p-4 shadow-xl sm:absolute sm:right-0 sm:top-full sm:z-30 sm:w-[min(32rem,90vw)]">
-      <h3 className="mb-3 text-sm font-semibold text-white">Advanced Search</h3>
-      <div className="vault-filters" aria-label="Library filters">
+  return <div className="vault-filters" aria-label="Library filters">
     <CompactSelect label="Filter by content type" value={baseQuery.type ?? ""} active={Boolean(baseQuery.type)}
       options={[{ value: "", label: "Content" }, { value: "movie", label: "Movies" }, { value: "anime", label: "Anime" }, { value: "series", label: "Series" }]}
       onChange={(type) => router.push(buildHref({ type: type || undefined }))} />
@@ -58,7 +52,5 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
       options={[{ value: "az", label: "A–Z" }, { value: "za", label: "Z–A" }, { value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }]}
       onChange={(sort) => router.push(buildHref({ sort: sort as LibrarySort }))} />
     {filtered && <button type="button" className="vault-filter-reset px-2 text-left text-xs font-medium text-purple-300 hover:text-white" onClick={() => router.push("/")}>Reset filters ×</button>}
-      </div>
-    </div>
-  </details>;
+  </div>;
 }
