@@ -319,10 +319,6 @@ export default function Navbar() {
 
       {menuOpen && (
         <>
-          <button type="button" tabIndex={-1} aria-label="Dismiss navigation menu"
-            onClick={() => setMenuOpen(false)}
-            className="fixed inset-0 z-40 cursor-default bg-black/55 backdrop-blur-[2px]"
-          />
           <nav ref={menuPanel} id="vault-nav-menu" aria-label="Site navigation"
             className="vault-side-menu absolute right-3 top-[calc(100%+0.5rem)] z-50 w-[min(21rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-contain rounded-[22px] border border-purple-400/20 bg-[#12101c] p-3 shadow-[0_26px_80px_#000000ee] sm:right-5"
           >
@@ -375,6 +371,7 @@ export default function Navbar() {
         </>
       )}
     </header>
+    {menuOpen && <button type="button" tabIndex={-1} aria-label="Dismiss navigation menu" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-30 cursor-default bg-black/55 backdrop-blur-[2px]" />}
     <button
       type="button"
       aria-label={nearTop ? "Scroll to bottom" : "Scroll to top"}
