@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import DownloadButton from "@/components/DownloadButton";
 import { QUALITY_ORDER, formatBytes, getLinkHref, getLinkProvider, getProviderLabel, getQuality, qualityDisplay } from "@/lib/media-links";
 import type { DownloadLink, VideoQuality } from "@/lib/types";
@@ -17,11 +17,24 @@ function sourceTitle(link: DownloadLink, index: number, total: number): string {
   return total > 1 ? `${name} · Source ${index + 1}` : name;
 }
 
+/** Classify only explicit audio-only files; "Dual Audio 1080p" is a video. */
+function isAudioOnly(link: DownloadLink): boolean {
+  const path = link.url.split(/[?#]/)[0] || "";
+  if (/\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(path)) return true;
+  const label = link.label?.trim() || "";
+  return /^(audio|audio only|audio track|soundtrack|mp3|m4a|flac|wav)(?:\s*[-:]\s*.+)?$/i.test(label);
+}
+
 /** All real quality/source choices stay visible and usable. There are no invented links. */
 export default function DownloadOptions({ links, copyWebsite }: { links: DownloadLink[]; copyWebsite?: string | null }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const [selectedKind, setSelectedKind] = useState<"video" | "audio">("video");
+  const videoLinks = links.filter((link) => !isAudioOnly(link));
+  const audioLinks = links.filter(isAudioOnly);
+  const activeKind = selectedKind === "audio" && audioLinks.length ? "audio" : videoLinks.length ? "video" : "audio";
+  const shownLinks = activeKind === "audio" ? audioLinks : videoLinks;
   const groups = new Map<GroupKey, DownloadLink[]>();
-  for (const link of links) {
+  for (const link of shownLinks) {
     const key = getQuality(link) || "unspecified";
     groups.set(key, [...(groups.get(key) || []), link]);
   }
@@ -43,11 +56,20 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
             </span>
             <div>
               <h3 className="text-sm font-bold tracking-tight text-white sm:text-base">Download options</h3>
-              <p className="text-[11px] text-neutral-400">{links.length} {links.length === 1 ? "link" : "links"} · {available.length} {available.length === 1 ? "quality" : "qualities"} available</p>
+              <p className="text-[11px] text-neutral-400">{shownLinks.length} {shownLinks.length === 1 ? "link" : "links"} · {available.length} {available.length === 1 ? "quality" : "qualities"} available</p>
             </div>
           </div>
           <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-200">Choose quality</span>
         </div>
+        {videoLinks.length > 0 && audioLinks.length > 0 && (
+          <div className="mt-3 inline-flex gap-1 rounded-xl border border-white/10 bg-black/30 p-1" role="group" aria-label="Download type">
+            {(["video", "audio"] as const).map((kind) => (
+              <button key={kind} type="button" onClick={() => setSelectedKind(kind)} aria-pressed={activeKind === kind}
+                className={`rounded-lg px-4 py-1.5 text-xs font-bold transition ${activeKind === kind ? "bg-violet-600 text-white shadow-sm" : "text-neutral-400 hover:bg-white/10 hover:text-white"}`}
+              >{kind === "video" ? "Video" : "Audio"}</button>
+            ))}
+          </div>
+        )}
         {available.length > 1 && (
           <div aria-label="Jump to download quality" className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
             {available.map((key, index) => (
@@ -64,7 +86,7 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
           return (
             <section key={key} data-download-quality className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-neutral-950/55">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] bg-white/[0.035] px-3 py-2.5 sm:px-4">
-                <h3 className="text-sm font-bold text-white">{key === "unspecified" ? qualityDisplay(null) : qualityDisplay(key)}</h3>
+                <h3 className="text-sm font-bold text-white">{key === "unspecified" && activeKind === "audio" ? "Audio files" : key === "unspecified" ? qualityDisplay(null) : qualityDisplay(key)}</h3>
                 <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-200">{versions.length} {versions.length === 1 ? "source" : "sources"}</span>
               </div>
               <div className="divide-y divide-white/[0.07]">
