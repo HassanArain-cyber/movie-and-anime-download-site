@@ -7,6 +7,7 @@ export type CalendarEvent = {
   airingAt: string;
   episode: number | null;
   totalEpisodes: number | null;
+  airedEpisodes?: number | null;
   posterUrl: string | null;
   url: string | null;
   source: CalendarSource;
@@ -57,11 +58,14 @@ export function inCalendarMonth(event: CalendarEvent, year: number, month: numbe
 
 export function combineCalendarEvents(source: CalendarEvent[], manual: ManualCalendarEntry[], year: number, month: number): CalendarEvent[] {
   const entries = new Map<string, CalendarEvent>();
+  const overridden = new Set(manual.filter((item) => item.anilistId != null && item.episode != null)
+    .map((item) => "anilist:" + item.anilistId + ":" + item.episode));
   for (const event of source) {
     if (!inCalendarMonth(event, year, month)) continue;
     const key = event.anilistId != null && event.episode != null
       ? "anilist:" + event.anilistId + ":" + event.episode
       : event.id;
+    if (overridden.has(key)) continue;
     entries.set(key, event);
   }
   // An admin record with an AniList ID and episode deliberately overrides that
