@@ -32,3 +32,12 @@ test("corrupted stored calendar JSON degrades safely to empty list", () => {
   assert.deepEqual(readManualCalendarEntries("{"), []);
   assert.deepEqual(readManualCalendarEntries('[{"id":"bad"}]'), []);
 });
+
+test("valid saved manual release is readable after JSON roundtrip", () => {
+  const value = [{
+    id: "12345678-1234-4234-8234-123456789abc",
+    title: "Test series", kind: "episode", airingAt: "2027-02-14T14:00:00.000Z",
+    episode: 6, anilistId: 170001, posterUrl: null, url: "/anime/test-series", notes: "test",
+  }];
+  assert.deepEqual(readManualCalendarEntries(JSON.stringify(value)), value);
+});
