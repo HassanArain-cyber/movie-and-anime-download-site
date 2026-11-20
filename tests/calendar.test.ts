@@ -24,6 +24,10 @@ test("admin event replaces corresponding AniList airing but not unrelated releas
   const combined = combineCalendarEvents(automated, manual, 2027, 2);
   assert.deepEqual(combined.map((entry) => entry.title), ["Updated first", "Second"]);
   assert.deepEqual(combined.map((entry) => entry.source), ["manual", "anilist"]);
+  assert.equal(combined[0].id, "manual:" + manual[0].id);
+  const moved = [{ ...manual[0], airingAt: "2027-03-01T14:00:00.000Z" }];
+  assert.deepEqual(combineCalendarEvents(automated, moved, 2027, 2).map((item) => item.title), ["Second"], "moved manual date removes stale automatic entry from old month");
+  assert.deepEqual(combineCalendarEvents(automated, moved, 2027, 3).map((item) => item.title), ["Updated first"], "override appears in its new month");
   assert.equal(combineCalendarEvents(automated, manual, 2027, 3).length, 0);
 });
 
