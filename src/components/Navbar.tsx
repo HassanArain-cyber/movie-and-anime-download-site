@@ -64,7 +64,6 @@ export default function Navbar() {
   const menuPanel = useRef<HTMLElement>(null);
 
   // One compact right-side menu on desktop and mobile, dismissed accessibly.
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
   useEffect(() => {
     if (!menuOpen) return;
     const closeOutside = (event: PointerEvent) => {
