@@ -71,7 +71,7 @@ export function combineCalendarEvents(source: CalendarEvent[], manual: ManualCal
   // An admin record with an AniList ID and episode deliberately overrides that
   // airing episode. The original event is replaced, not shown twice.
   for (const event of manual) {
-    const complete: CalendarEvent = { ...event, totalEpisodes: null, source: "manual" };
+    const complete: CalendarEvent = { ...event, id: "manual:" + event.id, totalEpisodes: null, source: "manual" };
     if (!inCalendarMonth(complete, year, month)) continue;
     if (event.anilistId != null && event.episode != null) {
       entries.delete("anilist:" + event.anilistId + ":" + event.episode);
