@@ -43,6 +43,7 @@ export default function DownloadButton({ link, copyWebsite, compact = false }: {
         href={href}
         {...(stored ? { download: "" } : { target: "_blank", rel: "noopener noreferrer" })}
         title={getProviderLabel(provider)}
+        aria-label={link.label ? `${link.label} — Download` : "Download"}
         className={className}
       >
         {content}
@@ -63,6 +64,7 @@ export default function DownloadButton({ link, copyWebsite, compact = false }: {
           if (effects.toast) showCopyToast(effects.toast);
         })}
         title={`${getProviderLabel(provider)} — ${website ? `copy link, then continue to ${host}` : "copy link"}`}
+        aria-label={link.label ? `${link.label} — Copy link` : "Copy link"}
         className={className}
       >
         {content}
