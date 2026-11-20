@@ -1184,6 +1184,18 @@ await page.goto(`${base}/anime/browser-anime-${run}`);
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
 await page.getByText("Episode 1", { exact: true }).click();
 await page.locator('a[title="Cloudflare R2"]').first().waitFor();
+await page.getByRole("button", { name: "Open navigation menu" }).click();
+await page.getByRole("navigation", { name: "Site navigation" }).getByRole("link", { name: "Anime & Movies" }).waitFor();
+await page.keyboard.press("Escape");
+assert.equal(await page.getByRole("navigation", { name: "Site navigation" }).count(), 0, "right-side menu closes with Escape");
+const lastEpisode = await page.evaluate(() => JSON.parse(localStorage.getItem("vault-continue-episodes-v1") || "[]")[0]);
+assert.equal(lastEpisode?.episodeNumber, 1, "opening an episode automatically remembers its shortcut");
+await page.goto(`${base}/`);
+await page.getByRole("heading", { name: "Continue Watching" }).waitFor();
+await page.getByRole("link", { name: /Return to Browser Anime .* episode 1/ }).waitFor();
+await page.goto(`${base}/anime/browser-anime-${run}`);
+await page.getByText("Episode 1", { exact: true }).click();
+
 await page.getByRole("heading", { name: "720p", exact: true }).waitFor();
 await page.getByRole("heading", { name: "1080p", exact: true }).waitFor();
 const episodeOneCheckbox = page.getByRole("checkbox", { name: "Select episode 1 for bulk download" });
