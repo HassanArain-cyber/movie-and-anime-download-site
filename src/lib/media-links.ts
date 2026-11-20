@@ -179,3 +179,13 @@ export function formatBytes(bytes: number): string {
 export function needsUnoptimizedImage(url: string): boolean {
   return /^(https?:|data:)/i.test(url) || url.startsWith("/api/image?");
 }
+
+/** Only audio-only file extensions/labels qualify; dual-audio video is still video.
+ * Unidentified cloud links remain ordinary downloads rather than being guessed.
+ */
+export function isAudioOnlyDownload(link: Pick<DownloadLink, "url" | "label">): boolean {
+  const path = link.url.split(/[?#]/)[0] || "";
+  if (/\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(path)) return true;
+  const label = link.label?.trim() || "";
+  return /^(audio|audio only|audio track|soundtrack|mp3|m4a|flac|wav)(?:\s*[-:]\s*.+)?$/i.test(label);
+}
