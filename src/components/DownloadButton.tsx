@@ -22,15 +22,15 @@ export default function DownloadButton({ link, copyWebsite, compact = false }: {
   const host = website ? websiteHost(website) : "";
 
   if (!href) {
-    return <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 break-words rounded-md bg-neutral-900 px-3 py-2 text-sm text-neutral-500 ring-1 ring-neutral-800">Unavailable link</span>;
+    return <span className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm text-neutral-500">Unavailable link</span>;
   }
 
-  const className = "inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 break-words rounded-md bg-neutral-800 px-3 py-2 text-sm font-medium text-white ring-1 ring-neutral-700 transition hover:bg-violet-600 hover:ring-purple-600";
+  const className = "group relative inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-violet-300/25 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-700 px-4 py-2.5 text-center text-xs font-bold tracking-wide text-white shadow-[0_5px_20px_#7c3aed30] transition hover:from-violet-500 hover:via-purple-500 hover:to-fuchsia-600 hover:shadow-[0_8px_28px_#7c3aed50] active:scale-[.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 sm:w-auto sm:text-sm";
   const content = <>
-    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="h-[18px] w-[18px] shrink-0 transition-transform group-hover:translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
     </svg>
-    <span className="min-w-0 [overflow-wrap:anywhere]">{compact ? "Download" : (link.label || "Download")}</span>
+    <span className="min-w-0 [overflow-wrap:anywhere]">{copy ? "Copy link" : compact ? "Download" : (link.label || "Download")}</span>
     {!compact && quality && <span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] uppercase">{qualityDisplay(quality)}</span>}
     {!compact && link.fileSize && <span className="min-w-0 text-xs text-neutral-400 [overflow-wrap:anywhere]">({link.fileSize})</span>}
     {!compact && provider === "telegram" && <span className="text-[10px] uppercase text-neutral-400">Telegram</span>}
@@ -54,7 +54,7 @@ export default function DownloadButton({ link, copyWebsite, compact = false }: {
   const openSite = website && <a href={website} target="_blank" rel="noopener noreferrer" className="font-medium underline">Open {host}</a>;
 
   return (
-    <span className="inline-flex min-w-0 max-w-full flex-col gap-1">
+    <span className="inline-flex w-full min-w-0 max-w-full flex-col gap-1">
       <button
         type="button"
         onClick={() => void copyThenConfirm(href, website).then((next) => {
@@ -63,7 +63,7 @@ export default function DownloadButton({ link, copyWebsite, compact = false }: {
           if (effects.toast) showCopyToast(effects.toast);
         })}
         title={`${getProviderLabel(provider)} — ${website ? `copy link, then continue to ${host}` : "copy link"}`}
-        className={`${className} text-left`}
+        className={className}
       >
         {content}
       </button>
