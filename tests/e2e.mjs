@@ -631,6 +631,7 @@ assert.equal(await page.evaluate(() => performance.timeOrigin), mobileLoadTime, 
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "mobile scroll control must not cause horizontal overflow");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
+await page.getByRole("combobox", { name: "Filter by tag" }).waitFor({ state: "visible", timeout: 15000 });
 assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
 async function chooseFilter(control, value) {
   await control.click();
