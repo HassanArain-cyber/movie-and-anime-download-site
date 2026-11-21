@@ -192,6 +192,7 @@ try {
   await page.getByRole("region", { name: "Calendar follows" }).getByText("Restored anime").waitFor();
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("vault-watched-episodes-v1"))["2"]), [12]);
   await page.getByRole("button", { name: "Unfollow New calendar anime" }).click();
+  await page.getByRole("button", { name: "Unfollow Restored anime" }).click();
   await page.getByRole("region", { name: "Calendar follows" }).waitFor({ state: "detached" });
   assert.equal(await page.evaluate(() => window.permissionRequests), 0);
   assert.deepEqual(writes.map((write) => write.method), [...statuses.map(() => "PATCH"), "PATCH", "DELETE"]);
