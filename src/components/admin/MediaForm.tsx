@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Category } from "@/lib/types";
 import ImageUploader from "./ImageUploader";
 import MediaWizard from "./MediaWizard";
+import MediaImportSearch, { type ImportChoice } from "./MediaImportSearch";
 import type { MediaType } from "@/lib/types";
 
 interface Props {
@@ -37,6 +38,20 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
   const [posterUrl, setPosterUrl] = useState(editing?.posterUrl || "");
   const [genres, setGenres] = useState(editing?.genres || "");
   const [episodeCount, setEpisodeCount] = useState(editing?.episodeCount ? String(editing.episodeCount) : "");
+  const [externalSource, setExternalSource] = useState(editing?.externalSource || "");
+  const [externalId, setExternalId] = useState(editing?.externalId || "");
+  const [importNotice, setImportNotice] = useState("");
+  const useImport = (candidate: ImportChoice) => {
+    setTitle(candidate.title);
+    setDescription(candidate.description);
+    setPosterUrl(candidate.posterUrl || "");
+    setYear(candidate.year ? String(candidate.year) : "");
+    setGenres(candidate.genres);
+    setEpisodeCount(candidate.episodeCount ? String(candidate.episodeCount) : "");
+    setExternalSource(candidate.externalSource);
+    setExternalId(candidate.externalId);
+    setImportNotice("Imported " + candidate.externalSource + " details. Review them below before saving.");
+  };
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -59,6 +74,8 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
         posterUrl,
         genres,
         episodeCount: type === "movie" || !episodeCount ? null : Number(episodeCount),
+        externalSource: externalSource || null,
+        externalId: externalId || null,
       };
       const url = editing ? `/api/media/${editing.id}` : "/api/media";
       const method = editing ? "PATCH" : "POST";
@@ -95,6 +112,8 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
         </button>
       </div>
 
+      <MediaImportSearch type={type as MediaType} initialQuery={title} onSelect={useImport} disabled={loading} />
+      {importNotice && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-200">{importNotice}</p>}
       <div className="grid gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-4 md:grid-cols-2">
         <div className="space-y-1">
           <label htmlFor="media-type" className="text-xs font-medium text-neutral-400">Type</label>
