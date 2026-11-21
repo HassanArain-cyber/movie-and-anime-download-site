@@ -49,9 +49,10 @@ function worker() {
   };
   return { handlers, stores, requests, lifecycle, fetch, goOffline: () => { offline = true; }, installed: () => installed, claimed: () => claimed };
 }
-test("PWA install/activation keep offline/icon precache, update takeover and obsolete cache cleanup without push handlers", async () => {
+test("PWA keeps offline precache and notification-click handling without background push", async () => {
   const w = worker();
-  assert.deepEqual(Object.keys(w.handlers).sort(), ["activate", "fetch", "install"]);
+  assert.deepEqual(Object.keys(w.handlers).sort(), ["activate", "fetch", "install", "notificationclick"]);
+  assert.equal("push" in w.handlers, false, "no unsupported background-push listener");
   await w.lifecycle("install");
   assert.equal(w.installed(), true);
   for (const path of ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png"]) assert.ok(w.stores.get("vault-static-v1")?.has(path));
