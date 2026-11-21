@@ -129,8 +129,8 @@ try {
             return box.left >= panel.left - 1 && box.right <= panel.right + 1;
           }), true, `download and quality shortcuts stay inside the download panel at ${width}`);
         }
-        const refresh = await page.getByRole("button", { name: "Refresh", exact: true }).boundingBox();
-        assert.equal(refresh.height, 36);
+        const commentEntry = await page.getByRole("button", { name: "Add a comment" }).boundingBox();
+        assert.ok(commentEntry && commentEntry.height >= 44 && commentEntry.height <= 64, "collapsed comment composer remains an accessible mobile control");
       }
       if (route === "/following") {
         const toggle = page.getByRole("group", { name: "Filter by watch status" }).getByRole("button", { name: "Watch status filter" });
