@@ -1,27 +1,30 @@
-# Vault experience upgrades
+# Vault experience upgrades — Preview / PR #25
 
-This pull request refines the existing public experience **without altering production data or database migrations**.
+This branch is **not merged**. Production data and the production database remain unchanged.
 
-## Implemented in this branch
+## Implemented
 
-- **Download chooser:** responsive deep-violet download/copy buttons, quality shortcuts, distinct real source rows, stored file sizes (when known), safe unavailable-link state, and conditional Video/Audio tabs for explicitly identified audio-only links. The original per-link open/copy choice, R2 handling, 5-second copy confirmation and existing links remain intact.
-- **Right-hand navigation:** compact 3-line menu on desktop and mobile; category links, Following and Calendar are moved out of the crowded header. Escape, outside click and route changes dismiss the menu.
-- **Continue Watching shortcuts:** automatically remembers the last opened episode per series/anime in this browser, now showing the real media poster when available and a Remove control. This tracks opened episodes, **not actual watched minutes**; no fake percentage or playback data.
-- **Skeleton loading:** app-router loading placeholders keep the library layout stable.
-- **Advanced library browse:** existing title/episode search, type, category/tag, release-year and sort filters retained.
-- **Release Calendar:** published-episode history displayed by actual publication date (UTC); it does not invent upcoming broadcast schedules.
-- **Recommendations & Watchlist:** existing related titles by content type/category and Following/Watching/Completed workflows retained, without duplicating the watchlist.
+- **Admin auto import:** Search and select a matching anime (AniList), TV series (TVmaze) or movie (TMDB), then review/edit title, synopsis, poster, year, genres, and total episode count (when the provider supplies it). This works when creating and when editing existing titles. Manual entry and R2 uploads are still supported.
+- **Simpler admin workflow:** A Find & Auto-fill card leads the two-step wizard; imports never auto-create title, season, episode or download links. After review, the normal Save creates the title.
+- **Smart Following:** Anime with saved AniList ID shows the next airing episode and local Pakistan-time countdown. Unlinked or unsupported titles show no invented countdown. Calendar has a **Only Following** filter (exact AniList IDs and Vault title URLs); release rows are incrementally displayed using Show More.
+- **Optional notifications:** Bell includes a user-initiated permission toggle. The site can notify about newly received Vault episode inbox alerts while it is open, including PWA foreground service-worker notifications. Alerts are never requested automatically. A future **server-side Web Push subscription, VAPID credentials and recurring delivery worker** would be required to deliver when the app is closed; this is not claimed complete.
+- **Continue Watching:** Recently opened episodes are shown on this browser. A *Mark Watched* toggle records manually completed episodes and can show episode-count completion progress. Actual streaming watch position, playback duration and minutes watched cannot be measured from external file download links.
+- **Downloads:** Full-width responsive grouped quality/source cards, real saved file sizes and source type, top-listed quality badge, correct direct/copy actions. External host uptime is not verified automatically.
+- **Performance:** Poster lazy loading and memoization, bounded feed requests with server caching, calendar Show More to limit initially rendered release cards, unchanged private data/cache protections.
 
-## Requires additional data or product support
+## External metadata provider requirements
 
-- Video/Audio tabs appear only when actual audio-only files can be identified from their filename or label. To recognize every source reliably (including anonymous cloud-storage URLs), the admin needs an explicit audio/video field.
-- Genre/language filters need admin-managed, queryable genre/language fields; current categories can already act as tags.
-- Actual playback progress bars require a player/progress event source. Download-only links do not report watch duration.
-- Future episode countdown/calendar dates need admin-provided scheduled release timestamps, not publication dates.
-- Personalized recommendations require an explicit history/preference signal; current related-title recommendations use available catalog metadata.
+- AniList anime search: no personal token, but dependent on rate limits and API availability.
+- TVmaze series search: no personal token. The free search API may not report total episode count; leave this blank instead of guessing.
+- TMDB movie search: set **TMDB_READ_TOKEN** (v3 read access Bearer token) or **TMDB_API_KEY** (v3 key) in **Vercel Preview** environment. The admin UI explains when no movie-search key is configured. No key is checked into the repository.
+- External service content is displayed as metadata for administrator review; it does not provide licensed video downloads.
 
-## Verification
+## Database and deploy
 
-- Existing end-to-end tests cover distinct download qualities, R2 links, bulk download handling and phone widths.
-- This branch adds E2E checks for the navigation drawer and last-opened episode shortcuts.
-- CI, Preview and browser validation are required before merge. **Do not merge without owner approval**.
+- Migration `drizzle/0011_media_metadata.sql` adds nullable `media.genres`, `episode_count`, `external_source`, `external_id` and an index. Historical media rows, links, seasons and episodes retain their IDs and content.
+- **Preview Neon branch only** (`preview`, `br-lively-scene-b5dhtkvc`) had 0011 safely applied and registered in the migration history on November 21, 2026. **Production** was not migrated; release would require an approved, separately validated production migration and subsequent merge/deploy.
+- Use branch Preview builds and the disposable CI database for validation. No changes to main or Production until explicit authorization.
+
+## Validation
+
+CI includes TypeScript, ESLint, unit tests, PostgreSQL migration idempotency, API/browser E2E, Admin UI and Following mobile fixtures. New tests cover imported metadata validation, title auto-fill and exact followed-anime countdown matching. Do not merge without all CI checks passing and the owner's approval.
