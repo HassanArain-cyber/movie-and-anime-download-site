@@ -794,7 +794,7 @@ const titleSuggestion = suggestions.getByRole("link", { name: new RegExp(`Jujuts
 assert.match(await titleSuggestion.innerText(), /Anime/);
 assert.match(await titleSuggestion.innerText(), /2024/);
 const animeSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-assert.ok(animeSuggestionHrefs.length > 0 && animeSuggestionHrefs.every((href) => href?.startsWith("/anime/")), "selected Anime filter must scope every live suggestion");
+assert.ok(animeSuggestionHrefs.some((href) => href?.startsWith("/anime/")) && animeSuggestionHrefs.some((href) => href?.startsWith("/movie/")) && animeSuggestionHrefs.some((href) => href?.startsWith("/series/")), "Navbar search on the Anime listing must show movies, anime and series");
 await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${base}/?type=movie`);
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
@@ -803,7 +803,7 @@ await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
 const mobileSuggestionBounds = await suggestions.boundingBox();
 assert.ok(mobileSuggestionBounds && mobileSuggestionBounds.x >= 0 && mobileSuggestionBounds.x + mobileSuggestionBounds.width <= 390, "mobile suggestions should stay within the viewport");
 const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
+assert.ok(movieSuggestionHrefs.some((href) => href?.startsWith("/anime/")) && movieSuggestionHrefs.some((href) => href?.startsWith("/movie/")) && movieSuggestionHrefs.some((href) => href?.startsWith("/series/")), "Navbar search on the Movie listing must be global on mobile");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
@@ -837,9 +837,14 @@ await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
 await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
 
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
+await searchBox.fill("Juju");
+await suggestions.getByRole("link", { name: new RegExp(`Juju Movie ${run}.*Movie`) }).waitFor();
+await suggestions.getByRole("link", { name: new RegExp(`Juju Series ${run}.*Series`) }).waitFor();
+await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) }).waitFor();
+assert.equal(new URL(page.url()).pathname, `/anime/jujutsu-kaisen-${run}`, "cross-type suggestions must render on an anime detail page");
 await searchBox.fill("Legacy");
 await searchBox.press("Enter");
-await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && url.searchParams.get("type") === "anime");
+await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && !url.searchParams.has("type") && !url.searchParams.has("category") && !url.searchParams.has("year"));
 await page.getByRole("heading", { name: /Search results for/ }).waitFor();
 
 // Public comment surfaces render safely, reveal spoilers on demand, and remain
