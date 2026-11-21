@@ -18,6 +18,10 @@ export interface Media {
   posterUrl: string | null;
   thumbnailUrl: string | null;
   year: number | null;
+  genres?: string | null;
+  episodeCount?: number | null;
+  externalSource?: string | null;
+  externalId?: string | null;
   categoryId: number | null;
   categoryName?: string | null;
   commentsEnabled?: boolean;

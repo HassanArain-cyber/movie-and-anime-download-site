@@ -9,6 +9,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getMediaDetails } from "@/lib/library";
 import { uniqueSlug } from "@/lib/slugs";
 import { ApiError, errorResponse, imageUrl, mediaType, optionalId, positiveId, readJson, text, year } from "@/lib/validation";
+import { metadataFields } from "@/lib/metadata-input";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -42,6 +43,9 @@ export async function PATCH(req: Request, { params }: Context) {
     if ("posterUrl" in body) updates.posterUrl = imageUrl(body.posterUrl, "Poster URL");
     if ("thumbnailUrl" in body) updates.thumbnailUrl = imageUrl(body.thumbnailUrl, "Thumbnail URL");
     if ("year" in body) updates.year = year(body.year);
+    if (["genres", "episodeCount", "externalSource", "externalId"].some((field) => field in body)) {
+      Object.assign(updates, metadataFields({ genres: "genres" in body ? body.genres : existing.genres, episodeCount: "episodeCount" in body ? body.episodeCount : existing.episodeCount, externalSource: "externalSource" in body ? body.externalSource : existing.externalSource, externalId: "externalId" in body ? body.externalId : existing.externalId }));
+    }
     if ("commentsEnabled" in body) {
       if (typeof body.commentsEnabled !== "boolean") throw new ApiError(400, "commentsEnabled must be true or false");
       updates.commentsEnabled = body.commentsEnabled;

@@ -14,7 +14,7 @@ interface Props {
   baseQuery: { format?: string; q?: string; type?: string; year?: number; sort?: LibrarySort };
 }
 
-type Overrides = { type?: string; category?: string; year?: number; sort?: LibrarySort };
+type Overrides = { category?: string; year?: number; sort?: LibrarySort };
 
 export default function CategoryFilter({ categories, years, activeSlug, activeYear, activeSort, baseQuery }: Props) {
   const pathname = usePathname() || "/";
@@ -22,9 +22,9 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
 
   const buildHref = (overrides: Overrides) => {
     const params = new URLSearchParams();
-    if (baseQuery.format && !Object.hasOwn(overrides, "type")) params.set("format", baseQuery.format);
+    if (baseQuery.format) params.set("format", baseQuery.format);
     if (baseQuery.q) params.set("q", baseQuery.q);
-    const type = Object.hasOwn(overrides, "type") ? overrides.type : baseQuery.type;
+    const type = baseQuery.type;
     if (type) params.set("type", type);
     const year = Object.hasOwn(overrides, "year") ? overrides.year : activeYear;
     const sort = Object.hasOwn(overrides, "sort") ? overrides.sort! : activeSort;
@@ -33,15 +33,11 @@ export default function CategoryFilter({ categories, years, activeSlug, activeYe
     if (sort !== "newest") params.set("sort", sort);
     if (category) params.set("category", category);
     const qs = params.toString();
-    const target = Object.hasOwn(overrides, "type") ? "/" : pathname;
-    return qs ? `${target}?${qs}` : target;
+    return qs ? `${pathname}?${qs}` : pathname;
   };
 
-  const filtered = Boolean(activeSlug || activeYear || activeSort !== "newest" || baseQuery.type || baseQuery.q);
+  const filtered = Boolean(activeSlug || activeYear || activeSort !== "newest" || baseQuery.q);
   return <div className="vault-filters" aria-label="Library filters">
-    <CompactSelect label="Filter by content type" value={baseQuery.type ?? ""} active={Boolean(baseQuery.type)}
-      options={[{ value: "", label: "Content" }, { value: "movie", label: "Movies" }, { value: "anime", label: "Anime" }, { value: "series", label: "Series" }]}
-      onChange={(type) => router.push(buildHref({ type: type || undefined }))} />
     <CompactSelect label="Filter by tag" value={activeSlug ?? ""} active={Boolean(activeSlug)}
       options={[{ value: "", label: "Tags" }, ...categories.map((category) => ({ value: category.slug, label: category.name }))]}
       onChange={(category) => router.push(buildHref({ category: category || undefined }))} />

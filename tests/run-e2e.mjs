@@ -42,6 +42,7 @@ const env = {
   CONTACT_RATE_LIMIT_GLOBAL_MAX_ATTEMPTS: "1000",
   APP_ORIGIN: base,
   NEXT_TELEMETRY_DISABLED: "1",
+  CALENDAR_DISABLE_EXTERNAL: "1", // deterministic disposable E2E; live preview still uses external feeds
   ADMIN_LOGIN_TRUSTED_IP_HEADER: "x-e2e-client-ip",
   ADMIN_LOGIN_WINDOW_SECONDS: process.env.ADMIN_LOGIN_WINDOW_SECONDS || "5",
   ADMIN_LOGIN_MAX_ATTEMPTS: process.env.ADMIN_LOGIN_MAX_ATTEMPTS || "5",
@@ -132,6 +133,7 @@ try {
   await run(process.execPath, ["tests/recycle-bin-e2e.mjs"]);
   await run(process.execPath, ["tests/admin-delete-all-e2e.mjs"]);
   await run(process.execPath, ["tests/copy-link-e2e.mjs"]);
+  await run(process.execPath, ["tests/calendar-e2e.mjs"]);
 } catch (error) {
   failure = error;
 } finally {

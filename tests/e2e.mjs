@@ -175,6 +175,31 @@ assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: 
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
 
+// Admin schedules are stored in existing site settings; no production migration.
+const calendarTestRelease = {
+  title: "Upcoming Calendar Fixture", kind: "episode",
+  airingAt: "2027-02-14T14:00:00.000Z", episode: 6, anilistId: 170001,
+  posterUrl: "https://example.com/calendar-poster.jpg",
+  url: "/anime/calendar-fixture", notes: "Preview episode",
+};
+assert.equal((await api("/api/admin/calendar", { method: "POST", auth: false, body: calendarTestRelease })).res.status, 401, "anonymous clients cannot edit the release calendar");
+assert.equal((await api("/api/admin/calendar", { method: "POST", body: calendarTestRelease, headers: { Origin: "https://evil.example" } })).res.status, 403, "cross-origin calendar writes are blocked");
+assert.equal((await api("/api/admin/calendar", { method: "POST", body: { ...calendarTestRelease, url: "javascript:alert(1)" } })).res.status, 400, "calendar cannot contain script links");
+assert.equal((await api("/api/calendar?year=2027&month=13", { auth: false })).res.status, 400, "invalid months cannot query providers");
+const createdCalendar = ok(await api("/api/admin/calendar", { method: "POST", body: calendarTestRelease }), 201);
+const calendarId = createdCalendar.entries.find((entry) => entry.title === calendarTestRelease.title)?.id;
+assert.ok(calendarId, "calendar entry must be saved with a unique id");
+const publicCalendar = ok(await api("/api/calendar?year=2027&month=2", { auth: false }));
+assert.equal(publicCalendar.anilistStatus, "disabled", "disposable tests never fetch external AniList/Jikan providers");
+assert.equal(ok(await api("/api/admin/calendar")).entries.some((entry) => entry.id === calendarId), true, "saved admin event persists in site settings");
+assert.equal(publicCalendar.events.find((event) => event.id === "manual:" + calendarId)?.episode, 6, "manual future episode is visible publicly");
+const updatedCalendar = ok(await api("/api/admin/calendar", { method: "PATCH", body: { ...calendarTestRelease, id: calendarId, title: "Edited Calendar Fixture", episode: 7 } }));
+assert.equal(updatedCalendar.entries.find((entry) => entry.id === calendarId)?.episode, 7, "editing a saved release is persistent");
+assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.find((event) => event.id === "manual:" + calendarId)?.title, "Edited Calendar Fixture");
+ok(await api("/api/admin/calendar", { method: "DELETE", body: { id: calendarId } }));
+assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.some((event) => event.id === "manual:" + calendarId), false, "deleted releases disappear from the public calendar");
+
+
 // Login hardening: origin checks, JSON content type/size, and DB-backed limits.
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { Origin: "https://evil.example" } })).res.status, 403);
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "Sec-Fetch-Site": "cross-site" } })).res.status, 403);
@@ -598,6 +623,12 @@ assert.equal(page.url(), desktopScrollUrl, "floating control must not navigate")
 assert.equal(frameNavigations.length, desktopNavigationCount, "floating control must not reload the page");
 
 await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/calendar`);
+await page.getByRole("heading", { name: "Release Calendar" }).waitFor();
+const visualCalendar = page.getByRole("region", { name: "Anime release calendar" });
+await visualCalendar.getByRole("button", { name: "Next month" }).click();
+await visualCalendar.getByRole("button", { name: "Previous month" }).click();
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "visual release calendar fits phone screen");
 await page.goto(`${base}/`);
 assert.equal(await page.locator(".vault-hero").isVisible(), false, "mobile hero starts collapsed");
 await page.locator("summary").filter({ hasText: "Show or hide Vault introduction" }).click();
@@ -631,6 +662,7 @@ assert.equal(await page.evaluate(() => performance.timeOrigin), mobileLoadTime, 
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "mobile scroll control must not cause horizontal overflow");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
+await page.getByRole("combobox", { name: "Filter by tag" }).waitFor({ state: "visible", timeout: 15000 });
 assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
 async function chooseFilter(control, value) {
   await control.click();
@@ -667,16 +699,25 @@ assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Movi
 await page.goto(`${base}/anime?year=2024&category=filter-${run}&sort=az`);
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "type pages should use the same combined library filters");
 await page.setViewportSize({ width: 390, height: 844 });
-await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
-const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`, { waitUntil: "networkidle" });
+const activeLibraryFilters = page.locator('#library [aria-label="Library filters"]').last();
+await activeLibraryFilters.waitFor({ state: "visible", timeout: 15000 });
+const libraryFilterBounds = await activeLibraryFilters.boundingBox();
 assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
-// The type dropdown must retain compatible filters; reset clears the entire query.
-await chooseFilter(page.getByRole("combobox", { name: "Filter by content type" }), "movie");
-await page.waitForURL((url) => url.searchParams.get("type") === "movie" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-active"), "true");
+// Main content types now live in the side drawer, never in a duplicate filter.
+assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).count(), 0);
+assert.equal(await page.locator('#library [aria-label="Library filters"]').last().getByRole("combobox").count(), 3, "only tag, year and sort filters remain");
+await page.getByRole("button", { name: "Open navigation menu" }).click();
+const mobileDrawer = page.getByRole("navigation", { name: "Site navigation" });
+await mobileDrawer.locator('a[href="/movie"]').click();
+await page.waitForURL((url) => url.pathname === "/movie");
+await page.getByRole("heading", { name: "Movies", exact: true }).waitFor();
+assert.equal(await page.getByRole("navigation", { name: "Site navigation" }).count(), 0, "drawer closes after navigation");
+await chooseFilter(page.getByRole("combobox", { name: "Sort library" }), "az");
+await page.waitForURL((url) => url.pathname === "/movie" && url.searchParams.get("sort") === "az");
 await page.getByRole("button", { name: "Reset filters" }).click();
 await page.waitForURL((url) => url.pathname === "/" && url.search === "");
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-value"), "");
+assert.equal(await page.getByRole("combobox", { name: "Sort library" }).getAttribute("data-value"), "newest");
 for (let index = 0; index < 20; index++) ok(await api("/api/categories", { method: "POST", body: { name: `Menu category ${run} ${index}`, slug: `menu-${run}-${index}` } }), 201);
 await page.reload({ waitUntil: "networkidle" });
 for (const width of [360, 390, 768, 1280]) {
@@ -690,7 +731,8 @@ for (const width of [360, 390, 768, 1280]) {
     return { heroHeight: hero.getBoundingClientRect().height, filterHeights: selects.map((rect) => rect.height), filterTops: selects.map((rect) => rect.top), actionHeights: actions.map((rect) => rect.height) };
   });
   assert.ok(compactLayout.filterHeights.every((height) => height <= 38), 'filter controls should stay compact');
-  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the four filters should fit on one row');
+  assert.equal(compactLayout.filterTops.length, 3, "content types appear only in the side drawer");
+  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the three catalog filters should fit on one row');
   if (width <= 390) {
     assert.ok(compactLayout.heroHeight <= 410, `hero should be compact at ${width}px`);
     assert.ok(compactLayout.actionHeights.every((height) => height >= 44), 'hero actions should retain usable tap targets');
@@ -1028,6 +1070,21 @@ await page.getByRole("button", { name: "Close request form" }).click();
 await page.getByPlaceholder("Password").fill(password);
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.getByRole("heading", { name: "Admin Dashboard" }).waitFor();
+await page.getByRole("button", { name: "Release Calendar", exact: true }).click();
+const calendarEditor = page.locator("#calendar-admin-editor");
+await calendarEditor.getByLabel("Anime / release title").fill("UI Calendar Fixture");
+await calendarEditor.getByLabel("Date and time (your device local time)").fill("2027-02-14T19:00");
+await calendarEditor.getByLabel("Episode number").fill("5");
+await calendarEditor.getByRole("button", { name: "Add to calendar" }).click();
+await page.getByText("Release added to calendar.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+await calendarEditor.getByLabel("Episode number").fill("6");
+await calendarEditor.getByRole("button", { name: "Save changes" }).click();
+await page.getByText("Release updated.", { exact: true }).waitFor();
+page.once("dialog", (dialog) => dialog.accept());
+await page.getByRole("button", { name: "Delete calendar release UI Calendar Fixture" }).click();
+await page.getByText("Release deleted.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "media", exact: true }).click();
 await page.getByRole("button", { name: "requests", exact: true }).click();
 await page.getByRole("heading", { name: "Submitted requests" }).waitFor();
 await page.getByText("Ari Smith", { exact: true }).waitFor();
@@ -1179,10 +1236,22 @@ assert.deepEqual(new Set(browserAnimeDetails.seasons[0].episodes[0].downloadLink
 for (const episode of browserEpisodes.filter((item) => item.episode_number > 1)) {
   ok(await api("/api/download-links", { method: "POST", body: { mediaId: browserAnime.id, seasonId: episode.season_id, episodeId: episode.id, quality: "1080p", label: "1080p", url: `https://example.com/browser-episode-${episode.episode_number}-1080.mp4` } }), 201);
 }
-await page.goto(`${base}/anime/browser-anime-${run}`);
+await page.goto(`${base}/anime/browser-anime-${run}`, { waitUntil: "networkidle" });
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
-await page.getByText("Episode 1", { exact: true }).click();
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).last().click();
 await page.locator('a[title="Cloudflare R2"]').first().waitFor();
+await page.getByRole("button", { name: "Open navigation menu" }).click();
+await page.getByRole("navigation", { name: "Site navigation" }).getByRole("link", { name: "Anime & Movies" }).waitFor();
+await page.keyboard.press("Escape");
+assert.equal(await page.getByRole("navigation", { name: "Site navigation" }).count(), 0, "right-side menu closes with Escape");
+const lastEpisode = await page.evaluate(() => JSON.parse(localStorage.getItem("vault-continue-episodes-v1") || "[]")[0]);
+assert.equal(lastEpisode?.episodeNumber, 1, "opening an episode automatically remembers its shortcut");
+await page.goto(`${base}/`);
+await page.getByRole("heading", { name: "Continue Watching" }).waitFor();
+await page.getByRole("link", { name: /Return to Browser Anime .* episode 1/ }).waitFor();
+await page.goto(`${base}/anime/browser-anime-${run}`, { waitUntil: "networkidle" });
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).last().click();
+
 await page.getByRole("heading", { name: "720p", exact: true }).waitFor();
 await page.getByRole("heading", { name: "1080p", exact: true }).waitFor();
 const episodeOneCheckbox = page.getByRole("checkbox", { name: "Select episode 1 for bulk download" });
@@ -1205,6 +1274,11 @@ assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection rema
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 await page.goto(`${base}/movie/${movie.slug}`);
 for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
+const detailBounds = await page.locator(".vault-detail").boundingBox();
+const downloadBounds = await page.locator('[aria-label="Available downloads"]').boundingBox();
+assert.ok(detailBounds && downloadBounds, "movie page has its detail and download sections");
+assert.ok(downloadBounds.width >= detailBounds.width - 2, "download panel must use the full content width, not the narrow poster-side column");
+assert.ok(downloadBounds.y >= detailBounds.y + detailBounds.height - 2, "downloads appear below the poster and synopsis");
 // Dedicated bulk creation: validation, duplicate numbers, partial failure/retry, and real multi-file R2 upload.
 const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
 const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);

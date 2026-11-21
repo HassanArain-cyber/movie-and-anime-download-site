@@ -418,7 +418,7 @@ try {
   await shopper.locator(`#episode-${ep1.id} button[aria-expanded]`).tap();
   await tapAndExpectDirectOpen(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /1080p/ }), NEWER_SITE, "https://example.com/ep1-1080.mp4");
   await tapAndExpectDirectOpen(shopper.locator(`#episode-${ep1.id}`).getByRole("button", { name: /Ep1 own site/ }), OWN_SITE, "https://example.com/ep1-720.mp4");
-  assert.equal(await shopper.locator(`#episode-${ep1.id}`).getByRole("link", { name: /720p/ }).count(), 0, "Open Link episodes elsewhere are unaffected");
+  assert.equal(await shopper.locator(`#episode-${ep1.id}`).locator(`a[href="${existing.url}"]`).count(), 0, "Copy-only episodes do not expose an external download anchor");
   assert.equal(await shopper.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the phone layout does not overflow");
 
   // Explicit removal: Copy Link buttons go back to copy only; a link's own website still works.

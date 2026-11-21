@@ -9,7 +9,7 @@ import chromium, { inflate, setupLambdaEnvironment } from "@sparticuz/chromium";
 import { compactLayoutFixture } from "./compact-layout-fixture.mjs";
 
 const statuses = ["plan_to_watch", "watching", "continue", "on_hold", "watched"];
-let following = statuses.map((watchStatus, i) => ({ id: i + 1, title: `Fixture ${i === 0 ? "movie" : i === 1 ? "series" : "anime"} ${i + 1}`, slug: `fixture-${i + 1}`, type: i === 0 ? "movie" : i === 1 ? "series" : "anime", posterUrl: null, hasNew: i === 1, watchStatus }));
+let following = statuses.map((watchStatus, i) => ({ id: i + 1, title: `Fixture ${i === 0 ? "movie" : i === 1 ? "series" : "anime"} ${i + 1}`, slug: `fixture-${i + 1}`, type: i === 0 ? "movie" : i === 1 ? "series" : "anime", posterUrl: null, externalSource: i === 2 ? "anilist" : null, externalId: i === 2 ? "777" : null, hasNew: i === 1, watchStatus }));
 const notification = { id: 1, mediaId: 1, title: "Fixture movie 1", episodeNumber: 2, episodeTitle: "New episode", seasonNumber: 1, url: "/anime/fixture-1#episode-2", readAt: null, createdAt: "2026-11-05T00:00:00.000Z" };
 const writes = [], unexpected = [];
 const server = createServer(async (req, res) => {
@@ -17,6 +17,7 @@ const server = createServer(async (req, res) => {
   const json = (data) => { res.setHeader("Content-Type", "application/json"); res.setHeader("Cache-Control", "private, no-store"); res.end(JSON.stringify(data)); };
   try {
     if (url.pathname === "/api/updates") return json({ following, notifications: [notification], unread: notification.readAt ? 0 : 1, hasMore: false });
+    if (url.pathname === "/api/next-airings") return json({ airings: [{ anilistId: 777, episode: 13, airingAt: new Date(Date.now() + 48 * 3600000).toISOString(), totalEpisodes: 24 }, { anilistId: 888, episode: 5, airingAt: new Date(Date.now() + 24 * 3600000).toISOString(), totalEpisodes: 12 }] });
     if (url.pathname === "/api/site-settings") return json({ wallpaperUrl: null });
     if (url.pathname === "/api/media") return json({ media: [], total: 0 });
     if (url.pathname === "/api/follows") {
@@ -68,14 +69,23 @@ try {
     if (window.Notification) Object.defineProperty(Notification, "requestPermission", { value: async () => { window.permissionRequests++; return "denied"; } });
   });
   await page.goto(`${base}/following`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "All (5)", exact: true }).waitFor();
+  const filterGroup = page.getByRole("group", { name: "Filter by watch status" });
+  const trigger = filterGroup.getByRole("button", { name: "Watch status filter" });
+  const selectFilter = async (name, count) => {
+    await trigger.click();
+    await filterGroup.getByRole("button", { name: `${name} (${count})`, exact: true }).click();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "false", "menu closes on selection");
+  };
+  await trigger.waitFor();
   assert.equal(await page.locator("article").count(), 5);
-  const labels = ["Plan to Watch", "Watching", "Continue", "On-Hold", "Watched"];
+  await page.getByText(/Next: Episode 13/).waitFor();
+  assert.equal(await page.getByText(/Next: Episode 13/).count(), 1, "real followed AniList ID receives a next-episode countdown");
+  const labels = ["Plan to Watch", "Watching", "Ongoing", "On-Hold", "Watched"];
   for (const label of labels) {
-    await page.getByRole("button", { name: `${label} (1)`, exact: true }).click();
+    await selectFilter(label, 1);
     assert.equal(await page.locator("article").count(), 1);
   }
-  await page.getByRole("button", { name: "All (5)", exact: true }).click();
+  await selectFilter("All", 5);
   const first = page.locator("article").filter({ hasText: "Fixture movie 1" });
   assert.equal(await first.locator('a[href="/movie/fixture-1"]').count(), 2);
   assert.equal(await page.locator('article a[href="/series/fixture-2"]').count(), 2);
@@ -86,14 +96,19 @@ try {
     assert.equal(following.find((item) => item.id === 1).watchStatus, status);
   }
   await first.getByLabel("Watch status", { exact: true }).selectOption("watching");
-  await page.getByRole("button", { name: "Watching (2)", exact: true }).waitFor();
+  await trigger.click();
+  await filterGroup.getByRole("button", { name: "Watching (2)", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await trigger.getAttribute("aria-expanded"), "false", "Escape closes dropdown");
   await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.locator("article").filter({ hasText: "Fixture movie 1" }).getByLabel("Watch status", { exact: true }).inputValue(), "watching");
-  await page.getByRole("button", { name: "Plan to Watch (0)", exact: true }).click();
+  await selectFilter("Plan to Watch", 0);
   await page.getByText("No titles with this status yet.").waitFor();
-  await page.getByRole("button", { name: "All (5)", exact: true }).click();
+  await selectFilter("All", 5);
   await page.locator("article").filter({ hasText: "Fixture movie 1" }).getByRole("button", { name: "Unfollow", exact: true }).click();
-  await page.getByRole("button", { name: "All (4)", exact: true }).waitFor();
+  await trigger.click();
+  await filterGroup.getByRole("button", { name: "All (4)", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
   assert.equal(following.length, 4);
   await page.getByLabel("Notifications, 1 unread", { exact: true }).click();
   await page.getByRole("button", { name: "Mark all read", exact: true }).click();
@@ -107,23 +122,31 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${route} overflow at ${width}`);
       if (route === "/compact-layout") {
         assert.equal(await page.locator('[data-testid="comment-node"]').count(), 12, "nested replies remain visible");
-        assert.equal(await page.locator('textarea[rows="2"]').count(), 1, "compact comment form");
+        assert.equal(await page.getByRole("button", { name: "Add a comment" }).count(), 1, "compact comment entry point is visible");
+        assert.equal(await page.locator('textarea[rows="2"]').count(), 0, "collapsed composer does not mount an unused textarea");
         assert.equal(await page.locator('a[download][href="/api/download?id=2"]').count(), 1, "private R2 download route stays opaque");
         assert.equal(await page.locator('a[target="_blank"][rel="noopener noreferrer"]').count(), 1, "external download behavior preserved");
-        for (const link of await page.locator('main a').all()) {
+        for (const link of await page.locator(".vault-download-panel a").all()) {
           assert.equal(await link.evaluate((el) => {
-            const box = el.getBoundingClientRect(), card = el.closest("section").getBoundingClientRect();
-            return box.left >= card.left && box.right <= card.right;
-          }), true, `download stays inside quality card at ${width}`);
+            const box = el.getBoundingClientRect(), panel = el.closest(".vault-download-panel").getBoundingClientRect();
+            return box.left >= panel.left - 1 && box.right <= panel.right + 1;
+          }), true, `download and quality shortcuts stay inside the download panel at ${width}`);
         }
-        const refresh = await page.getByRole("button", { name: "Refresh", exact: true }).boundingBox();
-        assert.equal(refresh.height, 36);
+        const commentEntry = await page.getByRole("button", { name: "Add a comment" }).boundingBox();
+        assert.ok(commentEntry && commentEntry.height >= 44 && commentEntry.height <= 64, "collapsed comment composer remains an accessible mobile control");
       }
       if (route === "/following") {
-        const filters = page.getByRole("group", { name: "Filter by watch status" }).getByRole("button");
-        for (const button of await filters.all()) {
-          const box = await button.boundingBox(); assert.ok(box.height >= 36 && box.height <= 40, "compact filters retain 36px tap height");
+        const toggle = page.getByRole("group", { name: "Filter by watch status" }).getByRole("button", { name: "Watch status filter" });
+        const triggerBox = await toggle.boundingBox();
+        assert.ok(triggerBox.height >= 44 && triggerBox.height <= 70, "styled status selector retains a usable touch target");
+        await toggle.click();
+        const options = page.locator("#vault-watch-status-options").getByRole("button");
+        assert.equal(await options.count(), 6, "all five statuses and All stay inside dropdown");
+        for (const option of await options.all()) {
+          const box = await option.boundingBox();
+          assert.ok(box.height >= 44, "dropdown items meet mobile tap targets");
         }
+        await page.keyboard.press("Escape");
         const poster = await page.locator('article > a').first().boundingBox();
         assert.ok(poster.width <= 64 && Math.abs(poster.height / poster.width - 1.5) < 0.03, "small poster preserves 2:3 ratio");
         const bell = await page.getByLabel("Notifications", { exact: true }).boundingBox();
@@ -133,6 +156,22 @@ try {
       }
     }
   }
+  // Calendar-only follows are stored on this device and shown in the same Following page.
+  await page.goto(`${base}/following`, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    localStorage.setItem("vault-calendar-follows-v1", JSON.stringify([{
+      source: "anilist", externalId: 888, title: "New calendar anime",
+      posterUrl: null, addedAt: Date.now(),
+    }]));
+    window.dispatchEvent(new Event("vault-calendar-follows-changed"));
+  });
+  const calendarFollows = page.getByRole("region", { name: "Calendar follows" });
+  await calendarFollows.getByText("New calendar anime").first().waitFor();
+  await calendarFollows.getByText(/Next: Episode 5/).waitFor();
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.getByRole("region", { name: "Calendar follows" }).getByText("New calendar anime").count(), 1, "calendar follow survives browser reload");
+  await page.getByRole("button", { name: "Unfollow New calendar anime" }).click();
+  await page.getByRole("region", { name: "Calendar follows" }).waitFor({ state: "detached" });
   assert.equal(await page.evaluate(() => window.permissionRequests), 0);
   assert.deepEqual(writes.map((write) => write.method), [...statuses.map(() => "PATCH"), "PATCH", "DELETE"]);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
