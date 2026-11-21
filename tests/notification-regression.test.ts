@@ -184,6 +184,7 @@ test("bell and Following share the actual outage, never show an empty-success st
     "./UpdatesProvider": { useUpdates: () => context },
     "./PosterImage": { default: () => null, __esModule: true },
     "./FollowButton": { default: () => null, __esModule: true },
+    "./LibraryBackup": { default: () => null, __esModule: true },
     "./BrowserNotificationOptIn": { default: () => null, __esModule: true },
     "./useCalendarFollows": { useCalendarFollows: () => [] },
     "@/lib/calendar-follows": { updateCalendarFollow: () => {} },
