@@ -42,7 +42,9 @@ export const media = pgTable("media", {
   commentsEnabled: boolean("comments_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("media_external_source_id_idx").on(table.externalSource, table.externalId),
+]);
 
 export const seasons = pgTable("seasons", {
   id: serial("id").primaryKey(),
