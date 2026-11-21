@@ -54,7 +54,7 @@ export function getMediaAuditHref(
   type: string | null, slug: string | null, episodeId: number | null,
 ): string | null {
   if (type !== "anime" && type !== "movie" && type !== "series") return null;
-  if (!slug || slug.length > 255 || /[\\u0000-\\u001f\\u007f]/.test(slug)) return null;
+  if (!slug || slug.length > 255 || /[\u0000-\u001f\u007f]/.test(slug)) return null;
   try {
     const base = "/" + type + "/" + encodeURIComponent(slug);
     const episodeAnchor = type !== "movie" &&
