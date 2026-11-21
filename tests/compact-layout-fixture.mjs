@@ -43,5 +43,5 @@ export function compactLayoutFixture(styles) {
   ];
   const downloads = renderToStaticMarkup(React.createElement(DownloadOptions, { links }));
   const discussion = renderToStaticMarkup(React.createElement(CommentSection, { mediaId: 1, enabled: true }));
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">${styles}</head><body><main class="mx-auto max-w-7xl p-4 vault-detail-page"><div class="vault-detail"><div class="vault-detail-poster"><div class="aspect-[2/3] bg-neutral-900"></div></div><div class="min-w-0"><h1>Yuo movie layout fixture</h1>${downloads}</div></div>${discussion}</main></body></html>`;
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">${styles}</head><body><main class="mx-auto max-w-7xl p-4 vault-detail-page"><div class="vault-detail"><div class="vault-detail-poster"><div class="aspect-[2/3] bg-neutral-900"></div></div><div class="min-w-0"><h1>Yuo movie layout fixture</h1></div></div><section class="min-w-0 space-y-3" aria-label="Available downloads">${downloads}</section>${discussion}</main></body></html>`;
 }

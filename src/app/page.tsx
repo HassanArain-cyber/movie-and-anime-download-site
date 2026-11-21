@@ -1,6 +1,7 @@
 import { activeContent, animeMovieFlag } from "@/lib/content-state";
 import Link from "next/link";
 import MediaGrid from "@/components/MediaGrid";
+import { ContinueWatching } from "@/components/ContinueWatching";
 import CategoryFilter from "@/components/CategoryFilter";
 import { db } from "@/db";
 import { media, categories } from "@/db/schema";
@@ -112,6 +113,7 @@ export default async function Home({ searchParams }: HomeProps) {
         </section>
       ) : null}
 
+      {!hasBrowseFilters && <ContinueWatching />}
       <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
         <div className="relative">
           <div className="min-w-0 w-full">

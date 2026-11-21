@@ -2,7 +2,7 @@ import { activeContent } from "@/lib/content-state";
 import { notFound } from "next/navigation";
 import PosterImage from "@/components/PosterImage";
 import Link from "next/link";
-import { and, count, eq, ne, desc } from "drizzle-orm";
+import { and, count, eq, ne, desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { animeFollows, media } from "@/db/schema";
 import DownloadOptions from "@/components/DownloadOptions";
@@ -30,7 +30,7 @@ export default async function DetailPage({ params }: PageProps) {
     const pgError = error as { code?: string; cause?: { code?: string } };
     if ((pgError.code || pgError.cause?.code) !== "42P01") throw error;
   }
-  const recommendations = await db.select().from(media).where(and(eq(media.type, item.type), ne(media.id, item.id), await activeContent("media", media.id))).orderBy(desc(media.createdAt)).limit(10);
+  const recommendations = await db.select().from(media).where(and(eq(media.type, item.type), ne(media.id, item.id), await activeContent("media", media.id))).orderBy(item.categoryId ? desc(sql`CASE WHEN ${media.categoryId} = ${item.categoryId} THEN 1 ELSE 0 END`) : desc(media.createdAt), desc(media.createdAt)).limit(10);
   const typeLabel = item.type === "movie" ? "Movie" : item.type === "anime" ? "Anime" : "Series";
 
   return (
@@ -53,13 +53,20 @@ export default async function DetailPage({ params }: PageProps) {
           </div>
           <FollowButton mediaId={item.id} mediaType={item.type} followerCount={followerCount} />
           {item.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-300">{item.description}</p>}
-          {(item.downloadLinks?.length || 0) > 0 && <div className="space-y-3 pt-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{item.type === "movie" ? "Available downloads · choose a quality" : "Additional links"}</h2>
-            <DownloadOptions links={item.downloadLinks!} copyWebsite={item.copyWebsite} />
-          </div>}
-          {item.type === "movie" && !item.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links available yet.</p>}
+
         </div>
       </div>
+
+      {(item.downloadLinks?.length || 0) > 0 && (
+        <section id="downloads" aria-label="Available downloads" className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold tracking-tight text-white sm:text-xl">{item.type === "movie" ? "Available downloads" : "Additional downloads"}</h2>
+            <p className="text-xs text-neutral-400">Choose a quality and source</p>
+          </div>
+          <DownloadOptions links={item.downloadLinks!} copyWebsite={item.copyWebsite} />
+        </section>
+      )}
+      {item.type === "movie" && !item.downloadLinks?.length && <p className="rounded-xl border border-white/10 bg-neutral-900/50 px-4 py-3 text-sm text-neutral-400">No download links available yet.</p>}
 
       {item.type !== "movie" && <div className="space-y-4">
         <div><p className="vault-eyebrow">KEEP EXPLORING</p><h2 className="mt-1 text-xl font-bold text-white">Seasons &amp; episodes</h2></div>
@@ -75,7 +82,7 @@ export default async function DetailPage({ params }: PageProps) {
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Complete season downloads</h3>
             <DownloadOptions links={season.downloadLinks} copyWebsite={item.copyWebsite} />
           </div>}
-          <EpisodeList mediaId={item.id} episodes={season.episodes} copyWebsite={item.copyWebsite} />
+          <EpisodeList mediaId={item.id} episodes={season.episodes} copyWebsite={item.copyWebsite} mediaTitle={item.title} mediaSlug={item.slug} mediaType={item.type === "anime" ? "anime" : "series"} posterUrl={item.posterUrl} totalEpisodes={item.seasons?.reduce((count, row) => count + row.episodes.length, 0) ?? 0} />
           </div>
         </details>)}
       </div>}
@@ -83,7 +90,7 @@ export default async function DetailPage({ params }: PageProps) {
       <CommentSection mediaId={item.id} enabled={item.commentsEnabled !== false} />
       {recommendations.length > 0 && (
         <section aria-label="Recommended titles" className="space-y-4 py-4">
-          <h2 className="border-l-4 border-violet-500 pl-3 text-xl font-bold text-white">Recommended {item.type === "movie" ? "Movies" : item.type === "anime" ? "Anime" : "Series"}</h2>
+          <h2 className="border-l-4 border-violet-500 pl-3 text-xl font-bold text-white">You May Also Like · {item.type === "movie" ? "Movies" : item.type === "anime" ? "Anime" : "Series"}</h2>
           <div className="-mx-2 flex snap-x snap-mandatory gap-3 overflow-x-auto px-2 pb-3 [scrollbar-width:none] sm:gap-4">
             {recommendations.map((recommended) => (
               <div key={recommended.id} className="w-[44%] max-w-[210px] shrink-0 snap-start sm:w-[25%]">

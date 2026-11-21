@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useUpdates, type EpisodeNotification } from "./UpdatesProvider";
+import BrowserNotificationOptIn from "./BrowserNotificationOptIn";
 export function NotificationItem({ item, onOpen }: { item: EpisodeNotification; onOpen?: () => void }) {
   const { markRead } = useUpdates();
   return <Link href={item.url} onClick={() => { onOpen?.(); void markRead(item.id).catch(() => undefined); }} className={`block min-w-0 rounded-lg p-2.5 text-sm hover:bg-white/5 ${item.readAt ? "text-neutral-400" : "bg-purple-500/10 text-neutral-100"}`}>
@@ -26,6 +27,7 @@ export default function NotificationBell() {
     </summary>
     <section aria-label="Recent notifications" className="fixed right-4 top-20 z-50 max-h-[75dvh] w-[calc(100vw-2rem)] max-w-sm overflow-y-auto rounded-xl border border-neutral-700 bg-neutral-950 p-3 shadow-2xl">
       <div className="flex flex-wrap items-center justify-between gap-2 p-2"><h2 className="font-semibold text-white">Notifications</h2>{!!data?.unread && <button className="min-h-9 text-xs text-purple-300" onClick={() => { void markRead().catch((e: Error) => setMessage(e.message)); }}>Mark all read</button>}</div>
+      <BrowserNotificationOptIn />
       {(error || message) && <p role="alert" className="p-2 text-xs text-red-300">{error || message} <button className="underline" onClick={() => void refresh()}>Retry</button></p>}
       {!data && !error && <p className="p-3 text-sm text-neutral-400">Loading…</p>}
       {data && !data.notifications.length && <p className="p-3 text-sm text-neutral-400">No episode alerts yet. Follow an anime or series to get started.</p>}

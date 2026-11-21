@@ -8,6 +8,7 @@ import { getMediaDetails } from "@/lib/library";
 import { uniqueSlug } from "@/lib/slugs";
 import { ApiError, errorResponse, imageUrl, mediaType, optionalId, readJson, text, year } from "@/lib/validation";
 import { searchMedia } from "@/lib/media-search";
+import { metadataFields } from "@/lib/metadata-input";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
       isAnimeMovie: await animeMovieFlag(media.id),
       id: media.id, type: media.type, title: media.title, slug: media.slug,
       description: media.description, posterUrl: media.posterUrl, thumbnailUrl: media.thumbnailUrl,
-      year: media.year, categoryId: media.categoryId, categoryName: categories.name,
+      year: media.year, genres: media.genres, episodeCount: media.episodeCount, externalSource: media.externalSource, externalId: media.externalId, categoryId: media.categoryId, categoryName: categories.name,
       createdAt: media.createdAt, updatedAt: media.updatedAt,
     }).from(media).leftJoin(categories, eq(media.categoryId, categories.id))
       .where(conditions.length ? and(...conditions) : undefined).orderBy(desc(media.createdAt), desc(media.id));
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
       description: text(body.description, "Description", 20000),
       posterUrl: imageUrl(body.posterUrl, "Poster URL"),
       thumbnailUrl: imageUrl(body.thumbnailUrl, "Thumbnail URL"),
-      year: year(body.year), categoryId,
+      year: year(body.year), ...metadataFields(body), categoryId,
     };
     const newItem = await db.transaction(async (tx) => {
       const [created] = await tx.insert(media).values(payload).returning();

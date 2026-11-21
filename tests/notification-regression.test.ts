@@ -184,6 +184,9 @@ test("bell and Following share the actual outage, never show an empty-success st
     "./UpdatesProvider": { useUpdates: () => context },
     "./PosterImage": { default: () => null, __esModule: true },
     "./FollowButton": { default: () => null, __esModule: true },
+    "./BrowserNotificationOptIn": { default: () => null, __esModule: true },
+    "./useCalendarFollows": { useCalendarFollows: () => [] },
+    "@/lib/calendar-follows": { updateCalendarFollow: () => {} },
     "@/lib/watch-status": { WATCH_STATUSES },
   };
   for (const file of ["src/components/NotificationBell.tsx", "src/components/FollowingPage.tsx"]) {

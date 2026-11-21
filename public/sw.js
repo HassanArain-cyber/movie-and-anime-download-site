@@ -54,3 +54,24 @@ self.addEventListener("fetch", (event) => {
     return response;
   })());
 });
+
+
+// Foreground opt-in notifications use the existing PWA registration.
+// A real push subscription/server is required for alerts while the app is closed.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const given = event.notification.data && event.notification.data.url;
+  const route = typeof given === "string" && /^\/(?:anime|series|movie)\/[a-z0-9_-]+(?:#episode-\d+)?$/i.test(given)
+    ? given : "/notifications";
+  event.waitUntil((async () => {
+    const target = new URL(route, self.location.origin).href;
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of clients) {
+      if (new URL(client.url).origin === self.location.origin) {
+        if ("navigate" in client) await client.navigate(target);
+        if ("focus" in client) return client.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target);
+  })());
+});

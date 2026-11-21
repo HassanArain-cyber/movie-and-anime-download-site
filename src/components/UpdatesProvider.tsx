@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { WatchStatus } from "@/lib/watch-status";
-export type FollowedTitle = { id: number; title: string; type: string; slug: string; posterUrl: string | null; hasNew: boolean; watchStatus: WatchStatus };
+export type FollowedTitle = { id: number; title: string; type: string; slug: string; posterUrl: string | null; externalSource?: string | null; externalId?: string | null; episodeCount?: number | null; hasNew: boolean; watchStatus: WatchStatus };
 export type EpisodeNotification = { id: number; mediaId: number; title: string; episodeNumber: number; episodeTitle: string | null; seasonNumber: number; url: string; readAt: string | null; createdAt: string };
 export type Updates = { following: FollowedTitle[]; unread: number; notifications: EpisodeNotification[]; hasMore: boolean };
 export async function updatesRequest<T = Record<string, unknown>>(url: string, init?: RequestInit): Promise<T> {

@@ -71,52 +71,62 @@ export default function RequestContact() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Request"
-        className="shrink-0 rounded-md border border-neutral-800 px-2 py-1.5 text-sm font-medium text-neutral-300 hover:border-neutral-700 hover:text-white"
+        className="shrink-0 rounded-xl border border-purple-400/20 bg-neutral-900/70 px-2.5 py-2 text-xs font-bold text-neutral-100 transition hover:border-purple-400/60 hover:bg-violet-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
       >
         Request
       </button>
       {open && createPortal(
         <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/80 p-4 sm:p-6"
+          className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/85 p-3 backdrop-blur-sm sm:p-6"
           onMouseDown={(event) => { if (event.target === event.currentTarget && !submittingRef.current) setOpen(false); }}
         >
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="request-title"
-            className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+            className="my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-[470px] overflow-y-auto overscroll-contain rounded-[22px] border border-purple-400/25 bg-[#14101d] shadow-[0_25px_85px_#000000b8] sm:max-h-[calc(100dvh-3rem)]"
           >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 id="request-title" className="text-lg font-semibold text-white">Send a request</h2>
-                <p className="mt-1 text-sm text-neutral-400">Tell us what you would like added to Vault.</p>
+            <div className="relative overflow-hidden border-b border-purple-400/10 bg-gradient-to-br from-[#33204d] via-[#22172f] to-[#171222] px-4 pb-4 pt-5 sm:px-5">
+              <div aria-hidden="true" className="pointer-events-none absolute -right-6 -top-12 h-36 w-36 rounded-full bg-fuchsia-500/20 blur-3xl" />
+              <div className="relative flex items-start gap-3">
+                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200/20 bg-violet-500/25 text-purple-100">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 3 3 11l7 3 3 7 8-18Z" /><path d="m10 14 5-5" /></svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[.17em] text-purple-300">Gojo&apos;s Vault</p>
+                  <h2 id="request-title" className="mt-0.5 text-xl font-extrabold tracking-tight text-white">Send a request</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-purple-100/65">Suggest an anime, movie, series or episode to add.</p>
+                </div>
+                <button type="button" onClick={() => setOpen(false)} disabled={submitting} aria-label="Close request form" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/20 text-neutral-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 disabled:opacity-50">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 5l14 14M19 5 5 19" /></svg>
+                </button>
               </div>
-              <button type="button" onClick={() => setOpen(false)} disabled={submitting} aria-label="Close request form" className="shrink-0 rounded-md px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-white disabled:opacity-50">✕</button>
             </div>
-            <form className="space-y-3" onSubmit={submit}>
-              <label className="block space-y-1 text-sm text-neutral-300">Name
-                <input required maxLength={100} value={draft.name} onChange={(event) => update({ name: event.target.value })} className="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-white outline-none focus:border-neutral-600" />
+            <form className="space-y-3.5 p-4 sm:p-5" onSubmit={submit}>
+              <label className="block space-y-1.5 text-xs font-semibold text-neutral-300">Name
+                <input required maxLength={100} placeholder="Your name" value={draft.name} onChange={(event) => update({ name: event.target.value })} className="w-full rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15" />
               </label>
-              <label className="block space-y-1 text-sm text-neutral-300">Request Type
-                <select value={draft.type} onChange={(event) => update({ type: event.target.value as ContactRequestType })} className="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-white outline-none focus:border-neutral-600">
+              <label className="block space-y-1.5 text-xs font-semibold text-neutral-300">Request Type
+                <select value={draft.type} onChange={(event) => update({ type: event.target.value as ContactRequestType })} className="w-full rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15">
                   {CONTACT_REQUEST_TYPES.map((type) => <option key={type}>{type}</option>)}
                 </select>
               </label>
-              <label className="block space-y-1 text-sm text-neutral-300">Message
-                <textarea required maxLength={2000} rows={4} value={draft.message} onChange={(event) => update({ message: event.target.value })} className="mt-1 w-full resize-y rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-white outline-none focus:border-neutral-600" />
+              <label className="block space-y-1.5 text-xs font-semibold text-neutral-300">Message
+                <textarea required maxLength={2000} rows={3} placeholder="What would you like us to add?" value={draft.message} onChange={(event) => update({ message: event.target.value })} className="w-full resize-y rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm leading-relaxed text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15" />
               </label>
               <div aria-hidden="true" className="absolute h-px w-px overflow-hidden" style={{ left: "-10000px" }}>
                 <label>Company website
                   <input tabIndex={-1} autoComplete="off" value={company} onChange={(event) => setCompany(event.target.value)} />
                 </label>
               </div>
-              <button type="submit" disabled={submitting} className="w-full rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-wait disabled:opacity-60">
-                {submitting ? "Submitting…" : "Submit"}
+              <button type="submit" disabled={submitting} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-300/20 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-700 px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_6px_25px_#7c3aed35] transition hover:brightness-110 active:scale-[.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 disabled:cursor-wait disabled:opacity-60">
+                {submitting ? "Submitting…" : "Submit"} {!submitting && <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m5 12 5 5L20 7" /></svg>}
               </button>
+              <p className="text-center text-[11px] text-neutral-500">Your request goes directly to the Vault admin.</p>
             </form>
-            {error && <p role="alert" className="mt-4 text-sm text-red-400">{error}</p>}
+            {error && <p role="alert" className="mx-4 mb-4 rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-xs text-red-200 sm:mx-5">{error}</p>}
             {sent && (
-              <p role="status" className={`mt-4 text-sm ${notificationFailed ? "text-amber-300" : "text-emerald-300"}`}>
+              <p role="status" className={`mx-4 mb-4 rounded-lg border p-3 text-xs sm:mx-5 ${notificationFailed ? "border-amber-500/25 bg-amber-500/10 text-amber-200" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"}`}>
                 {notificationFailed
                   ? "Your request was saved, but the email notification could not be sent. The site admin can still review it."
                   : "Your request has been saved and the site admin has been notified. Thank you!"}
