@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import DownloadOptions from "./DownloadOptions";
-import { saveContinueEpisode } from "./ContinueWatching";
+import { saveContinueEpisode, setEpisodeWatched, useWatchedEpisodeIds } from "./ContinueWatching";
 import type { DownloadLink, EpisodeWithLinks, VideoQuality } from "@/lib/types";
 import {
   getLinkHref,
@@ -37,8 +37,9 @@ function choiceLabel(choice: BulkQualityChoice): string {
   return qualityDisplay(choice);
 }
 
-export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle, mediaSlug, mediaType, posterUrl }: { episodes: EpisodeWithLinks[]; mediaId: number; copyWebsite?: string | null; mediaTitle?: string; mediaSlug?: string; mediaType?: "anime" | "series"; posterUrl?: string | null }) {
+export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle, mediaSlug, mediaType, posterUrl, totalEpisodes }: { episodes: EpisodeWithLinks[]; mediaId: number; copyWebsite?: string | null; mediaTitle?: string; mediaSlug?: string; mediaType?: "anime" | "series"; posterUrl?: string | null; totalEpisodes?: number }) {
   const [openId, setOpenId] = useState<number | null>(null);
+  const watched = useWatchedEpisodeIds(mediaId);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [bulkQuality, setBulkQuality] = useState<BulkQualityChoice>("best");
   const [bulkResult, setBulkResult] = useState<BulkDownloadResult | null>(null);
@@ -242,7 +243,7 @@ export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle
                     className="h-4 w-4 accent-violet-500"
                   />
                 </label>
-                <button type="button" onClick={() => { setOpenId(open ? null : ep.id); if (!open && mediaSlug && mediaTitle && mediaType) saveContinueEpisode({ mediaId, title: mediaTitle, href: `/${mediaType}/${mediaSlug}#episode-${ep.id}`, episodeNumber: ep.episodeNumber, posterUrl }); }} aria-expanded={open} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-1 text-left hover:bg-neutral-900 sm:px-2">
+                <button type="button" onClick={() => { setOpenId(open ? null : ep.id); if (!open && mediaSlug && mediaTitle && mediaType) saveContinueEpisode({ mediaId, title: mediaTitle, href: `/${mediaType}/${mediaSlug}#episode-${ep.id}`, episodeNumber: ep.episodeNumber, posterUrl, totalEpisodes }); }} aria-expanded={open} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-1 text-left hover:bg-neutral-900 sm:px-2">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-800 text-xs font-semibold text-neutral-300">{ep.episodeNumber}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-white">{ep.title || `Episode ${ep.episodeNumber}`}</p>
@@ -253,6 +254,17 @@ export default function EpisodeList({ episodes, mediaId, copyWebsite, mediaTitle
                 </button>
               </div>
               {open && <div className="space-y-3 border-t border-neutral-800 bg-neutral-950 px-3 py-3 sm:px-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-400/15 bg-violet-500/[.06] px-3 py-2">
+                  <span className="text-xs text-neutral-400">Your progress · saved on this device</span>
+                  <button type="button" aria-label={watched.has(ep.id) ? `Mark episode ${ep.episodeNumber} unwatched` : `Mark episode ${ep.episodeNumber} watched`}
+                    onClick={() => {
+                      setEpisodeWatched(mediaId, ep.id, !watched.has(ep.id));
+                      if (mediaSlug && mediaTitle && mediaType) saveContinueEpisode({ mediaId, title: mediaTitle, href: `/${mediaType}/${mediaSlug}#episode-${ep.id}`, episodeNumber: ep.episodeNumber, posterUrl, totalEpisodes });
+                    }}
+                    className={`min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition ${watched.has(ep.id) ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200" : "border-violet-400/30 bg-violet-600/20 text-purple-200 hover:bg-violet-600/35"}`}>
+                    {watched.has(ep.id) ? "✓ Watched" : "Mark watched"}
+                  </button>
+                </div>
                 {!ep.downloadLinks?.length && <p className="text-sm text-neutral-500">No download links for this episode.</p>}
                 {!!ep.downloadLinks?.length && <DownloadOptions links={ep.downloadLinks} copyWebsite={copyWebsite} />}
                 
