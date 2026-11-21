@@ -32,6 +32,10 @@ export const media = pgTable("media", {
   posterUrl: text("poster_url"),
   thumbnailUrl: text("thumbnail_url"),
   year: integer("year"),
+  genres: text("genres"),
+  episodeCount: integer("episode_count"),
+  externalSource: varchar("external_source", { length: 20 }),
+  externalId: varchar("external_id", { length: 60 }),
   categoryId: integer("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
