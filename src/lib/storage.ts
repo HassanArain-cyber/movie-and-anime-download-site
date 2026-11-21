@@ -93,8 +93,16 @@ export async function checkR2Object(objectKey: string): Promise<"exists" | "miss
   if (!objectKey || objectKey.length > 2048) return "missing";
   try {
     const config = getConfig();
-    await client(config).send(new HeadObjectCommand({ Bucket: config.bucket, Key: objectKey }));
-    return "exists";
+    const r2 = client(config);
+    try {
+      await r2.send(
+        new HeadObjectCommand({ Bucket: config.bucket, Key: objectKey }),
+        { abortSignal: AbortSignal.timeout(4500) },
+      );
+      return "exists";
+    } finally {
+      r2.destroy();
+    }
   } catch (error) {
     const status = (error as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
     return status === 404 ? "missing" : "unverified";
