@@ -119,7 +119,8 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${route} overflow at ${width}`);
       if (route === "/compact-layout") {
         assert.equal(await page.locator('[data-testid="comment-node"]').count(), 12, "nested replies remain visible");
-        assert.equal(await page.locator('textarea[rows="2"]').count(), 1, "compact comment form");
+        assert.equal(await page.getByRole("button", { name: "Add a comment" }).count(), 1, "compact comment entry point is visible");
+        assert.equal(await page.locator('textarea[rows="2"]').count(), 0, "collapsed composer does not mount an unused textarea");
         assert.equal(await page.locator('a[download][href="/api/download?id=2"]').count(), 1, "private R2 download route stays opaque");
         assert.equal(await page.locator('a[target="_blank"][rel="noopener noreferrer"]').count(), 1, "external download behavior preserved");
         for (const link of await page.locator('main a').all()) {
