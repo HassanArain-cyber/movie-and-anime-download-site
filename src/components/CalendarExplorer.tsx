@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PosterImage from "@/components/PosterImage";
+import Link from "next/link";
 import { useUpdates } from "@/components/UpdatesProvider";
 import { useCalendarFollows } from "@/components/useCalendarFollows";
 import { calendarEventIsFollowed, calendarFollowIdentity, calendarFollowKey, followFromEvent, updateCalendarFollow } from "@/lib/calendar-follows";
@@ -277,7 +278,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
             <div aria-label="Your tracked anime" className="mt-3 rounded-xl border border-emerald-400/15 bg-emerald-500/[.04] p-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold text-emerald-100">Following ({trackedShows.length})</p>
-                <a href="/following" className="text-[11px] font-semibold text-sky-300 hover:underline">Manage follows</a>
+                <Link href="/following" className="text-[11px] font-semibold text-sky-300 hover:underline">Manage follows</Link>
               </div>
               {trackedShows.length ? (
                 <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
