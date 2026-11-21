@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import searchStyles from "./PublicSearch.module.css";
 import NotificationBell from "./NotificationBell";
 import RequestContact from "@/components/RequestContact";
-import { isSearchableContentType } from "@/lib/search";
+
 
 type SearchSuggestion = {
   id: number;
@@ -44,13 +44,6 @@ const TYPE_LABELS: Record<SearchSuggestion["type"], string> = {
   anime: "Anime",
   series: "Series",
 };
-
-function getActiveContentType(pathname: string | null): SearchSuggestion["type"] | undefined {
-  const queryType = new URLSearchParams(window.location.search).get("type");
-  if (isSearchableContentType(queryType)) return queryType;
-  const pathType = pathname?.split("/").filter(Boolean)[0] ?? "";
-  return isSearchableContentType(pathType) ? pathType : undefined;
-}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -134,13 +127,8 @@ export default function Navbar() {
 
     const controller = new AbortController();
     const params = new URLSearchParams({ suggestions: "1", q });
-    const contentType = getActiveContentType(pathname);
-    if (contentType) params.set("type", contentType);
-    const currentParams = new URLSearchParams(window.location.search);
-    const tag = currentParams.get("category");
-    const year = currentParams.get("year");
-    if (tag) params.set("category", tag);
-    if (year && /^\d{4}$/.test(year)) params.set("year", year);
+    // Navbar search is global; detail-page type and listing filters must never
+    // hide results from the rest of the catalog.
     const timer = window.setTimeout(() => {
       fetch(`/api/media?${params.toString()}`, {
         cache: "no-store",
@@ -174,7 +162,7 @@ export default function Navbar() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query, pathname]);
+  }, [query]);
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -182,15 +170,6 @@ export default function Navbar() {
     setSearchOpen(false);
     if (q) {
       const params = new URLSearchParams({ q });
-      const contentType = getActiveContentType(pathname);
-      if (contentType) params.set("type", contentType);
-      const currentParams = new URLSearchParams(window.location.search);
-      const tag = currentParams.get("category");
-      const year = currentParams.get("year");
-      const sort = currentParams.get("sort");
-      if (tag) params.set("category", tag);
-      if (year && /^\d{4}$/.test(year)) params.set("year", year);
-      if (["az", "za", "newest", "oldest"].includes(sort ?? "")) params.set("sort", sort!);
       router.push(`/?${params.toString()}`);
     } else router.push("/");
   };
