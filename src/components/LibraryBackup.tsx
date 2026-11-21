@@ -49,11 +49,16 @@ export default function LibraryBackup({ followedTitles, refreshFollows }: Props)
     if (!followedTitles) return;
     try {
       const backup = readCurrentBackup(followedTitles);
-      downloadBackup(JSON.stringify(backup, null, 2));
+      const json = JSON.stringify(backup, null, 2);
+      // Do not download a file that the Import button cannot read back.
+      if (new Blob([json]).size > MAX_BACKUP_BYTES) {
+        throw new Error("Your library backup exceeds the supported file size.");
+      }
+      downloadBackup(json);
       setError("");
       setNotice("Library backup downloaded. Keep this file somewhere safe.");
-    } catch {
-      setError("Could not read your browser's saved library.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not read your saved library.");
     }
   };
 
