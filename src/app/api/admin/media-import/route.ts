@@ -88,7 +88,7 @@ type TMDBMovie = {
 async function getMovies(q: string, token: string, apiKey: boolean): Promise<Candidate[]> {
   const params = new URLSearchParams({ query: q, include_adult: "false", language: "en-US", page: "1" });
   if (apiKey) params.set("api_key", token);
-  const head = apiKey ? {} : { Authorization: "Bearer " + token };
+  const head: Record<string, string> = apiKey ? {} : { Authorization: "Bearer " + token };
   const [search, genreResp] = await Promise.all([
     fetch("https://api.themoviedb.org/3/search/movie?" + params, { headers: head, next: { revalidate: 3600 }, signal: AbortSignal.timeout(timeout) }),
     fetch("https://api.themoviedb.org/3/genre/movie/list?" + new URLSearchParams(apiKey ? { api_key: token, language: "en-US" } : { language: "en-US" }), { headers: head, next: { revalidate: 86400 }, signal: AbortSignal.timeout(timeout) }),
