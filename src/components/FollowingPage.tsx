@@ -5,6 +5,8 @@ import FollowButton from "./FollowButton";
 import { useEffect, useRef, useState } from "react";
 import { WATCH_STATUSES, type WatchStatus } from "@/lib/watch-status";
 import { useUpdates } from "./UpdatesProvider";
+import { useCalendarFollows } from "./useCalendarFollows";
+import { updateCalendarFollow } from "@/lib/calendar-follows";
 type NextAiring = { anilistId: number; episode: number; airingAt: string; totalEpisodes: number | null };
 function timeUntil(date: string, now: number) {
   const time = Date.parse(date) - now;
@@ -15,11 +17,17 @@ function timeUntil(date: string, now: number) {
 }
 export default function FollowingPage() {
   const { data, error, refresh } = useUpdates();
+  const calendarFollows = useCalendarFollows();
+  const [calendarError, setCalendarError] = useState("");
+  const calendarOnly = calendarFollows.filter((entry) => !(
+    entry.source === "anilist" && data?.following.some((item) =>
+      item.externalSource === "anilist" && item.externalId === String(entry.externalId))
+  ));
   const [filter, setFilter] = useState<WatchStatus | "all">("all");
   const [filterOpen, setFilterOpen] = useState(false);
   const [airings, setAirings] = useState<Record<string, NextAiring>>({});
   const [clock, setClock] = useState(() => Date.now());
-  const followedIds = (data?.following ?? []).filter((item) => item.externalSource === "anilist" && /^\d+$/.test(item.externalId || "")).map((item) => item.externalId!).slice(0, 35).join(",");
+  const followedIds = [...new Set([...(data?.following ?? []).filter((item) => item.externalSource === "anilist" && /^\d+$/.test(item.externalId || "")).map((item) => item.externalId!), ...calendarOnly.filter((item) => item.source === "anilist").map((item) => String(item.externalId))])].slice(0, 35).join(",");
   useEffect(() => {
     if (!followedIds) return;
     const controller = new AbortController();
@@ -94,7 +102,7 @@ export default function FollowingPage() {
       <div className="flex items-center justify-between gap-3"><h2 className="font-semibold text-white">Followed titles {data ? `(${data.following.length})` : ""}</h2><button className="min-h-9 rounded-md px-2 text-xs text-purple-300 hover:bg-purple-500/10" onClick={() => void refresh()}>Refresh</button></div>
       {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
       {!data && !error && <p className="text-sm text-neutral-400">Loading your follows…</p>}
-      {data && !data.following.length && <div className="rounded-xl border border-dashed border-neutral-700 p-3 text-sm text-neutral-400">You are not following anything yet. <Link className="text-purple-300 underline" href="/movie">Browse movies</Link>, <Link className="text-purple-300 underline" href="/anime">anime</Link> or <Link className="text-purple-300 underline" href="/series">series</Link>, then select Follow on a title.</div>}
+      {data && !data.following.length && !calendarOnly.length && <div className="rounded-xl border border-dashed border-neutral-700 p-3 text-sm text-neutral-400">You are not following anything yet. <Link className="text-purple-300 underline" href="/movie">Browse movies</Link>, <Link className="text-purple-300 underline" href="/anime">anime</Link> or <Link className="text-purple-300 underline" href="/series">series</Link>, then select Follow on a title.</div>}
       {data && !!data.following.length && !titles?.length && <p role="status" className="rounded-lg border border-dashed border-neutral-700 p-4 text-sm text-neutral-400">No titles with this status yet.</p>}
       <div className="grid gap-2 md:grid-cols-2">{titles?.map((item) => <article key={item.id} className="flex min-w-0 items-start gap-2.5 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2.5">
         <Link href={`/${item.type}/${item.slug}`} className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md sm:w-16"><PosterImage src={item.posterUrl} title={item.title} sizes="(min-width: 640px) 64px, 56px" /></Link>
@@ -110,6 +118,35 @@ export default function FollowingPage() {
         </div>
       </article>)}</div>
     </section>
+    {calendarOnly.length > 0 && (
+      <section aria-label="Calendar follows" className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#0a1726] p-3 sm:p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h2 className="text-base font-bold text-white">Calendar anime ({calendarOnly.length})</h2>
+            <p className="mt-1 text-xs text-slate-400">Followed from release schedules · saved on this device.</p></div>
+          <Link href="/calendar" className="rounded-lg border border-sky-500/25 px-3 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-500/10">Open calendar</Link>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-400">These follow the airing calendar. A release date does not mean the episode is uploaded to Vault; Vault upload alerts require following a title on Vault.</p>
+        {calendarError && <p role="alert" className="text-xs text-rose-300">{calendarError}</p>}
+        <div className="grid gap-2 md:grid-cols-2">{calendarOnly.map((item) => {
+          const airing = item.source === "anilist" ? airings[String(item.externalId)] : null;
+          const href = item.source === "anilist" ? "https://anilist.co/anime/" + item.externalId : "https://myanimelist.net/anime/" + item.externalId;
+          return <article key={item.source + ":" + item.externalId} className="flex min-w-0 items-start gap-3 rounded-xl border border-white/10 bg-white/[.03] p-2.5">
+            <a href={href} target="_blank" rel="noopener noreferrer" aria-label={"View " + item.title + " on anime database"}
+              className="relative h-20 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-900">
+              <PosterImage src={item.posterUrl} title={item.title} sizes="56px" className="object-cover" />
+            </a>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <a href={href} target="_blank" rel="noopener noreferrer" className="block break-words text-sm font-semibold leading-snug text-white hover:text-sky-200">{item.title}</a>
+              {airing && <p className="text-[11px] font-medium text-emerald-200">Next: Episode {airing.episode} · {timeUntil(airing.airingAt, clock)}</p>}
+              {!airing && <p className="text-[11px] text-slate-400">See calendar for scheduled airings</p>}
+              <button type="button" aria-label={"Unfollow " + item.title}
+                onClick={() => { try { updateCalendarFollow(item, false); setCalendarError(""); } catch (reason) { setCalendarError(reason instanceof Error ? reason.message : "Could not remove calendar follow."); } }}
+                className="min-h-9 rounded-lg border border-sky-500/30 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-500/10">Unfollow</button>
+            </div>
+          </article>;
+        })}</div>
+      </section>
+    )}
     <Link href="/notifications" className="inline-block text-sm text-purple-300">View notification history →</Link>
   </div>;
 }
