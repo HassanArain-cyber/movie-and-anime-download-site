@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PosterImage from "@/components/PosterImage";
+import { useUpdates } from "@/components/UpdatesProvider";
 import { calendarDay, type CalendarEvent, type CalendarKind, type CalendarResponse } from "@/lib/calendar-model";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -65,6 +66,9 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
   const [period, setPeriod] = useState({ year: initial.year, month: initial.month });
   const [data, setData] = useState(initial);
   const [activeDay, setActiveDay] = useState<string | null>(null);
+  const [onlyFollowed, setOnlyFollowed] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(36);
+  const { data: followsData } = useUpdates();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
@@ -79,6 +83,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
     controller.current = request;
     setPeriod({ year, month });
     setActiveDay(null);
+    setVisibleLimit(36);
     setBusy(true);
     setError("");
     fetch("/api/calendar?year=" + year + "&month=" + month, { signal: request.signal, cache: "no-store" })
@@ -105,16 +110,26 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
   const currentMonth = data.year === period.year && data.month === period.month;
   const visibleEvents = useMemo(() => currentMonth ? data.events : [], [currentMonth, data.events]);
 
+  const filteredEvents = useMemo(() => {
+    if (!onlyFollowed) return visibleEvents;
+    const followed = followsData?.following ?? [];
+    const idSet = new Set(followed.filter((item) => item.externalSource === "anilist" && item.externalId).map((item) => Number(item.externalId)));
+    return visibleEvents.filter((event) =>
+      (event.anilistId != null && idSet.has(event.anilistId)) ||
+      (event.url?.startsWith("/") && followed.some((item) => event.url?.startsWith("/" + item.type + "/" + item.slug)))
+    );
+  }, [visibleEvents, followsData, onlyFollowed]);
+
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const event of visibleEvents) {
+    for (const event of filteredEvents) {
       const date = calendarDay(event.airingAt);
       map.set(date, [...(map.get(date) ?? []), event]);
     }
     return map;
-  }, [visibleEvents]);
+  }, [filteredEvents]);
 
-  const shown = activeDay ? (eventsByDay.get(activeDay) ?? []) : visibleEvents;
+  const shown = activeDay ? (eventsByDay.get(activeDay) ?? []) : filteredEvents;
   const airings = shown.filter((event) => event.source === "anilist");
   const sourceMessage = data.anilistStatus === "fallback"
     ? "AniList is unavailable. Showing MAL weekly broadcast estimates; episode numbers are not confirmed."
@@ -154,6 +169,13 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
               <button type="button" aria-label="Next month" disabled={busy || (period.year === 2100 && period.month === 12)} onClick={() => changeMonth(1)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-sky-500/15 text-slate-300 hover:bg-sky-500/10 disabled:opacity-40"><InfoIcon direction="right" /></button>
               <button type="button" onClick={showToday} className="ml-1 rounded-lg border border-sky-500/25 px-2.5 py-2 text-xs text-sky-200 hover:bg-sky-400/10">Today</button>
             </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button type="button" aria-pressed={onlyFollowed} onClick={() => { setOnlyFollowed((value) => !value); setVisibleLimit(36); }}
+              className={`min-h-10 rounded-xl border px-3 py-2 text-xs font-bold transition ${onlyFollowed ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100" : "border-sky-500/20 bg-sky-500/[.06] text-sky-200 hover:bg-sky-500/15"}`}>
+              {onlyFollowed ? "✓ Only Following" : "Only Following"}
+            </button>
+            <span className="text-[10px] text-slate-500">{onlyFollowed ? "Your saved anime & Vault releases" : "All available releases"}</span>
           </div>
           <div className="mt-2 grid grid-cols-7 gap-1 text-center">
             {WEEKDAYS.map((name) => <span key={name} className="py-2 text-[10px] font-semibold text-slate-400">{name}</span>)}
@@ -197,10 +219,11 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
               !shown.length ? <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-4 text-center">
                 <span aria-hidden="true" className="text-3xl text-slate-600">◇</span>
                 <p className="text-sm font-semibold text-slate-200">No releases listed</p>
-                <p className="text-xs leading-relaxed text-slate-500">Try another date, or add a release from the Admin calendar.</p>
+                <p className="text-xs leading-relaxed text-slate-500">{onlyFollowed ? "Follow an anime linked with AniList, or select All releases." : "Try another date, or add a release from the Admin calendar."}</p>
               </div> :
-                shown.map((release) => <ReleaseRow key={release.id} release={release} asOf={data.updatedAt} />)}
+                shown.slice(0, visibleLimit).map((release) => <ReleaseRow key={release.id} release={release} asOf={data.updatedAt} />)}
           </div>
+          {shown.length > visibleLimit && <button type="button" onClick={() => setVisibleLimit((count) => count + 36)} className="mt-2 min-h-10 rounded-lg border border-sky-500/25 px-3 py-2 text-xs font-bold text-sky-200 transition hover:bg-sky-500/15">Show more · {shown.length - visibleLimit} remaining</button>}
           <p className="border-t border-sky-500/15 pt-3 text-[10px] leading-relaxed text-slate-500">Automatic schedules are provided by AniList, or estimated weekly MAL broadcast slots when AniList is unavailable. These are not confirmations that Vault has uploaded an episode.</p>
         </div>
       </div>
