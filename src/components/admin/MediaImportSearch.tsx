@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState } from "react";
 import PosterImage from "@/components/PosterImage";
 import type { MediaType } from "@/lib/types";
 
@@ -24,14 +24,8 @@ export default function MediaImportSearch({ type, initialQuery, onSelect, disabl
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
-  const selectedType = useRef(type);
-  if (selectedType.current !== type) {
-    selectedType.current = type;
-    request.current?.abort();
-    // The results belong to a different provider; the next search will replace them.
-  }
-  const search = async (event: FormEvent) => {
-    event.preventDefault();
+  // Parent wizard remounts this control when the media type changes.
+  const search = async () => {
     request.current?.abort();
     const signal = new AbortController();
     request.current = signal;
@@ -63,13 +57,13 @@ export default function MediaImportSearch({ type, initialQuery, onSelect, disabl
           <p className="text-[11px] text-neutral-400">Search {providerLabel[type]} — choose the correct title, then review before saving.</p>
         </div>
       </div>
-      <form onSubmit={search} className="flex min-w-0 gap-2">
-        <input aria-label="Search title to auto-fill" value={query} onChange={(event) => setQuery(event.target.value)}
+      <div role="search" className="flex min-w-0 gap-2">
+        <input aria-label="Search title to auto-fill" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void search(); } }}
           disabled={disabled || loading} maxLength={100} placeholder="Enter anime, movie or series title"
           className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-violet-400" />
-        <button type="submit" disabled={disabled || loading}
+        <button type="button" onClick={() => void search()} disabled={disabled || loading}
           className="min-h-11 shrink-0 rounded-xl bg-violet-600 px-4 text-xs font-bold text-white transition hover:bg-violet-500 disabled:opacity-60">{loading ? "Finding…" : "Search"}</button>
-      </form>
+      </div>
       {error && <p role="status" className="mt-2 text-xs text-amber-200">{error}</p>}
       {open && !loading && !error && !results.length && <p role="status" className="mt-2 text-xs text-neutral-400">No matches. You can still enter the details manually.</p>}
       {open && results.length > 0 && (
