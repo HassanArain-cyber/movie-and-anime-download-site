@@ -80,7 +80,10 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
             <section key={key} id={`${qualityId}-${key}`} data-download-quality className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-neutral-950/55">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] bg-white/[0.035] px-3 py-2.5 sm:px-4">
                 <h3 className="text-sm font-bold text-white">{key === "unspecified" && activeKind === "audio" ? "Audio files" : key === "unspecified" ? qualityDisplay(null) : qualityDisplay(key)}</h3>
-                <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-200">{versions.length} {versions.length === 1 ? "source" : "sources"}</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {key !== "unspecified" && key === available[0] && <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-200">Highest listed</span>}
+                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-200">{versions.length} {versions.length === 1 ? "source" : "sources"}</span>
+                </div>
               </div>
               <div className="divide-y divide-white/[0.07]">
                 {versions.map((link, index) => {
@@ -89,7 +92,7 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
                   const stored = ["r2", "local"].includes(getLinkProvider(link));
                   const willCopy = link.linkBehavior === "copy" && !stored;
                   return (
-                    <div key={link.id} className="flex min-w-0 flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
+                    <div key={link.id} className="flex min-w-0 flex-col gap-2.5 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
                       <div className="flex min-w-0 items-center gap-3">
                         <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-neutral-800/70 text-purple-200">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 10h8M8 14h5" strokeLinecap="round" /></svg>
@@ -110,6 +113,7 @@ export default function DownloadOptions({ links, copyWebsite }: { links: Downloa
             </section>
           );
         })}
+        <p className="px-3 pb-3 text-[10px] text-neutral-500 sm:px-4">Source links are provided by Vault. External host uptime is not checked automatically.</p>
       </div>
     </div>
   );
