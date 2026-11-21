@@ -219,6 +219,12 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
   }, [filteredEvents]);
 
   const shown = activeDay ? (eventsByDay.get(activeDay) ?? []) : filteredEvents;
+  const trackedShows = [
+    ...(followsData?.following ?? []).map((item) => ({ key: "vault:" + item.id, title: item.title })),
+    ...savedCalendarFollows.filter((item) => !(item.source === "anilist" && followsData?.following.some((vault) =>
+      vault.externalSource === "anilist" && vault.externalId === String(item.externalId))))
+      .map((item) => ({ key: item.source + ":" + item.externalId, title: item.title })),
+  ];
   const airings = shown.filter((event) => event.source === "anilist");
   const sourceMessage = data.anilistStatus === "fallback"
     ? "AniList is unavailable. Showing MAL weekly broadcast estimates; episode numbers are not confirmed."
@@ -266,6 +272,20 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
             </button>
             <span className="text-[10px] text-slate-500">{onlyFollowed ? "Anime you've followed" : "Follow anime directly from the release list"}</span>
           </div>
+          {onlyFollowed && (
+            <div aria-label="Your tracked anime" className="mt-3 rounded-xl border border-emerald-400/15 bg-emerald-500/[.04] p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-emerald-100">Following ({trackedShows.length})</p>
+                <a href="/following" className="text-[11px] font-semibold text-sky-300 hover:underline">Manage follows</a>
+              </div>
+              {trackedShows.length ? (
+                <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+                  {trackedShows.slice(0, 16).map((item) => <span key={item.key} title={item.title} className="max-w-36 shrink-0 truncate rounded-lg border border-sky-500/20 bg-sky-500/[.08] px-2.5 py-1.5 text-[11px] text-sky-100">{item.title}</span>)}
+                  {trackedShows.length > 16 && <span className="shrink-0 px-2 py-1.5 text-[11px] text-slate-400">+{trackedShows.length - 16} more</span>}
+                </div>
+              ) : <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Choose All releases, then tap + Follow on any anime you want to track.</p>}
+            </div>
+          )}
           <div className="mt-2 grid grid-cols-7 gap-1 text-center">
             {WEEKDAYS.map((name) => <span key={name} className="py-2 text-[10px] font-semibold text-slate-400">{name}</span>)}
             {Array.from({ length: firstDay }, (_, index) => <span key={"blank-" + index} aria-hidden="true" />)}
