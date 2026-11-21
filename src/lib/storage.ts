@@ -85,6 +85,22 @@ function getConfig(): R2Config {
   };
 }
 
+/**
+ * Read-only existence check for Admin link audits.
+ * No object is downloaded, changed or deleted; access errors stay inconclusive.
+ */
+export async function checkR2Object(objectKey: string): Promise<"exists" | "missing" | "unverified"> {
+  if (!objectKey || objectKey.length > 2048) return "missing";
+  try {
+    const config = getConfig();
+    await client(config).send(new HeadObjectCommand({ Bucket: config.bucket, Key: objectKey }));
+    return "exists";
+  } catch (error) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+    return status === 404 ? "missing" : "unverified";
+  }
+}
+
 function client(config: R2Config): S3Client {
   return new S3Client({
     region: "auto",
