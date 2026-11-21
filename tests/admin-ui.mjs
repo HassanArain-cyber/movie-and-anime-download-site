@@ -40,6 +40,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/storage/status") return json({ configured: false, missing: ["test R2 configuration"], maxVideoBytes: 100000, maxImageBytes: 100000, partSizeBytes: 5242880, privateDownloads: true });
     if (url.pathname === "/api/admin/media-import") {
       const type = url.searchParams.get("type"), query = url.searchParams.get("q");
+      if (type === "series" && url.searchParams.get("details") === "888") return json({ episodeCount: 12 });
       if (!["anime", "movie", "series"].includes(type) || !query) return json({ error: "Invalid query" }, 400);
       return json({ results: [{
         title: query, description: "Auto imported synopsis", posterUrl: null,
