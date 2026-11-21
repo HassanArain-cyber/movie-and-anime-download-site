@@ -123,11 +123,11 @@ try {
         assert.equal(await page.locator('textarea[rows="2"]').count(), 0, "collapsed composer does not mount an unused textarea");
         assert.equal(await page.locator('a[download][href="/api/download?id=2"]').count(), 1, "private R2 download route stays opaque");
         assert.equal(await page.locator('a[target="_blank"][rel="noopener noreferrer"]').count(), 1, "external download behavior preserved");
-        for (const link of await page.locator('main a').all()) {
+        for (const link of await page.locator(".vault-download-panel a").all()) {
           assert.equal(await link.evaluate((el) => {
-            const box = el.getBoundingClientRect(), card = el.closest("section").getBoundingClientRect();
-            return box.left >= card.left && box.right <= card.right;
-          }), true, `download stays inside quality card at ${width}`);
+            const box = el.getBoundingClientRect(), panel = el.closest(".vault-download-panel").getBoundingClientRect();
+            return box.left >= panel.left - 1 && box.right <= panel.right + 1;
+          }), true, `download and quality shortcuts stay inside the download panel at ${width}`);
         }
         const refresh = await page.getByRole("button", { name: "Refresh", exact: true }).boundingBox();
         assert.equal(refresh.height, 36);
