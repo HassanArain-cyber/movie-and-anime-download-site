@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import PosterImage from "@/components/PosterImage";
 import { useUpdates } from "@/components/UpdatesProvider";
 import { useCalendarFollows } from "@/components/useCalendarFollows";
-import { updateCalendarFollow } from "@/lib/calendar-follows";
+import { updateCalendarFollow, type CalendarFollow } from "@/lib/calendar-follows";
 
 type AnimeResult = {
   id: number;
@@ -13,6 +13,13 @@ type AnimeResult = {
   totalEpisodes: number | null;
   nextAiring: { episode: number; airingAt: string } | null;
 };
+
+function savedFollowFromSearch(item: AnimeResult): CalendarFollow {
+  return {
+    source: "anilist", externalId: item.id, title: item.title,
+    posterUrl: item.posterUrl, addedAt: Date.now(),
+  };
+}
 
 function airingLabel(item: AnimeResult) {
   if (!item.nextAiring) return "No confirmed next airing";
@@ -75,10 +82,7 @@ export default function CalendarAnimeSearch() {
     try {
       if (vault) await followVault(vault.id, false);
       if (local) updateCalendarFollow(local, false);
-      if (!local && !vault) updateCalendarFollow({
-        source: "anilist", externalId: item.id, title: item.title,
-        posterUrl: item.posterUrl, addedAt: Date.now(),
-      }, true);
+      if (!local && !vault) updateCalendarFollow(savedFollowFromSearch(item), true);
     } catch (reason) {
       setFollowError(reason instanceof Error ? reason.message : "Could not update Following.");
     } finally { setFollowBusy(null); }
@@ -89,7 +93,7 @@ export default function CalendarAnimeSearch() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-bold text-white sm:text-base">Find anime to follow</h2>
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Search any anime, even if it is not on Vault or this month's calendar.</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Search any anime, even if it is not on Vault or this month&apos;s calendar.</p>
         </div>
         <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold text-violet-200">No account needed</span>
       </div>
