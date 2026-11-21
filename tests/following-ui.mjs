@@ -9,7 +9,7 @@ import chromium, { inflate, setupLambdaEnvironment } from "@sparticuz/chromium";
 import { compactLayoutFixture } from "./compact-layout-fixture.mjs";
 
 const statuses = ["plan_to_watch", "watching", "continue", "on_hold", "watched"];
-let following = statuses.map((watchStatus, i) => ({ id: i + 1, title: `Fixture ${i === 0 ? "movie" : i === 1 ? "series" : "anime"} ${i + 1}`, slug: `fixture-${i + 1}`, type: i === 0 ? "movie" : i === 1 ? "series" : "anime", posterUrl: null, hasNew: i === 1, watchStatus }));
+let following = statuses.map((watchStatus, i) => ({ id: i + 1, title: `Fixture ${i === 0 ? "movie" : i === 1 ? "series" : "anime"} ${i + 1}`, slug: `fixture-${i + 1}`, type: i === 0 ? "movie" : i === 1 ? "series" : "anime", posterUrl: null, externalSource: i === 2 ? "anilist" : null, externalId: i === 2 ? "777" : null, hasNew: i === 1, watchStatus }));
 const notification = { id: 1, mediaId: 1, title: "Fixture movie 1", episodeNumber: 2, episodeTitle: "New episode", seasonNumber: 1, url: "/anime/fixture-1#episode-2", readAt: null, createdAt: "2026-11-05T00:00:00.000Z" };
 const writes = [], unexpected = [];
 const server = createServer(async (req, res) => {
@@ -17,6 +17,7 @@ const server = createServer(async (req, res) => {
   const json = (data) => { res.setHeader("Content-Type", "application/json"); res.setHeader("Cache-Control", "private, no-store"); res.end(JSON.stringify(data)); };
   try {
     if (url.pathname === "/api/updates") return json({ following, notifications: [notification], unread: notification.readAt ? 0 : 1, hasMore: false });
+    if (url.pathname === "/api/next-airings") return json({ airings: [{ anilistId: 777, episode: 13, airingAt: new Date(Date.now() + 48 * 3600000).toISOString(), totalEpisodes: 24 }] });
     if (url.pathname === "/api/site-settings") return json({ wallpaperUrl: null });
     if (url.pathname === "/api/media") return json({ media: [], total: 0 });
     if (url.pathname === "/api/follows") {
@@ -77,6 +78,8 @@ try {
   };
   await trigger.waitFor();
   assert.equal(await page.locator("article").count(), 5);
+  await page.getByText(/Next: Episode 13/).waitFor();
+  assert.equal(await page.getByText(/Next: Episode 13/).count(), 1, "real followed AniList ID receives a next-episode countdown");
   const labels = ["Plan to Watch", "Watching", "Ongoing", "On-Hold", "Watched"];
   for (const label of labels) {
     await selectFilter(label, 1);
