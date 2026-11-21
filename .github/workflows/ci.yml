@@ -172,8 +172,8 @@ jobs:
       - name: Run browser/API E2E suite
         run: npm run test:e2e:ci
 
-      - name: Build and check guided Admin UI with fixture APIs
-        run: npm run build && npm run test:admin-ui
+      - name: Build and check guided Admin + Following UI with fixture APIs
+        run: npm run build && npm run test:admin-ui && npm run test:following-ui
 
       - name: Upload E2E logs
         if: failure()
