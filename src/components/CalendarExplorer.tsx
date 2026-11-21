@@ -27,25 +27,25 @@ function ReleaseRow({ release, asOf }: { release: CalendarEvent; asOf: string })
   const kind = COLORS[release.kind];
   const past = Date.parse(release.airingAt) <= Date.parse(asOf);
   const content = (
-    <div className="flex min-w-0 items-start gap-3">
-      <div className="relative h-[78px] w-[58px] shrink-0 overflow-hidden rounded-lg border border-sky-400/15 bg-[#13213a] shadow-md shadow-black/20">
-        <PosterImage src={release.posterUrl} title={release.title} sizes="58px" className="object-cover" />
+    <div className="flex min-w-0 items-start gap-2.5">
+      <div className="relative h-[64px] w-[48px] shrink-0 overflow-hidden rounded-lg border border-sky-400/15 bg-[#13213a] shadow-md shadow-black/20">
+        <PosterImage src={release.posterUrl} title={release.title} sizes="48px" className="object-cover" />
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-white sm:text-sm">{release.title}</h3>
-        <p className="mt-1 text-[11px] text-slate-300">
+        <h3 className="line-clamp-2 text-xs font-bold leading-snug text-white sm:text-[13px]">{release.title}</h3>
+        <p className="mt-0.5 text-[11px] text-slate-300">
           {release.episode ? "Episode " + release.episode : release.source === "jikan" ? "Weekly broadcast" : kind.label}
           {release.totalEpisodes ? " · " + release.totalEpisodes + " total eps" : ""}
         </p>
-        {release.source === "anilist" && typeof release.airedEpisodes === "number" && <p className="mt-1 text-[11px] font-medium text-emerald-300">~{release.airedEpisodes} episodes aired (estimate)</p>}
-        <p className="mt-1 text-[11px] text-slate-400">{displayDate.format(new Date(release.airingAt))} PKT</p>
+        {release.source === "anilist" && typeof release.airedEpisodes === "number" && <p className="mt-0.5 text-[11px] font-medium text-emerald-300">~{release.airedEpisodes} episodes aired (estimate)</p>}
+        <p className="mt-0.5 text-[11px] text-slate-400">{displayDate.format(new Date(release.airingAt))} PKT</p>
         {release.notes && <p className="mt-1 line-clamp-2 text-[10px] leading-normal text-slate-400">{release.notes}</p>}
-        <p className="mt-1 text-[10px] font-medium text-slate-500">
+        <p className="mt-0.5 text-[10px] font-medium text-slate-500">
           {release.source === "anilist" ? "AniList schedule" : release.source === "jikan" ? "MAL weekly estimate" : release.source === "vault" ? "Vault publication" : "Admin update"}
         </p>
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <span className={"rounded-md px-2 py-1 text-[10px] font-bold " + kind.background}>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <span className={"rounded-md px-1.5 py-0.5 text-[10px] font-bold " + kind.background}>
           {release.source === "jikan" ? "Weekly" : release.source === "vault" ? "On Vault" : past ? "Aired" : release.kind === "episode" ? "Episode" : kind.label}
         </span>
         {release.url && <span aria-hidden="true" className="text-sky-300/70">↗</span>}
@@ -55,10 +55,10 @@ function ReleaseRow({ release, asOf }: { release: CalendarEvent; asOf: string })
   return release.url
     ? <a href={release.url} target={release.url.startsWith("http") ? "_blank" : undefined} rel={release.url.startsWith("http") ? "noopener noreferrer" : undefined}
         aria-label={"View " + release.title + " release details"}
-        className="block rounded-xl border border-transparent px-2.5 py-3 transition hover:border-sky-400/20 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
+        className="block rounded-lg border border-transparent px-1.5 py-2 transition hover:border-sky-400/20 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
         {content}
       </a>
-    : <div className="rounded-xl px-2.5 py-3">{content}</div>;
+    : <div className="rounded-lg px-1.5 py-2">{content}</div>;
 }
 
 export default function CalendarExplorer({ initial }: { initial: CalendarResponse }) {
@@ -129,15 +129,15 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
     ? new Date(activeDay + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", month: "long", day: "numeric" })
     : "Upcoming Releases";
 
-  return <div className="mx-auto max-w-6xl space-y-5">
-    <header className="relative overflow-hidden rounded-2xl border border-sky-800/35 bg-gradient-to-r from-[#071529] via-[#071c35] to-[#09203c] px-5 py-6 sm:px-7">
+  return <div className="mx-auto max-w-6xl space-y-4">
+    <header className="relative overflow-hidden rounded-2xl border border-sky-800/35 bg-gradient-to-r from-[#071529] via-[#071c35] to-[#09203c] px-4 py-4 sm:px-6 sm:py-5">
       <div aria-hidden="true" className="absolute -right-6 -top-10 h-40 w-40 rounded-full bg-cyan-500/10 blur-3xl" />
       <div className="relative flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-2xl font-extrabold text-slate-950 shadow-[0_8px_30px_#00d9aa33]">
-            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18M8 14h3m-3 3h7" /></svg>
+          <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 text-2xl font-extrabold text-slate-950 shadow-[0_8px_30px_#00d9aa33]">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18M8 14h3m-3 3h7" /></svg>
           </span>
-          <div><p className="text-[10px] font-extrabold tracking-[.2em] text-sky-400">GOJO&apos;S VAULT</p><h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">Release Calendar</h1>
+          <div><p className="text-[10px] font-extrabold tracking-[.2em] text-sky-400">GOJO&apos;S VAULT</p><h1 className="mt-1 text-xl font-extrabold tracking-tight text-white sm:text-2xl">Release Calendar</h1>
             <p className="mt-1 text-xs text-slate-300 sm:text-sm">Episode air dates, new releases and your Vault updates.</p></div>
         </div>
         <p className="max-w-[9rem] -rotate-6 text-right text-sm italic leading-snug text-sky-200/80">Same Vibe,<br />More to Explore</p>
@@ -155,7 +155,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
               <button type="button" onClick={showToday} className="ml-1 rounded-lg border border-sky-500/25 px-2.5 py-2 text-xs text-sky-200 hover:bg-sky-400/10">Today</button>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-7 gap-1 text-center">
+          <div className="mt-2 grid grid-cols-7 gap-1 text-center">
             {WEEKDAYS.map((name) => <span key={name} className="py-2 text-[10px] font-semibold text-slate-400">{name}</span>)}
             {Array.from({ length: firstDay }, (_, index) => <span key={"blank-" + index} aria-hidden="true" />)}
             {Array.from({ length: dayCount }, (_, i) => {
@@ -165,7 +165,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
               const isToday = date === today;
               const kinds = [...new Set(dayEvents.map((item) => item.kind))].slice(0, 3);
               return <button key={date} type="button" aria-label={date + ", " + dayEvents.length + " releases"} aria-pressed={isSelected} onClick={() => setActiveDay(isSelected ? null : date)}
-                className={"flex min-h-[43px] min-w-0 flex-col items-center justify-center gap-1 rounded-lg border px-0.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 " +
+                className={"flex min-h-[38px] min-w-0 flex-col items-center justify-center gap-1 rounded-lg border px-0.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 " +
                   (isSelected ? "border-emerald-300 bg-emerald-400/25 text-white" : isToday ? "border-sky-500/60 bg-sky-500/20 text-sky-100" : dayEvents.length ? "border-sky-600/10 bg-sky-400/[0.05] text-slate-200 hover:bg-sky-500/15" : "border-transparent text-slate-400 hover:bg-white/[0.04]")}>
                 <span>{number}</span>
                 <span className="flex h-1.5 items-center justify-center gap-[3px]">
@@ -174,25 +174,25 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
               </button>;
             })}
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-x-2 gap-y-3 border-t border-sky-400/10 pt-4">
+          <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 border-t border-sky-400/10 pt-4">
             {(Object.keys(COLORS) as CalendarKind[]).map((kind) =>
               <div key={kind} className="flex items-center gap-2 text-[11px] text-slate-300">
                 <span className={"h-2.5 w-2.5 rounded-full " + COLORS[kind].dot} />{COLORS[kind].label}
               </div>,
             )}
           </div>
-          <p className="mt-4 text-[10px] text-slate-500">All times shown in Pakistan time (PKT).</p>
+          <p className="mt-3 text-[10px] text-slate-500">All times shown in Pakistan time (PKT).</p>
         </div>
 
         <div className="flex min-w-0 flex-col rounded-xl border border-sky-600/20 bg-[#07182e] p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-500/15 pb-3">
             <div className="min-w-0"><h2 className="text-base font-bold text-white sm:text-lg">{selectedLabel}</h2>
-              <p className="mt-1 text-[11px] text-slate-400">{shown.length} {shown.length === 1 ? "release" : "releases"} this {activeDay ? "day" : "month"}{airings.length ? " · Live AniList data" : ""}</p></div>
+              <p className="mt-0.5 text-[11px] text-slate-400">{shown.length} {shown.length === 1 ? "release" : "releases"} this {activeDay ? "day" : "month"}{airings.length ? " · Live AniList data" : ""}</p></div>
             {activeDay && <button type="button" onClick={() => setActiveDay(null)} className="rounded-lg border border-sky-500/20 px-3 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-500/10">All month</button>}
           </div>
           {sourceMessage && <p role="status" className="mt-3 rounded-lg border border-amber-300/15 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-100/85">{sourceMessage}</p>}
           {error && <p role="alert" className="mt-3 rounded-lg border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{error}</p>}
-          <div aria-busy={busy} className="mt-2 max-h-[590px] min-h-[200px] flex-1 divide-y divide-sky-300/10 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
+          <div aria-busy={busy} className="mt-2 max-h-[440px] min-h-[170px] flex-1 divide-y divide-sky-300/10 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
             {busy || !currentMonth ? <div className="flex h-40 items-center justify-center text-sm text-slate-400">Loading releases…</div> :
               !shown.length ? <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-4 text-center">
                 <span aria-hidden="true" className="text-3xl text-slate-600">◇</span>
