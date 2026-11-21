@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PosterImage from "@/components/PosterImage";
+import CalendarAnimeSearch from "@/components/CalendarAnimeSearch";
 import Link from "next/link";
 import { useUpdates } from "@/components/UpdatesProvider";
 import { useCalendarFollows } from "@/components/useCalendarFollows";
@@ -255,6 +256,8 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
         <p className="max-w-[9rem] -rotate-6 text-right text-sm italic leading-snug text-sky-200/80">Same Vibe,<br />More to Explore</p>
       </div>
     </header>
+
+    <CalendarAnimeSearch />
 
     <section aria-label="Anime release calendar" className="overflow-hidden rounded-2xl border border-sky-700/35 bg-[#071426]/95 p-3 shadow-[0_22px_60px_#00000045] sm:p-5">
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,.95fr)_minmax(0,1.1fr)]">
