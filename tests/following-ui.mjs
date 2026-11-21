@@ -170,6 +170,27 @@ try {
   await calendarFollows.getByText(/Next: Episode 5/).waitFor();
   await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.getByRole("region", { name: "Calendar follows" }).getByText("New calendar anime").count(), 1, "calendar follow survives browser reload");
+  // Export includes Vault follows and calendar-only titles, never session secrets.
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export backup" }).click();
+  const savedFile = await downloadPromise;
+  assert.match(savedFile.suggestedFilename(), /^vault-library-\d{4}-\d{2}-\d{2}\.json$/);
+  const savedData = JSON.parse(await readFile(await savedFile.path(), "utf8"));
+  assert.equal(savedData.format, "vault-library-backup");
+  assert.equal(savedData.vaultFollows.length, 4);
+  assert.equal(savedData.calendarFollows.length, 1);
+  assert.ok(!JSON.stringify(savedData).includes("vault_subscriber"));
+  // A local-only import merges without calling a server or erasing existing saves.
+  const localBackup = { ...savedData, vaultFollows: [], calendarFollows: [{
+    source: "anilist", externalId: 999, title: "Restored anime", posterUrl: null, addedAt: 1234,
+  }], watchedEpisodes: { "2": [12] }, continueWatching: [] };
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByLabel("Choose a Vault library backup").setInputFiles({
+    name: "vault-backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(localBackup)),
+  });
+  await page.getByText(/Backup merged/).waitFor();
+  await page.getByRole("region", { name: "Calendar follows" }).getByText("Restored anime").waitFor();
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("vault-watched-episodes-v1"))["2"]), [12]);
   await page.getByRole("button", { name: "Unfollow New calendar anime" }).click();
   await page.getByRole("region", { name: "Calendar follows" }).waitFor({ state: "detached" });
   assert.equal(await page.evaluate(() => window.permissionRequests), 0);
