@@ -105,6 +105,23 @@ async function getMovies(q: string, token: string, apiKey: boolean): Promise<Can
     episodeCount: null, externalSource: "tmdb" as const, externalId: String(m.id),
   })).filter((m) => m.title);
 }
+async function getShowEpisodeCount(id: number): Promise<number | null> {
+  const response = await fetch("https://api.tvmaze.com/shows/" + id + "/episodes", {
+    headers: { Accept: "application/json" },
+    next: { revalidate: 86400 },
+    signal: AbortSignal.timeout(timeout),
+  });
+  if (!response.ok) throw new ApiError(503, "TVmaze episode list is unavailable");
+  const items: unknown = await response.json();
+  if (!Array.isArray(items)) throw new ApiError(503, "TVmaze episode list is invalid");
+  const regular = items.filter((episode) => {
+    const row = episode as { season?: number; number?: number };
+    return Number.isInteger(row?.season) && Number(row.season) > 0
+      && Number.isInteger(row?.number) && Number(row.number) > 0;
+  }).length;
+  return regular > 0 && regular <= 10000 ? regular : null;
+}
+
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
   if (auth !== true) return auth;
@@ -112,6 +129,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const type = url.searchParams.get("type");
     const query = url.searchParams.get("q")?.trim() ?? "";
+    if (type === "series" && url.searchParams.has("details")) {
+      const raw = url.searchParams.get("details") ?? "";
+      if (!/^[1-9]\d{0,9}$/.test(raw)) throw new ApiError(400, "Choose a valid TVmaze show ID");
+      const episodeCount = await getShowEpisodeCount(Number(raw));
+      return NextResponse.json({ episodeCount }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (!["anime", "movie", "series"].includes(type || "")) throw new ApiError(400, "Choose a media type");
     if (query.length < 2 || query.length > 100) throw new ApiError(400, "Search using 2–100 characters");
     let results: Candidate[];
