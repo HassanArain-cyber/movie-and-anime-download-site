@@ -24,6 +24,7 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
   const [rows, setRows] = useState<BulkEpisodeRow[]>([]);
   const [linkBehavior, setLinkBehavior] = useState<LinkBehavior>("open");
   const [busy, setBusy] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -32,7 +33,7 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
   const abort = useRef<AbortController | null>(null);
   const files = useRef<HTMLInputElement>(null);
   const season = details?.seasons?.find((entry) => entry.id === Number(seasonId));
-  const targetLocked = busy || rows.length > 0;
+  const targetLocked = busy || suggesting || rows.length > 0;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,6 +59,31 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
   };
   const update = (id: string, patch: Partial<BulkEpisodeRow>) => setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   const addRow = () => setRows((current) => [...current, newRow(String(Math.max(0, ...(season?.episodes ?? []).map((ep) => ep.episodeNumber), ...current.map((row) => Number(row.number) || 0)) + 1))]);
+  /** Pre-fill editable rows only; no new episodes are saved until Admin reviews them. */
+  const suggestEpisodes = async () => {
+    if (!season || suggesting || busy) return;
+    setSuggesting(true); setError(""); setNotice("");
+    try {
+      const data = await json<{
+        suggestions: { number: number; title: string; duration: string }[];
+        message: string;
+      }>("/api/admin/episode-suggestions?seasonId=" + season.id);
+      const used = new Set(rows.map((row) => Number(row.number)));
+      const available = data.suggestions.filter((item) => !used.has(item.number));
+      const freeSlots = Math.max(0, 60 - rows.length);
+      const added = available.slice(0, freeSlots).map((item) => ({
+        ...newRow(String(item.number)), title: item.title, duration: item.duration,
+      }));
+      setRows((current) => [...current, ...added]);
+      setNotice(added.length ? added.length + " editable episode drafts prepared. " + data.message
+        : "No new episode drafts found. " + data.message);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not prepare episodes.");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
 
   const submit = async () => {
     if (lock.current || !season || rows.every((row) => row.status === "done")) return;
@@ -114,8 +140,14 @@ export default function BulkAddEpisodes({ onBusyChange }: { onBusyChange: (busy:
     <label className="block min-w-0 text-xs text-neutral-400 sm:max-w-xs">Link behavior for pasted links<select aria-label="Bulk link behavior" value={linkBehavior} disabled={busy} onChange={(event) => setLinkBehavior(event.target.value as LinkBehavior)} className={`${control} mt-1`}>{LINK_BEHAVIORS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     {loading && <p role="status" className="text-sm text-neutral-400">Loading titles / seasons…</p>}
     {details && !details.seasons?.length && <p className="text-sm text-amber-300">Create a season in Media first, then return here.</p>}
+    <p className="text-xs text-purple-200">Auto-fill prepares editable rows from saved metadata. Review episode names and attach your own video or download link before saving; it never uploads or publishes automatically.</p>
     <p className="text-xs leading-relaxed text-neutral-400">Files go directly to R2 using the existing secure multipart upload. Numbers are guessed from names such as S01E03.mp4; check them before submitting. Leave either the link or file empty. Duration is optional. Do not close this page during processing.</p>
     <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={!season || busy || suggesting || rows.length >= 60}
+        onClick={() => void suggestEpisodes()}
+        className="min-h-11 rounded-lg border border-violet-400/35 bg-violet-500/15 px-3 text-sm font-semibold text-violet-100 disabled:opacity-40">
+        {suggesting ? "Preparing…" : "Auto-fill episode drafts"}
+      </button>
       <button type="button" disabled={!season || busy} onClick={addRow} className="min-h-11 rounded-lg border border-neutral-700 px-3 text-sm disabled:opacity-40">Add Another Episode</button>
       <button type="button" disabled={!season || busy || !storageReady} onClick={() => files.current?.click()} className="min-h-11 rounded-lg border border-neutral-700 px-3 text-sm disabled:opacity-40">Select multiple video files</button>
       <input ref={files} aria-label="Bulk video files" type="file" multiple hidden accept=".mp4,.webm,.mkv,.mov,.avi,.m4v" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = ""; }} />
