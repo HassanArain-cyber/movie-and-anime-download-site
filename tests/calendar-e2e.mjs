@@ -94,7 +94,7 @@ try {
 
   await page.getByRole("button", { name: new RegExp(expectedDay + ", ") }).click();
   await page.getByRole("heading", { name: title }).waitFor();
-  await page.getByText("Episode 8", { exact: false }).waitFor();
+  await page.getByText("Episode 8", { exact: true }).first().waitFor(); // Other seeded events may also have episode 8.
 
   await page.goto(base + "/admin", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Release Calendar" }).click();

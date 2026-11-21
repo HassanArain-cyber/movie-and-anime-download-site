@@ -1,6 +1,6 @@
-# Vault experience upgrades — Preview / PR #25
+# Vault experience upgrades — released through PR #25
 
-This branch is **not merged**. Production data and the production database remain unchanged.
+**Current status (November 22, 2026):** PR #25 was merged into main after Neon Production migration 0011 and a snapshot backup. Vercel Production deployment reached READY. The sections below record the earlier Preview rollout.
 
 ## Implemented
 
@@ -16,15 +16,15 @@ This branch is **not merged**. Production data and the production database remai
 
 - AniList anime search: no personal token, but dependent on rate limits and API availability.
 - TVmaze series search: no personal token. On selecting a series, the admin lookup requests its known regular episodes from the TVmaze episode endpoint; future unlisted episodes remain unknown and no total is invented.
-- TMDB movie search: set **TMDB_READ_TOKEN** (v3 read access Bearer token) or **TMDB_API_KEY** (v3 key) in **Vercel Preview** environment. The admin UI explains when no movie-search key is configured. No key is checked into the repository.
+- TMDB movie search: set **TMDB_READ_TOKEN** (v3 read access Bearer token) or **TMDB_API_KEY** (v3 key) in the appropriate **Vercel environment**. The admin UI explains when no movie-search key is configured. No key is checked into the repository.
 - External service content is displayed as metadata for administrator review; it does not provide licensed video downloads.
 
 ## Database and deploy
 
 - Migration `drizzle/0011_media_metadata.sql` adds nullable `media.genres`, `episode_count`, `external_source`, `external_id` and an index. Historical media rows, links, seasons and episodes retain their IDs and content.
-- **Preview Neon branch only** (`preview`, `br-lively-scene-b5dhtkvc`) had 0011 safely applied and registered in the migration history on November 21, 2026. **Production** was not migrated; release would require an approved, separately validated production migration and subsequent merge/deploy.
-- Use branch Preview builds and the disposable CI database for validation. No changes to main or Production until explicit authorization.
+- Migration 0011 was tested on Neon Preview (`preview`, `br-lively-scene-b5dhtkvc`) and subsequently applied to Production after taking a manual snapshot. All four columns, the index and migration ledger were verified.
+- New work continues on separate branches with disposable CI and Preview verification. Production is not a test environment.
 
 ## Validation
 
-CI includes TypeScript, ESLint, unit tests, PostgreSQL migration idempotency, API/browser E2E, Admin UI and Following mobile fixtures. New tests cover imported metadata validation, title auto-fill and exact followed-anime countdown matching. Do not merge without all CI checks passing and the owner's approval.
+CI includes TypeScript, ESLint, unit tests, PostgreSQL migration idempotency, API/browser E2E, Admin UI and Following mobile fixtures. New tests cover imported metadata validation, title auto-fill and exact followed-anime countdown matching. Require all CI checks and owner approval before any future merge.

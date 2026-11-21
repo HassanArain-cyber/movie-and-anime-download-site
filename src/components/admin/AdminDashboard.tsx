@@ -12,8 +12,9 @@ import CopyLinkSettings from "./CopyLinkSettings";
 import ContactRequestsManager from "./ContactRequestsManager";
 import CommentModerationManager from "./CommentModerationManager";
 import ReleaseCalendarManager from "./ReleaseCalendarManager";
+import LinkHealthManager from "./LinkHealthManager";
 
-type Tab = "recycle" | "links" | "bulk" | "media" | "categories" | "calendar" | "appearance" | "requests" | "moderation";
+type Tab = "recycle" | "links" | "bulk" | "media" | "health" | "categories" | "calendar" | "appearance" | "requests" | "moderation";
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [linksOpened, setLinksOpened] = useState(false);
@@ -48,6 +49,22 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     onLogout();
   };
 
+  // A switch is easier to maintain than a long chain of nested JSX ternaries.
+  // Upload tabs stay mounted (but hidden) so unfinished file batches are preserved.
+  const renderSection = () => {
+    switch (tab) {
+      case "media": return <MediaManager onBusyChange={setBulkBusy} />;
+      case "health": return <LinkHealthManager onOpenMedia={() => setTab("media")} />;
+      case "categories": return <CategoryManager />;
+      case "calendar": return <ReleaseCalendarManager />;
+      case "recycle": return <RecycleBin onBusyChange={setBulkBusy} />;
+      case "appearance": return <div className="space-y-6"><AppearanceSettings /><CopyLinkSettings /></div>;
+      case "requests": return <ContactRequestsManager onBusyChange={setBulkBusy} />;
+      case "moderation": return <CommentModerationManager onBusyChange={setBulkBusy} />;
+      default: return null;
+    }
+  };
+
   return (
     <div className={tab === "appearance" ? "space-y-6" : `${styles.compact} space-y-3`}>
       <div className="flex items-center justify-between">
@@ -65,7 +82,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div ref={navigation} role="navigation" aria-label="Admin sections" className={`${styles.navigation} flex gap-1 overflow-x-auto border-b border-neutral-800`}>
-        {(["media", "links", "bulk", "categories", "calendar", "appearance", "requests", "moderation", "recycle"] as Tab[]).map((t) => (
+        {(["media", "links", "bulk", "health", "categories", "calendar", "appearance", "requests", "moderation", "recycle"] as Tab[]).map((t) => (
           <button
             key={t}
             disabled={bulkBusy}
@@ -77,7 +94,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 : "border-transparent text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            {t === "recycle" ? "Recycle Bin" : t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t === "calendar" ? "Release Calendar" : t}
+            {t === "recycle" ? "Recycle Bin" : t === "links" ? "Episodes" : t === "bulk" ? "File batches" : t === "moderation" ? "Comment moderation" : t === "calendar" ? "Release Calendar" : t === "health" ? "Link checker" : t}
           </button>
         ))}
       </div>
@@ -85,7 +102,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div ref={panel} className="min-w-0">
       {linksOpened && <div hidden={tab !== "links"}><BulkEpisodeLinks onBusyChange={setBulkBusy} /></div>}
       {bulkOpened && <div hidden={tab !== "bulk"}><BulkAddEpisodes onBusyChange={setBulkBusy} /></div>}
-      {tab === "bulk" || tab === "links" ? null : tab === "recycle" ? <RecycleBin onBusyChange={setBulkBusy} /> : tab === "media" ? <MediaManager onBusyChange={setBulkBusy} /> : tab === "categories" ? <CategoryManager /> : tab === "calendar" ? <ReleaseCalendarManager /> : tab === "appearance" ? <div className="space-y-6"><AppearanceSettings /><CopyLinkSettings /></div> : tab === "requests" ? <ContactRequestsManager onBusyChange={setBulkBusy} /> : <CommentModerationManager onBusyChange={setBulkBusy} />}
+      {renderSection()}
       </div>
     </div>
   );
