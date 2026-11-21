@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PosterImage from "@/components/PosterImage";
 import { useUpdates } from "@/components/UpdatesProvider";
+import { useCalendarFollows } from "@/components/useCalendarFollows";
+import { calendarEventIsFollowed, calendarFollowIdentity, calendarFollowKey, followFromEvent, updateCalendarFollow } from "@/lib/calendar-follows";
 import { calendarDay, type CalendarEvent, type CalendarKind, type CalendarResponse } from "@/lib/calendar-model";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -24,7 +26,10 @@ function InfoIcon({ direction }: { direction: "left" | "right" }) {
   </svg>;
 }
 
-function ReleaseRow({ release, asOf }: { release: CalendarEvent; asOf: string }) {
+function ReleaseRow({ release, asOf, followed, followBusy, onToggleFollow }: {
+  release: CalendarEvent; asOf: string; followed: boolean; followBusy: boolean;
+  onToggleFollow?: () => void;
+}) {
   const kind = COLORS[release.kind];
   const past = Date.parse(release.airingAt) <= Date.parse(asOf);
   const content = (
@@ -53,13 +58,29 @@ function ReleaseRow({ release, asOf }: { release: CalendarEvent; asOf: string })
       </div>
     </div>
   );
-  return release.url
-    ? <a href={release.url} target={release.url.startsWith("http") ? "_blank" : undefined} rel={release.url.startsWith("http") ? "noopener noreferrer" : undefined}
-        aria-label={"View " + release.title + " release details"}
-        className="block rounded-lg border border-transparent px-1.5 py-2 transition hover:border-sky-400/20 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
-        {content}
-      </a>
-    : <div className="rounded-lg px-1.5 py-2">{content}</div>;
+  return (
+    <article className="min-w-0 rounded-lg border border-transparent px-1 py-1.5 transition hover:border-sky-400/20 hover:bg-white/[0.05]">
+      {release.url
+        ? <a href={release.url} target={release.url.startsWith("http") ? "_blank" : undefined}
+          rel={release.url.startsWith("http") ? "noopener noreferrer" : undefined}
+          aria-label={"View " + release.title + " release details"}
+          className="block min-w-0 rounded-lg px-0.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">{content}</a>
+        : <div className="min-w-0 px-0.5 py-1">{content}</div>}
+      {onToggleFollow && (
+        <div className="mt-1 flex min-w-0 items-center gap-2 pl-[3.55rem]">
+          <button type="button" aria-label={(followed ? "Unfollow " : "Follow ") + release.title}
+            aria-pressed={followed} aria-busy={followBusy} disabled={followBusy}
+            onClick={onToggleFollow}
+            className={`min-h-9 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${followed
+              ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
+              : "border-violet-400/35 bg-violet-600/20 text-violet-200 hover:bg-violet-600/35"}`}>
+            {followBusy ? "Saving…" : followed ? "✓ Following" : "+ Follow"}
+          </button>
+          <span className="min-w-0 text-[10px] text-slate-500">{release.vaultMediaId ? "Vault" : "Calendar"}</span>
+        </div>
+      )}
+    </article>
+  );
 }
 
 export default function CalendarExplorer({ initial }: { initial: CalendarResponse }) {
@@ -68,7 +89,49 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
   const [activeDay, setActiveDay] = useState<string | null>(null);
   const [onlyFollowed, setOnlyFollowed] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(36);
-  const { data: followsData } = useUpdates();
+  const { data: followsData, follow: followVault } = useUpdates();
+  const savedCalendarFollows = useCalendarFollows();
+  const [followBusy, setFollowBusy] = useState<string | null>(null);
+  const [followError, setFollowError] = useState("");
+  type NextAiring = { anilistId: number; episode: number; airingAt: string; totalEpisodes: number | null };
+  const [nextAirings, setNextAirings] = useState<NextAiring[]>([]);
+  const followedAniListIds = [...new Set([
+    ...savedCalendarFollows.filter((item) => item.source === "anilist").map((item) => item.externalId),
+    ...(followsData?.following ?? []).filter((item) => item.externalSource === "anilist" && /^\d+$/.test(item.externalId || "")).map((item) => Number(item.externalId)),
+  ])].filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 35).join(",");
+
+  useEffect(() => {
+    if (!onlyFollowed || !followedAniListIds) return;
+    const controller = new AbortController();
+    fetch("/api/next-airings?ids=" + followedAniListIds, { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((body: { airings?: NextAiring[] } | null) => {
+        if (!controller.signal.aborted) setNextAirings(body?.airings ?? []);
+      }).catch(() => { if (!controller.signal.aborted) setNextAirings([]); });
+    return () => controller.abort();
+  }, [onlyFollowed, followedAniListIds]);
+
+  const toggleReleaseFollow = async (release: CalendarEvent) => {
+    const identity = calendarFollowIdentity(release);
+    const saved = identity ? savedCalendarFollows.find((entry) => calendarFollowKey(entry) === identity) : undefined;
+    const vaultId = release.vaultMediaId;
+    const linked = typeof vaultId === "number" && followsData?.following.some((item) => item.id === vaultId);
+    const token = release.id;
+    if (followBusy !== null) return;
+    setFollowBusy(token); setFollowError("");
+    try {
+      if (typeof vaultId === "number" && followsData) {
+        if (linked) await followVault(vaultId, false);
+        else if (saved) updateCalendarFollow(saved, false);
+        else await followVault(vaultId, true);
+      } else {
+        const entry = saved || followFromEvent(release);
+        if (!entry) throw new Error("This release has no linked anime ID to follow.");
+        updateCalendarFollow(entry, !saved);
+      }
+    } catch (reason) { setFollowError(reason instanceof Error ? reason.message : "Could not update Following."); }
+    finally { setFollowBusy(null); }
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
@@ -110,15 +173,41 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
   const currentMonth = data.year === period.year && data.month === period.month;
   const visibleEvents = useMemo(() => currentMonth ? data.events : [], [currentMonth, data.events]);
 
+  const supplementalEvents = useMemo(() => {
+    if (!onlyFollowed || !currentMonth) return [];
+    const known = new Map<number, { title: string; posterUrl: string | null; vaultMediaId?: number }>();
+    for (const follow of savedCalendarFollows) if (follow.source === "anilist") {
+      known.set(follow.externalId, { title: follow.title, posterUrl: follow.posterUrl });
+    }
+    for (const follow of followsData?.following ?? []) {
+      if (follow.externalSource === "anilist" && /^\d+$/.test(follow.externalId || "")) {
+        known.set(Number(follow.externalId), { title: follow.title, posterUrl: follow.posterUrl, vaultMediaId: follow.id });
+      }
+    }
+    return nextAirings.flatMap((airing): CalendarEvent[] => {
+      const knownAnime = known.get(airing.anilistId);
+      if (!knownAnime || !Number.isSafeInteger(airing.episode) || !Number.isFinite(Date.parse(airing.airingAt))
+        || !calendarDay(airing.airingAt).startsWith(period.year + "-" + String(period.month).padStart(2, "0") + "-")) return [];
+      return [{
+        id: "followed:anilist:" + airing.anilistId + ":" + airing.episode,
+        title: knownAnime.title, kind: "episode", airingAt: airing.airingAt,
+        episode: airing.episode, totalEpisodes: airing.totalEpisodes,
+        posterUrl: knownAnime.posterUrl, url: "https://anilist.co/anime/" + airing.anilistId,
+        source: "anilist", notes: "Next confirmed AniList schedule", anilistId: airing.anilistId,
+        vaultMediaId: knownAnime.vaultMediaId ?? null,
+      }];
+    });
+  }, [nextAirings, savedCalendarFollows, followsData, period.year, period.month, onlyFollowed, currentMonth]);
+
   const filteredEvents = useMemo(() => {
     if (!onlyFollowed) return visibleEvents;
     const followed = followsData?.following ?? [];
-    const idSet = new Set(followed.filter((item) => item.externalSource === "anilist" && item.externalId).map((item) => Number(item.externalId)));
-    return visibleEvents.filter((event) =>
-      (event.anilistId != null && idSet.has(event.anilistId)) ||
-      (event.url?.startsWith("/") && followed.some((item) => event.url?.startsWith("/" + item.type + "/" + item.slug)))
-    );
-  }, [visibleEvents, followsData, onlyFollowed]);
+    const matches = visibleEvents.filter((event) => calendarEventIsFollowed(event, savedCalendarFollows, followed));
+    for (const next of supplementalEvents) {
+      if (!matches.some((item) => item.anilistId === next.anilistId && item.episode === next.episode)) matches.push(next);
+    }
+    return matches.sort((a, b) => a.airingAt.localeCompare(b.airingAt) || a.title.localeCompare(b.title));
+  }, [visibleEvents, followsData, savedCalendarFollows, supplementalEvents, onlyFollowed]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -175,7 +264,7 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
               className={`min-h-10 rounded-xl border px-3 py-2 text-xs font-bold transition ${onlyFollowed ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100" : "border-sky-500/20 bg-sky-500/[.06] text-sky-200 hover:bg-sky-500/15"}`}>
               {onlyFollowed ? "✓ Only Following" : "Only Following"}
             </button>
-            <span className="text-[10px] text-slate-500">{onlyFollowed ? "Your saved anime & Vault releases" : "All available releases"}</span>
+            <span className="text-[10px] text-slate-500">{onlyFollowed ? "Anime you've followed" : "Follow anime directly from the release list"}</span>
           </div>
           <div className="mt-2 grid grid-cols-7 gap-1 text-center">
             {WEEKDAYS.map((name) => <span key={name} className="py-2 text-[10px] font-semibold text-slate-400">{name}</span>)}
@@ -213,15 +302,19 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
             {activeDay && <button type="button" onClick={() => setActiveDay(null)} className="rounded-lg border border-sky-500/20 px-3 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-500/10">All month</button>}
           </div>
           {sourceMessage && <p role="status" className="mt-3 rounded-lg border border-amber-300/15 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-100/85">{sourceMessage}</p>}
+          {followError && <p role="alert" className="mt-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{followError}</p>}
           {error && <p role="alert" className="mt-3 rounded-lg border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">{error}</p>}
           <div aria-busy={busy} className="mt-2 max-h-[440px] min-h-[170px] flex-1 divide-y divide-sky-300/10 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
             {busy || !currentMonth ? <div className="flex h-40 items-center justify-center text-sm text-slate-400">Loading releases…</div> :
               !shown.length ? <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-4 text-center">
                 <span aria-hidden="true" className="text-3xl text-slate-600">◇</span>
                 <p className="text-sm font-semibold text-slate-200">No releases listed</p>
-                <p className="text-xs leading-relaxed text-slate-500">{onlyFollowed ? "Follow an anime linked with AniList, or select All releases." : "Try another date, or add a release from the Admin calendar."}</p>
+                <p className="text-xs leading-relaxed text-slate-500">{onlyFollowed ? "No scheduled releases for your followed anime this month. Your follows are saved; try another month or view all releases." : "Try another date, or add a release from the Admin calendar."}</p>
               </div> :
-                shown.slice(0, visibleLimit).map((release) => <ReleaseRow key={release.id} release={release} asOf={data.updatedAt} />)}
+                shown.slice(0, visibleLimit).map((release) => <ReleaseRow key={release.id} release={release} asOf={data.updatedAt}
+                  followed={calendarEventIsFollowed(release, savedCalendarFollows, followsData?.following ?? [])}
+                  followBusy={followBusy === release.id}
+                  onToggleFollow={release.vaultMediaId || calendarFollowIdentity(release) ? () => void toggleReleaseFollow(release) : undefined} />)}
           </div>
           {shown.length > visibleLimit && <button type="button" onClick={() => setVisibleLimit((count) => count + 36)} className="mt-2 min-h-10 rounded-lg border border-sky-500/25 px-3 py-2 text-xs font-bold text-sky-200 transition hover:bg-sky-500/15">Show more · {shown.length - visibleLimit} remaining</button>}
           <p className="border-t border-sky-500/15 pt-3 text-[10px] leading-relaxed text-slate-500">Automatic schedules are provided by AniList, or estimated weekly MAL broadcast slots when AniList is unavailable. These are not confirmations that Vault has uploaded an episode.</p>
