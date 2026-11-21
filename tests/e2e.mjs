@@ -835,6 +835,7 @@ assert.equal(new URL(page.url()).searchParams.has("q"), false, "suggestions shou
 await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) }).click();
 await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
 await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
+await page.setViewportSize({ width: 390, height: 844 });
 
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
 await searchBox.fill("Juju");
@@ -846,6 +847,7 @@ await searchBox.fill("Legacy");
 await searchBox.press("Enter");
 await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && !url.searchParams.has("type") && !url.searchParams.has("category") && !url.searchParams.has("year"));
 await page.getByRole("heading", { name: /Search results for/ }).waitFor();
+await page.setViewportSize({ width: 1280, height: 900 });
 
 // Public comment surfaces render safely, reveal spoilers on demand, and remain
 // within desktop and narrow mobile viewports for title and episode discussions.
