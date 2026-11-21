@@ -25,6 +25,9 @@ try {
   const unauthEdit = await fetch(base + "/api/admin/calendar", { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ title }) });
   assert.equal(unauthEdit.status, 401, "Public cannot write calendar schedule");
 
+  const invalidAnimeSearch = await fetch(base + "/api/calendar-search?q=x");
+  assert.equal(invalidAnimeSearch.status, 400, "Short anime search must be rejected without contacting AniList");
+
   const defaultCalendar = await fetch(base + "/api/calendar?year=" + year + "&month=" + month);
   assert.equal(defaultCalendar.status, 200, "Public calendar API works");
   const defaultPayload = await defaultCalendar.json();
@@ -69,6 +72,26 @@ try {
   await page.goto(base + "/calendar", { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "Release Calendar" }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "Calendar fits 390px viewport");
+  const searchOnlyTitle = "Search-only Anime " + stamp;
+  const searchOnlyId = 1987654;
+  await page.route("**/api/calendar-search?*", async (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ results: [{
+      id: searchOnlyId, title: searchOnlyTitle, posterUrl: null, totalEpisodes: null, nextAiring: null,
+    }] }),
+  }));
+  await page.getByRole("searchbox", { name: "Search any anime to follow" }).fill(searchOnlyTitle);
+  await page.getByRole("button", { name: "Follow " + searchOnlyTitle }).click();
+  await page.getByRole("button", { name: "Unfollow " + searchOnlyTitle }).waitFor();
+  assert.ok((await page.evaluate(() => JSON.parse(localStorage.getItem("vault-calendar-follows-v1") || "[]")))
+    .some((item) => item.source === "anilist" && item.externalId === searchOnlyId), "Search-only anime persists even without a monthly release");
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("searchbox", { name: "Search any anime to follow" }).fill(searchOnlyTitle);
+  await page.getByRole("button", { name: "Unfollow " + searchOnlyTitle }).waitFor();
+  await page.getByRole("button", { name: "Unfollow " + searchOnlyTitle }).click();
+  assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem("vault-calendar-follows-v1") || "[]")))
+    .some((item) => item.externalId === searchOnlyId), false, "Unfollow removes searched anime from browser storage");
+
   await page.getByRole("button", { name: new RegExp(expectedDay + ", ") }).click();
   await page.getByRole("heading", { name: title }).waitFor();
   await page.getByText("Episode 8", { exact: false }).waitFor();
