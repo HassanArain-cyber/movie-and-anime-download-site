@@ -109,7 +109,7 @@ export default function LinkHealthManager({ onOpenMedia }: { onOpenMedia: () => 
           );
           const className = "block rounded-xl border border-white/10 bg-neutral-900/60 p-3";
           return link.mediaHref ? (
-            <Link key={link.id} href={link.mediaHref}
+            <Link key={link.id} href={link.mediaHref} prefetch={false}
               aria-label={"Open " + (link.mediaTitle || "media item") + " to review download link " + link.id}
               className={className + " transition hover:border-violet-400/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"}>
               {card}
