@@ -51,9 +51,23 @@ export async function getCalendarData(year: number, month: number): Promise<Cale
       inArray(media.externalId, sourceIds), await activeContent("media", media.id)))
     .limit(500) : [];
   const bySourceId = new Map(matching.map((item) => [item.externalId, item.id]));
-  const enriched = events.map((item) => item.anilistId
-    ? { ...item, vaultMediaId: bySourceId.get(String(item.anilistId)) ?? null }
-    : item);
+  // Manual releases can also identify a saved Vault title through its exact
+  // /anime/, /series/ or /movie/ slug, without relying on fuzzy title matching.
+  const manualSlugs = [...new Set(events.filter((item) => item.source === "manual")
+    .flatMap((item) => item.url?.match(/^\/(anime|series|movie)\/([a-z0-9-]+)(?:#episode-\d+)?$/i)?.[2] ?? []))];
+  const linked = manualSlugs.length ? await db.select({ id: media.id, slug: media.slug, type: media.type })
+    .from(media).where(and(inArray(media.slug, manualSlugs), await activeContent("media", media.id)))
+    .limit(250) : [];
+  const bySlug = new Map(linked.map((item) => [item.type + "/" + item.slug, item.id]));
+  const enriched = events.map((item) => {
+    const fromProvider = item.anilistId ? bySourceId.get(String(item.anilistId)) : null;
+    const slugMatch = item.source === "manual"
+      ? item.url?.match(/^\/(anime|series|movie)\/([a-z0-9-]+)(?:#episode-\d+)?$/i) : null;
+    return {
+      ...item,
+      vaultMediaId: fromProvider ?? (slugMatch ? bySlug.get(slugMatch[1] + "/" + slugMatch[2]) : null) ?? item.vaultMediaId ?? null,
+    };
+  });
   return {
     year, month,
     events: enriched,
