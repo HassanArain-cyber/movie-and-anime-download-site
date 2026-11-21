@@ -89,7 +89,7 @@ export default function BrowserNotificationOptIn() {
           <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">Optional · alerts for new Vault episodes while the site is open.</p>
         </div>
         <button type="button" aria-pressed={enabled} onClick={() => void toggle()} disabled={pending}
-          className={\`min-h-10 shrink-0 rounded-lg border px-3 text-xs font-bold transition disabled:opacity-50 \${enabled ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200" : "border-purple-400/35 bg-violet-600/20 text-purple-200 hover:bg-violet-600/35"}\`}>
+          className={`min-h-10 shrink-0 rounded-lg border px-3 text-xs font-bold transition disabled:opacity-50 ${enabled ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200" : "border-purple-400/35 bg-violet-600/20 text-purple-200 hover:bg-violet-600/35"}`}>
           {enabled ? "On" : pending ? "Enabling…" : "Enable"}
         </button>
       </div>
