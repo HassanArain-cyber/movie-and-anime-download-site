@@ -104,15 +104,15 @@ export default function RequestContact() {
             </div>
             <form className="space-y-3.5 p-4 sm:p-5" onSubmit={submit}>
               <label className="block space-y-1.5 text-xs font-semibold text-neutral-300">Name
-                <input required maxLength={100} value={draft.name} onChange={(event) => update({ name: event.target.value })} className="w-full rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15" />
+                <input required maxLength={100} placeholder="Your name" value={draft.name} onChange={(event) => update({ name: event.target.value })} className="w-full rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15" />
               </label>
-              <label className="block space-y-1 text-sm text-neutral-300">Request Type
-                <select value={draft.type} onChange={(event) => update({ type: event.target.value as ContactRequestType })} className="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-white outline-none focus:border-neutral-600">
+              <label className="block space-y-1.5 text-xs font-semibold text-neutral-300">Request Type
+                <select value={draft.type} onChange={(event) => update({ type: event.target.value as ContactRequestType })} className="w-full rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15">
                   {CONTACT_REQUEST_TYPES.map((type) => <option key={type}>{type}</option>)}
                 </select>
               </label>
-              <label className="block space-y-1 text-sm text-neutral-300">Message
-                <textarea required maxLength={2000} rows={3} value={draft.message} onChange={(event) => update({ message: event.target.value })} className="w-full resize-y rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm leading-relaxed text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15" />
+              <label className="block space-y-1.5 text-xs font-semibold text-neutral-300">Message
+                <textarea required maxLength={2000} rows={3} placeholder="What would you like us to add?" value={draft.message} onChange={(event) => update({ message: event.target.value })} className="w-full resize-y rounded-xl border border-white/10 bg-[#0b0b13] px-3.5 py-3 text-sm leading-relaxed text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-400/15" />
               </label>
               <div aria-hidden="true" className="absolute h-px w-px overflow-hidden" style={{ left: "-10000px" }}>
                 <label>Company website
