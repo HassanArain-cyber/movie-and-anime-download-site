@@ -13,6 +13,8 @@ export type CalendarEvent = {
   source: CalendarSource;
   notes: string | null;
   anilistId: number | null;
+  /** A real Vault media record linked by its exact source ID, when available. */
+  vaultMediaId?: number | null;
 };
 export type ManualCalendarEntry = Omit<CalendarEvent, "totalEpisodes" | "airedEpisodes" | "source">;
 export type CalendarResponse = {
