@@ -313,9 +313,11 @@ assert.equal((await fetch(`${objectUrl.origin}${objectUrl.pathname}`)).status, 4
 const tampered = new URL(signedUrl); tampered.searchParams.set("X-Amz-Signature", "0".repeat(64));
 assert.equal((await fetch(tampered)).status, 403);
 const shortLived = new S3Client({ region: "auto", endpoint: process.env.R2_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }, requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" });
-const expiringUrl = await getSignedUrl(shortLived, new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: video.objectKey }), { expiresIn: 1 });
+const expiringUrl = await getSignedUrl(shortLived, new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: video.objectKey }), { expiresIn: 4 });
 assert.equal((await fetch(expiringUrl)).status, 200);
-await new Promise((resolve) => setTimeout(resolve, 1200));
+// AWS signs at whole-second precision; a one-second window can expire before
+// the first request in CI. Keep the real expiration check with a safe margin.
+await new Promise((resolve) => setTimeout(resolve, 4200));
 assert.equal((await fetch(expiringUrl)).status, 403, "expired signed URL must fail");
 assert.equal((await api(`/api/image?upload=${video.id}`)).res.status, 404, "video must not be exposed through image endpoint");
 
