@@ -64,7 +64,7 @@ export default function LinkHealthManager({ onOpenMedia }: { onOpenMedia: () => 
       </div>
 
       <p className="text-xs text-amber-200">
-        Some hosts block automatic checks. "Review" is not proof a link is broken.
+        Some hosts block automatic checks. &quot;Review&quot; is not proof a link is broken.
         External redirects and custom URL schemes must be checked manually.
       </p>
       {checked && (
