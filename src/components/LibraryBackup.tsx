@@ -106,15 +106,9 @@ export default function LibraryBackup({ followedTitles, refreshFollows }: Props)
   };
 
   return (
-    <section aria-label="Backup your library" className="rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-3 sm:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold text-white">Backup &amp; restore library</h2>
-          <p className="mt-1 text-xs leading-relaxed text-neutral-400">
-            Save your Vault follows, calendar anime, watched episodes and recently opened episodes.
-            Import merges your lists without deleting existing items. No account required.
-          </p>
-        </div>
+    <section aria-label="Backup your library" className="rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-3">
+      <div className="flex flex-col gap-2.5">
+        <h2 className="text-sm font-bold text-white">Backup &amp; restore library</h2>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={exportBackup} disabled={!followedTitles || busy}
             className="min-h-10 rounded-lg border border-violet-400/35 bg-violet-500/15 px-3 text-xs font-semibold text-violet-100 disabled:opacity-50">
@@ -131,7 +125,6 @@ export default function LibraryBackup({ followedTitles, refreshFollows }: Props)
             }} />
         </div>
       </div>
-      <p className="mt-2 text-[11px] text-neutral-500">Backup contains only your library choices, not passwords or admin settings. Keep the file private.</p>
       {notice && <p role="status" className="mt-2 text-xs text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}
     </section>
