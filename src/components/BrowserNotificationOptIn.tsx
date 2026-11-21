@@ -68,7 +68,7 @@ export default function BrowserNotificationOptIn() {
   };
 
   useEffect(() => {
-    if (!enabled || Notification.permission !== "granted" || !data) return;
+    if (!enabled || typeof Notification === "undefined" || Notification.permission !== "granted" || !data) return;
     const seen = new Set(readSeen());
     // Never replay the entire old inbox on first visit.
     if (localStorage.getItem(SEEN_KEY) === null) {
