@@ -25,7 +25,7 @@ export default function MediaImportSearch({ type, initialQuery, onSelect, disabl
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
   // Parent wizard remounts this control when the media type changes.
-  const useResult = async (item: ImportChoice) => {
+  const selectResult = async (item: ImportChoice) => {
     if (type !== "series" || item.episodeCount) {
       onSelect(item); setOpen(false); setError(""); setQuery(item.title); return;
     }
@@ -85,7 +85,7 @@ export default function MediaImportSearch({ type, initialQuery, onSelect, disabl
         <div aria-label="Metadata search results" className="mt-3 max-h-80 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-[#0f1019] p-1.5">
           {results.map((item) => (
             <button type="button" key={item.externalSource + ":" + item.externalId} disabled={disabled}
-              onClick={() => { void useResult(item); }}
+              onClick={() => { void selectResult(item); }}
               aria-label={"Use " + item.title + " details"}
               className="flex w-full min-w-0 items-center gap-3 rounded-lg p-2 text-left transition hover:bg-violet-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
               <span className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-neutral-800">
