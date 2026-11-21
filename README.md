@@ -20,7 +20,7 @@ Existing Next.js + PostgreSQL media library with admin-managed movies, anime/ser
 
 ## Smart search
 
-The Navbar suggestion endpoint and submitted search results share the same bounded matcher. It normalizes text, expands the editable alias map in `src/lib/search.ts` (for example JJK, DBZ, SAO, AOT, and MHA), ranks exact matches ahead of aliases and fuzzy matches, and searches anime/series episode titles while returning the matching parent title and episode context. The selected content type and tag filter are applied on both suggestions and result pages. No search index or database migration is required.
+The Navbar suggestion endpoint and submitted search results share the same bounded matcher. It normalizes text, expands the editable alias map in `src/lib/search.ts` (for example JJK, DBZ, SAO, AOT, and MHA), ranks exact matches ahead of aliases and fuzzy matches, and searches anime/series episode titles while returning the matching parent title and episode context. The **Navbar** search is global on every page; listing filters on Home and category pages remain available separately. No search index or database migration is required.
 
 ## Community comments
 
@@ -48,6 +48,10 @@ PWA_BASE_URL=http://127.0.0.1:3000 npm run test:pwa
 ```
 
 The smoke test verifies Chromium installability, manifest/icon validity, start URL, worker activation/update behavior, offline fallback, and that auth/API responses are not cached. Real Android-device installation still depends on the device/browser’s own install UI.
+
+## Read and maintain the code
+
+Start with [the simple code guide](docs/CODE_GUIDE.md). It maps each folder to its job and explains the Follow, backup, link-audit and episode draft flows. Keep new comments focused on **why** a choice is made.
 
 ## Quick start
 
