@@ -15,7 +15,7 @@ This branch is **not merged**. Production data and the production database remai
 ## External metadata provider requirements
 
 - AniList anime search: no personal token, but dependent on rate limits and API availability.
-- TVmaze series search: no personal token. The free search API may not report total episode count; leave this blank instead of guessing.
+- TVmaze series search: no personal token. On selecting a series, the admin lookup requests its known regular episodes from the TVmaze episode endpoint; future unlisted episodes remain unknown and no total is invented.
 - TMDB movie search: set **TMDB_READ_TOKEN** (v3 read access Bearer token) or **TMDB_API_KEY** (v3 key) in **Vercel Preview** environment. The admin UI explains when no movie-search key is configured. No key is checked into the repository.
 - External service content is displayed as metadata for administrator review; it does not provide licensed video downloads.
 
