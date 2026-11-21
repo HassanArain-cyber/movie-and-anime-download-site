@@ -76,7 +76,7 @@ function ReleaseRow({ release, asOf, followed, followBusy, onToggleFollow }: {
               : "border-violet-400/35 bg-violet-600/20 text-violet-200 hover:bg-violet-600/35"}`}>
             {followBusy ? "Saving…" : followed ? "✓ Following" : "+ Follow"}
           </button>
-          <span className="min-w-0 text-[10px] text-slate-500">{release.vaultMediaId ? "Vault" : "Calendar"}</span>
+          <span className="min-w-0 text-[10px] text-slate-500">{release.vaultMediaId ? "On Vault" : "Calendar only"}</span>
         </div>
       )}
     </article>
@@ -120,7 +120,8 @@ export default function CalendarExplorer({ initial }: { initial: CalendarRespons
     if (followBusy !== null) return;
     setFollowBusy(token); setFollowError("");
     try {
-      if (typeof vaultId === "number" && followsData) {
+      if (typeof vaultId === "number") {
+        if (!followsData) throw new Error("Vault follows are still loading. Please retry.");
         if (linked) await followVault(vaultId, false);
         else if (saved) updateCalendarFollow(saved, false);
         else await followVault(vaultId, true);
