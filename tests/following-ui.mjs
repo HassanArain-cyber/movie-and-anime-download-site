@@ -68,14 +68,21 @@ try {
     if (window.Notification) Object.defineProperty(Notification, "requestPermission", { value: async () => { window.permissionRequests++; return "denied"; } });
   });
   await page.goto(`${base}/following`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "All (5)", exact: true }).waitFor();
+  const filterGroup = page.getByRole("group", { name: "Filter by watch status" });
+  const trigger = filterGroup.getByRole("button", { name: "Watch status filter" });
+  const selectFilter = async (name, count) => {
+    await trigger.click();
+    await filterGroup.getByRole("button", { name: `${name} (${count})`, exact: true }).click();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "false", "menu closes on selection");
+  };
+  await trigger.waitFor();
   assert.equal(await page.locator("article").count(), 5);
-  const labels = ["Plan to Watch", "Watching", "Continue", "On-Hold", "Watched"];
+  const labels = ["Plan to Watch", "Watching", "Ongoing", "On-Hold", "Watched"];
   for (const label of labels) {
-    await page.getByRole("button", { name: `${label} (1)`, exact: true }).click();
+    await selectFilter(label, 1);
     assert.equal(await page.locator("article").count(), 1);
   }
-  await page.getByRole("button", { name: "All (5)", exact: true }).click();
+  await selectFilter("All", 5);
   const first = page.locator("article").filter({ hasText: "Fixture movie 1" });
   assert.equal(await first.locator('a[href="/movie/fixture-1"]').count(), 2);
   assert.equal(await page.locator('article a[href="/series/fixture-2"]').count(), 2);
@@ -86,14 +93,19 @@ try {
     assert.equal(following.find((item) => item.id === 1).watchStatus, status);
   }
   await first.getByLabel("Watch status", { exact: true }).selectOption("watching");
-  await page.getByRole("button", { name: "Watching (2)", exact: true }).waitFor();
+  await trigger.click();
+  await filterGroup.getByRole("button", { name: "Watching (2)", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await trigger.getAttribute("aria-expanded"), "false", "Escape closes dropdown");
   await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.locator("article").filter({ hasText: "Fixture movie 1" }).getByLabel("Watch status", { exact: true }).inputValue(), "watching");
-  await page.getByRole("button", { name: "Plan to Watch (0)", exact: true }).click();
+  await selectFilter("Plan to Watch", 0);
   await page.getByText("No titles with this status yet.").waitFor();
-  await page.getByRole("button", { name: "All (5)", exact: true }).click();
+  await selectFilter("All", 5);
   await page.locator("article").filter({ hasText: "Fixture movie 1" }).getByRole("button", { name: "Unfollow", exact: true }).click();
-  await page.getByRole("button", { name: "All (4)", exact: true }).waitFor();
+  await trigger.click();
+  await filterGroup.getByRole("button", { name: "All (4)", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
   assert.equal(following.length, 4);
   await page.getByLabel("Notifications, 1 unread", { exact: true }).click();
   await page.getByRole("button", { name: "Mark all read", exact: true }).click();
@@ -120,10 +132,17 @@ try {
         assert.equal(refresh.height, 36);
       }
       if (route === "/following") {
-        const filters = page.getByRole("group", { name: "Filter by watch status" }).getByRole("button");
-        for (const button of await filters.all()) {
-          const box = await button.boundingBox(); assert.ok(box.height >= 36 && box.height <= 40, "compact filters retain 36px tap height");
+        const toggle = page.getByRole("group", { name: "Filter by watch status" }).getByRole("button", { name: "Watch status filter" });
+        const triggerBox = await toggle.boundingBox();
+        assert.ok(triggerBox.height >= 44 && triggerBox.height <= 70, "styled status selector retains a usable touch target");
+        await toggle.click();
+        const options = page.locator("#vault-watch-status-options").getByRole("button");
+        assert.equal(await options.count(), 6, "all five statuses and All stay inside dropdown");
+        for (const option of await options.all()) {
+          const box = await option.boundingBox();
+          assert.ok(box.height >= 44, "dropdown items meet mobile tap targets");
         }
+        await page.keyboard.press("Escape");
         const poster = await page.locator('article > a').first().boundingBox();
         assert.ok(poster.width <= 64 && Math.abs(poster.height / poster.width - 1.5) < 0.03, "small poster preserves 2:3 ratio");
         const bell = await page.getByLabel("Notifications", { exact: true }).boundingBox();
