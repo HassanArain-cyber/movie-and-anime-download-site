@@ -5,6 +5,7 @@ import type { Category, LinkBehavior, Media, MediaType, MediaWithRelations, Vide
 import { LINK_BEHAVIORS, QUALITIES, qualityDisplay } from "@/lib/media-links";
 import { validateEpisodeLink } from "@/lib/episode-quality-batch";
 import MediaPosterUploader from "./MediaPosterUploader";
+import MediaImportSearch, { type ImportChoice } from "./MediaImportSearch";
 
 const control = "mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white focus:border-purple-400 disabled:opacity-60";
 const button = "min-h-11 rounded-lg border border-neutral-700 px-3 py-2 text-sm disabled:opacity-50";
@@ -28,6 +29,22 @@ export default function MediaWizard({ categories, initialType = "movie", onCance
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
   const [poster, setPoster] = useState("");
+  const [genres, setGenres] = useState("");
+  const [episodeCount, setEpisodeCount] = useState("");
+  const [externalSource, setExternalSource] = useState("");
+  const [externalId, setExternalId] = useState("");
+  const [importNotice, setImportNotice] = useState("");
+  const useImport = (item: ImportChoice) => {
+    setTitle(item.title);
+    setDescription(item.description);
+    setPoster(item.posterUrl || "");
+    setYear(item.year === null ? "" : String(item.year));
+    setGenres(item.genres);
+    setEpisodeCount(item.episodeCount === null ? "" : String(item.episodeCount));
+    setExternalSource(item.externalSource);
+    setExternalId(item.externalId);
+    setImportNotice("Details filled from " + item.externalSource + ". Review or edit below.");
+  };
   const [seasonNumber, setSeasonNumber] = useState("1");
   const [seasonName, setSeasonName] = useState("");
   const [links, setLinks] = useState<DraftLink[]>([{ id: 1, quality: "1080p", url: "" }]);
@@ -53,7 +70,7 @@ export default function MediaWizard({ categories, initialType = "movie", onCance
         setNotice("Saving title…");
         // A lost creation response is not safe to retry automatically.
         let response: Response;
-        try { response = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, isAnimeMovie: type === "movie" && isAnimeMovie, title: title.trim(), year: year ? Number(year) : null, categoryId: categoryId ? Number(categoryId) : null, description, posterUrl: poster }) }); }
+        try { response = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, isAnimeMovie: type === "movie" && isAnimeMovie, title: title.trim(), year: year ? Number(year) : null, categoryId: categoryId ? Number(categoryId) : null, description, posterUrl: poster, genres, episodeCount: episodeCount ? Number(episodeCount) : null, externalSource: externalSource || null, externalId: externalId || null }) }); }
         catch { setUncertain(true); throw new Error("Creation response was lost. Check the media library before creating this title again."); }
         if (response.status >= 500) setUncertain(true);
         if (!response.ok) { const data = await response.json(); throw new Error(data.error || "Could not save title. Check the library before retrying."); }
@@ -83,12 +100,25 @@ export default function MediaWizard({ categories, initialType = "movie", onCance
   return <form aria-label="New media setup" onSubmit={(event) => { event.preventDefault(); setError(""); if (!title.trim()) { setStep(0); setError("Title is required."); return; } if (step < 1) setStep(step + 1); else void save(); }} className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-xl font-bold">Add New Media</h2><p className="mt-1 text-sm text-neutral-400">Two short steps. The title is created on Save; uploaded poster files are stored immediately.</p></div><button type="button" disabled={busy || posterBusy} onClick={cancel} className={button}>← Back</button></div>
     <ol aria-label="Setup progress" className="grid grid-cols-2 gap-2">{steps.map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined} className={`rounded-lg border px-2 py-2 text-xs ${step === index ? "border-purple-500 bg-purple-500/10 text-purple-200" : "border-neutral-800 text-neutral-500"}`}>{index + 1}. {label}</li>)}</ol>
+    {step === 0 && !savedId && (
+      <MediaImportSearch key={type} type={type} initialQuery={title} disabled={busy || posterBusy} onSelect={useImport} />
+    )}
+    {step === 0 && importNotice && <p role="status" className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">{importNotice}</p>}
+    <p className="text-xs text-neutral-400">{step === 0 ? "STEP 1 · Find your title above, or type the details below. Everything is editable." : type === "movie" ? "STEP 2 · Paste download links now, or add them after saving." : "STEP 2 · Choose the first season. Episodes and download links are added after saving."}</p>
     <fieldset disabled={busy || !!savedId} hidden={step !== 0} className="min-w-0 space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3 sm:p-4">
-      <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-neutral-400">Type<select aria-label="Type" value={type} onChange={(event) => setType(event.target.value as MediaType)} className={control}><option value="movie">Movie</option><option value="anime">Anime</option><option value="series">TV Series</option></select></label><label className="text-xs text-neutral-400">Title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={255} required={step === 0} placeholder="e.g. Your next release" className={control} /></label><label className="text-xs text-neutral-400">Year<input type="number" value={year} onChange={(event) => setYear(event.target.value)} placeholder="e.g. 2026" className={control} /></label><label className="text-xs text-neutral-400">Category<select aria-label="Category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className={control}><option value="">None</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>
+      <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-neutral-400">Type<select aria-label="Type" value={type} onChange={(event) => { setType(event.target.value as MediaType); setExternalSource(""); setExternalId(""); setImportNotice(""); setEpisodeCount(""); }} className={control}><option value="movie">Movie</option><option value="anime">Anime</option><option value="series">TV Series</option></select></label><label className="text-xs text-neutral-400">Title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={255} required={step === 0} placeholder="e.g. Your next release" className={control} /></label><label className="text-xs text-neutral-400">Year<input type="number" value={year} onChange={(event) => setYear(event.target.value)} placeholder="e.g. 2026" className={control} /></label><label className="text-xs text-neutral-400">Category<select aria-label="Category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className={control}><option value="">None</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="min-w-0 text-xs text-neutral-400">Genres (comma separated)
+          <input value={genres} onChange={(event) => setGenres(event.target.value)} maxLength={500} placeholder="Action, Adventure, Fantasy" className={control} />
+        </label>
+        {type !== "movie" && <label className="min-w-0 text-xs text-neutral-400">Total episodes (if known)
+          <input type="number" min={1} max={10000} value={episodeCount} onChange={(event) => setEpisodeCount(event.target.value)} placeholder="Unknown / ongoing" className={control} />
+        </label>}
+      </div>
       {type === "movie" && <label className="flex min-h-10 items-center gap-2 text-xs text-neutral-300"><input type="checkbox" checked={isAnimeMovie} onChange={(event) => setIsAnimeMovie(event.target.checked)} className="accent-purple-500" />Anime movie — standalone; listed under Anime &amp; Movies, not Movies</label>}
-      <details><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">Optional description</summary><label className="block text-xs text-neutral-400">Description<textarea rows={3} maxLength={20000} value={description} onChange={(event) => setDescription(event.target.value)} className={control} /></label></details>
+      <details><summary className="min-h-11 cursor-pointer py-3 text-sm text-purple-300">Synopsis / description {description ? "· imported" : "· optional"}</summary><label className="block text-xs text-neutral-400">Description<textarea rows={3} maxLength={20000} value={description} onChange={(event) => setDescription(event.target.value)} className={control} /></label></details>
     </fieldset>
-    <fieldset disabled={busy || !!savedId} hidden={step !== 0} className="min-w-0 space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3 sm:p-4"><h3 className="font-medium">Poster image</h3><p className="text-xs text-neutral-400">Upload privately to R2, paste an image URL, or continue without a poster.</p><div className="flex flex-col gap-3 sm:flex-row"><MediaPosterUploader currentUrl={poster} onUpload={setPoster} onBusyChange={(value) => { setPosterBusy(value); onBusyChange?.(value); }} /><label className="min-w-0 flex-1 text-xs text-neutral-400">Poster URL<input value={poster} onChange={(event) => setPoster(event.target.value)} placeholder="https://…" className={control} /></label></div></fieldset>
+    <fieldset disabled={busy || !!savedId} hidden={step !== 0} className="min-w-0 space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3 sm:p-4"><h3 className="font-medium">Poster image</h3><p className="text-xs text-neutral-400">Auto-filled from your search, or use your own image / R2 upload.</p><div className="flex flex-col gap-3 sm:flex-row"><MediaPosterUploader currentUrl={poster} onUpload={setPoster} onBusyChange={(value) => { setPosterBusy(value); onBusyChange?.(value); }} /><label className="min-w-0 flex-1 text-xs text-neutral-400">Poster URL<input value={poster} onChange={(event) => setPoster(event.target.value)} placeholder="https://…" className={control} /></label></div></fieldset>
     <fieldset disabled={busy} hidden={step !== 1} className="min-w-0 space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3 sm:p-4">
       <h3 className="font-medium">{type === "movie" ? "Downloads by quality" : "Create your first season"}</h3>
       {type === "movie" ? <><p className="text-xs text-neutral-400">Paste each download link and choose its quality. Private video uploads and all advanced link options remain available in the editor after saving.</p><label className="block text-xs text-neutral-400 sm:max-w-xs">Link behavior<select aria-label="Link behavior" value={linkBehavior} onChange={(event) => setLinkBehavior(event.target.value as LinkBehavior)} className={control}>{LINK_BEHAVIORS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>{links.map((link, index) => <div key={link.id} className="grid min-w-0 gap-2 rounded-lg border border-neutral-800 p-2 sm:grid-cols-[8rem_minmax(0,1fr)_auto]"><label className="text-xs text-neutral-400">Quality {index + 1}<select aria-label={`Quality ${index + 1}`} value={link.quality} onChange={(event) => setLinks((rows) => rows.map((row) => row.id === link.id ? { ...row, quality: event.target.value as VideoQuality } : row))} className={control}>{QUALITIES.map((quality) => <option key={quality} value={quality}>{qualityDisplay(quality)}</option>)}</select></label><label className="min-w-0 text-xs text-neutral-400">Download link {index + 1}<input value={link.url} onChange={(event) => setLinks((rows) => rows.map((row) => row.id === link.id ? { ...row, url: event.target.value } : row))} placeholder="https://… or Telegram / magnet" className={control} /></label><button type="button" onClick={() => setLinks((rows) => rows.filter((row) => row.id !== link.id))} aria-label={`Remove download ${index + 1}`} className={`${button} self-end`}>Remove</button></div>)}<button type="button" onClick={() => setLinks((rows) => [...rows, { id: Math.max(0, ...rows.map((row) => row.id)) + 1, quality: "720p", url: "" }])} className={button}>+ Another quality / link</button></> : <><p className="text-xs text-neutral-400">Next, generate an episode range and paste quality-specific links in one workspace.</p><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-neutral-400">First season #<input type="number" min={1} value={seasonNumber} onChange={(event) => setSeasonNumber(event.target.value)} className={control} /></label><label className="text-xs text-neutral-400">Season name (optional)<input value={seasonName} maxLength={255} onChange={(event) => setSeasonName(event.target.value)} className={control} /></label></div></>}
