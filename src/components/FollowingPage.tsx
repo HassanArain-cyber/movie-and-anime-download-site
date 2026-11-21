@@ -2,6 +2,7 @@
 import Link from "next/link";
 import PosterImage from "./PosterImage";
 import FollowButton from "./FollowButton";
+import LibraryBackup from "./LibraryBackup";
 import { useEffect, useRef, useState } from "react";
 import { WATCH_STATUSES, type WatchStatus } from "@/lib/watch-status";
 import { useUpdates } from "./UpdatesProvider";
@@ -70,6 +71,7 @@ export default function FollowingPage() {
   const titles = data?.following.filter((item) => filter === "all" || item.watchStatus === filter);
   return <div className="space-y-4">
     <div><p className="vault-eyebrow">YOUR LIBRARY</p><h1 className="mt-1 text-2xl font-bold text-white">Following</h1><p className="mt-2 text-sm text-neutral-400">Movies, anime and series saved in this browser. No login required.</p></div>
+    <LibraryBackup followedTitles={data?.following ?? null} refreshFollows={refresh} />
     <div ref={filterRoot} role="group" aria-label="Filter by watch status" className="relative w-full max-w-xs">
       <button ref={filterToggle} type="button" aria-label="Watch status filter" aria-haspopup="true"
         aria-expanded={filterOpen} aria-controls="vault-watch-status-options"
