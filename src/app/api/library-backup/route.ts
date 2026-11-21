@@ -47,6 +47,7 @@ export async function POST(request: Request) {
           `INSERT INTO anime_follows (subscriber_id,media_id,watch_status)
            SELECT $1, item.id, item.status
            FROM jsonb_to_recordset($2::jsonb) AS item(id integer, status text)
+           WHERE true
            ON CONFLICT (subscriber_id,media_id)
            DO UPDATE SET watch_status=EXCLUDED.watch_status`,
           [session.id, JSON.stringify(restorable.map((item) => ({ id: item.id, status: item.watchStatus })))],
