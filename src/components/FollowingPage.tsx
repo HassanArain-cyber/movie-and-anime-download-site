@@ -5,10 +5,36 @@ import FollowButton from "./FollowButton";
 import { useEffect, useRef, useState } from "react";
 import { WATCH_STATUSES, type WatchStatus } from "@/lib/watch-status";
 import { useUpdates } from "./UpdatesProvider";
+type NextAiring = { anilistId: number; episode: number; airingAt: string; totalEpisodes: number | null };
+function timeUntil(date: string, now: number) {
+  const time = Date.parse(date) - now;
+  if (time <= 0) return "Airing now";
+  const hours = Math.floor(time / 3600000);
+  const minutes = Math.floor((time % 3600000) / 60000);
+  return hours >= 24 ? Math.floor(hours / 24) + "d " + (hours % 24) + "h" : hours ? hours + "h " + minutes + "m" : minutes + "m";
+}
 export default function FollowingPage() {
   const { data, error, refresh } = useUpdates();
   const [filter, setFilter] = useState<WatchStatus | "all">("all");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [airings, setAirings] = useState<Record<string, NextAiring>>({});
+  const [clock, setClock] = useState(() => Date.now());
+  const followedIds = (data?.following ?? []).filter((item) => item.externalSource === "anilist" && /^\d+$/.test(item.externalId || "")).map((item) => item.externalId!).slice(0, 35).join(",");
+  useEffect(() => {
+    if (!followedIds) return;
+    const controller = new AbortController();
+    fetch("/api/next-airings?ids=" + encodeURIComponent(followedIds), { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((body: { airings?: NextAiring[] } | null) => {
+        if (controller.signal.aborted || !body?.airings) return;
+        setAirings(Object.fromEntries(body.airings.map((item) => [String(item.anilistId), item])));
+      }).catch(() => undefined);
+    return () => controller.abort();
+  }, [followedIds]);
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
   const filterRoot = useRef<HTMLDivElement>(null);
   const filterToggle = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -74,6 +100,12 @@ export default function FollowingPage() {
         <Link href={`/${item.type}/${item.slug}`} className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md sm:w-16"><PosterImage src={item.posterUrl} title={item.title} sizes="(min-width: 640px) 64px, 56px" /></Link>
         <div className="min-w-0 flex-1 space-y-1.5"><Link href={`/${item.type}/${item.slug}`} className="block break-words text-sm font-semibold leading-snug text-white hover:text-purple-300">{item.title}</Link>
           {item.hasNew && <Link href="/notifications" className="inline-block rounded bg-purple-500/15 px-1.5 py-0.5 text-[11px] text-purple-200">New episodes</Link>}
+          {item.externalSource === "anilist" && item.externalId && airings[item.externalId] && (
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[.07] px-2.5 py-1.5 text-[11px] text-emerald-200">
+              <p className="font-semibold">Next: Episode {airings[item.externalId].episode} · {timeUntil(airings[item.externalId].airingAt, clock)}</p>
+              <time dateTime={airings[item.externalId].airingAt} className="text-emerald-100/65">{new Date(airings[item.externalId].airingAt).toLocaleString("en-PK", { timeZone: "Asia/Karachi", dateStyle: "medium", timeStyle: "short" })} PKT</time>
+            </div>
+          )}
           <FollowButton mediaId={item.id} mediaType={item.type} compact />
         </div>
       </article>)}</div>
