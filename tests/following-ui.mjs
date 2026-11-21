@@ -17,7 +17,7 @@ const server = createServer(async (req, res) => {
   const json = (data) => { res.setHeader("Content-Type", "application/json"); res.setHeader("Cache-Control", "private, no-store"); res.end(JSON.stringify(data)); };
   try {
     if (url.pathname === "/api/updates") return json({ following, notifications: [notification], unread: notification.readAt ? 0 : 1, hasMore: false });
-    if (url.pathname === "/api/next-airings") return json({ airings: [{ anilistId: 777, episode: 13, airingAt: new Date(Date.now() + 48 * 3600000).toISOString(), totalEpisodes: 24 }] });
+    if (url.pathname === "/api/next-airings") return json({ airings: [{ anilistId: 777, episode: 13, airingAt: new Date(Date.now() + 48 * 3600000).toISOString(), totalEpisodes: 24 }, { anilistId: 888, episode: 5, airingAt: new Date(Date.now() + 24 * 3600000).toISOString(), totalEpisodes: 12 }] });
     if (url.pathname === "/api/site-settings") return json({ wallpaperUrl: null });
     if (url.pathname === "/api/media") return json({ media: [], total: 0 });
     if (url.pathname === "/api/follows") {
@@ -156,6 +156,22 @@ try {
       }
     }
   }
+  // Calendar-only follows are stored on this device and shown in the same Following page.
+  await page.goto(`${base}/following`, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    localStorage.setItem("vault-calendar-follows-v1", JSON.stringify([{
+      source: "anilist", externalId: 888, title: "New calendar anime",
+      posterUrl: null, addedAt: Date.now(),
+    }]));
+    window.dispatchEvent(new Event("vault-calendar-follows-changed"));
+  });
+  const calendarFollows = page.getByRole("region", { name: "Calendar follows" });
+  await calendarFollows.getByText("New calendar anime").first().waitFor();
+  await calendarFollows.getByText(/Next: Episode 5/).waitFor();
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.getByRole("region", { name: "Calendar follows" }).getByText("New calendar anime").count(), 1, "calendar follow survives browser reload");
+  await page.getByRole("button", { name: "Unfollow New calendar anime" }).click();
+  await page.getByRole("region", { name: "Calendar follows" }).waitFor({ state: "detached" });
   assert.equal(await page.evaluate(() => window.permissionRequests), 0);
   assert.deepEqual(writes.map((write) => write.method), [...statuses.map(() => "PATCH"), "PATCH", "DELETE"]);
   assert.deepEqual(unexpected, []); assert.deepEqual(external, []); assert.deepEqual(errors, []);
