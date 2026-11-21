@@ -54,7 +54,7 @@ export default function FollowingPage() {
         <p className="px-3 pb-2 pt-2 text-[10px] font-bold uppercase tracking-[.16em] text-neutral-500">Filter your list</p>
         {choices.map((choice) => {
           const selected = filter === choice.value;
-          return <button type="button" key={choice.value} aria-pressed={selected}
+          return <button type="button" key={choice.value} aria-label={`${choice.label} (${countFor(choice.value)})`} aria-pressed={selected}
             onClick={() => { setFilter(choice.value); setFilterOpen(false); filterToggle.current?.focus(); }}
             className={`flex min-h-11 w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${selected ? "bg-violet-600/25 text-purple-100" : "text-neutral-300 hover:bg-white/[.06]"}`}>
             <span className="min-w-0 flex-1 font-semibold">{choice.label}</span>
