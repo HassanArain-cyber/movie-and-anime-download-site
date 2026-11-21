@@ -35,6 +35,8 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
     editing?.categoryId ? String(editing.categoryId) : ""
   );
   const [posterUrl, setPosterUrl] = useState(editing?.posterUrl || "");
+  const [genres, setGenres] = useState(editing?.genres || "");
+  const [episodeCount, setEpisodeCount] = useState(editing?.episodeCount ? String(editing.episodeCount) : "");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -55,6 +57,8 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
         year: year ? Number(year) : null,
         categoryId: categoryId ? Number(categoryId) : null,
         posterUrl,
+        genres,
+        episodeCount: type === "movie" || !episodeCount ? null : Number(episodeCount),
       };
       const url = editing ? `/api/media/${editing.id}` : "/api/media";
       const method = editing ? "PATCH" : "POST";
@@ -133,6 +137,14 @@ function DetailsForm({ categories, editing, onCancel, onSaved }: Props) {
           />
         </div>
 
+        <div className="space-y-1">
+          <label htmlFor="media-genres" className="text-xs font-medium text-neutral-400">Genres</label>
+          <input id="media-genres" maxLength={500} value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Adventure, Fantasy" className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm text-white focus:border-violet-400" />
+        </div>
+        {type !== "movie" && <div className="space-y-1">
+          <label htmlFor="media-episode-count" className="text-xs font-medium text-neutral-400">Total episodes (if known)</label>
+          <input id="media-episode-count" type="number" min={1} max={10000} value={episodeCount} onChange={(event) => setEpisodeCount(event.target.value)} className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm text-white focus:border-violet-400" />
+        </div>}
         <div className="space-y-1">
           <label htmlFor="media-category" className="text-xs font-medium text-neutral-400">Category</label>
           <select
