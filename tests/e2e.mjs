@@ -1236,9 +1236,9 @@ assert.deepEqual(new Set(browserAnimeDetails.seasons[0].episodes[0].downloadLink
 for (const episode of browserEpisodes.filter((item) => item.episode_number > 1)) {
   ok(await api("/api/download-links", { method: "POST", body: { mediaId: browserAnime.id, seasonId: episode.season_id, episodeId: episode.id, quality: "1080p", label: "1080p", url: `https://example.com/browser-episode-${episode.episode_number}-1080.mp4` } }), 201);
 }
-await page.goto(`${base}/anime/browser-anime-${run}`);
+await page.goto(`${base}/anime/browser-anime-${run}`, { waitUntil: "networkidle" });
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
-await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).click();
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).last().click();
 await page.locator('a[title="Cloudflare R2"]').first().waitFor();
 await page.getByRole("button", { name: "Open navigation menu" }).click();
 await page.getByRole("navigation", { name: "Site navigation" }).getByRole("link", { name: "Anime & Movies" }).waitFor();
@@ -1249,8 +1249,8 @@ assert.equal(lastEpisode?.episodeNumber, 1, "opening an episode automatically re
 await page.goto(`${base}/`);
 await page.getByRole("heading", { name: "Continue Watching" }).waitFor();
 await page.getByRole("link", { name: /Return to Browser Anime .* episode 1/ }).waitFor();
-await page.goto(`${base}/anime/browser-anime-${run}`);
-await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).click();
+await page.goto(`${base}/anime/browser-anime-${run}`, { waitUntil: "networkidle" });
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).last().click();
 
 await page.getByRole("heading", { name: "720p", exact: true }).waitFor();
 await page.getByRole("heading", { name: "1080p", exact: true }).waitFor();
