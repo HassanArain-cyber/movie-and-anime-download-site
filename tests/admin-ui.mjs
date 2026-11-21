@@ -38,6 +38,16 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/auth/session") return json({ authed: true });
     if (url.pathname === "/api/categories") return json([{ id: 1, name: "Action", slug: "action" }]);
     if (url.pathname === "/api/storage/status") return json({ configured: false, missing: ["test R2 configuration"], maxVideoBytes: 100000, maxImageBytes: 100000, partSizeBytes: 5242880, privateDownloads: true });
+    if (url.pathname === "/api/admin/media-import") {
+      const type = url.searchParams.get("type"), query = url.searchParams.get("q");
+      if (!["anime", "movie", "series"].includes(type) || !query) return json({ error: "Invalid query" }, 400);
+      return json({ results: [{
+        title: query, description: "Auto imported synopsis", posterUrl: null,
+        year: 2026, genres: "Action, Fantasy", episodeCount: type === "movie" ? null : 12,
+        externalSource: type === "anime" ? "anilist" : type === "series" ? "tvmaze" : "tmdb",
+        externalId: type === "anime" ? "777" : "888",
+      }], configured: true });
+    }
     if (["/api/contact/requests", "/api/admin/comments"].includes(url.pathname)) {
       const comments = url.pathname === "/api/admin/comments";
       if (req.method === "DELETE") {
@@ -130,6 +140,14 @@ try {
     await page.getByLabel("Type", { exact: true }).selectOption(type);
     await page.getByLabel("Title", { exact: true }).fill(title);
     await page.getByLabel("Year", { exact: true }).fill("2026");
+    if (type === "anime" || type === "series") {
+      await page.getByLabel("Search title to auto-fill").fill(title);
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByRole("button", { name: "Use " + title + " details" }).click();
+      assert.equal(await page.getByLabel("Total episodes (if known)").inputValue(), "12", "Episode count auto-filled");
+      assert.equal(await page.getByLabel("Genres (comma separated)").inputValue(), "Action, Fantasy", "Genres auto-filled");
+      assert.equal(await page.getByText("Synopsis / description · imported").count(), 1);
+    }
     await assertFits("details and poster");
     assert.equal(await page.getByLabel("Poster URL", { exact: true }).isVisible(), true);
     await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -162,6 +180,9 @@ try {
     await page.getByRole("button", { name: "Create & Continue", exact: true }).click();
     await page.getByLabel("Link batch season", { exact: true }).waitFor();
     assert.equal(items.at(-1).seasons.length, 1);
+    assert.equal(items.at(-1).genres, "Action, Fantasy", "Metadata genres persisted");
+    assert.equal(items.at(-1).episodeCount, 12, "Metadata episode total persisted");
+    assert.equal(items.at(-1).externalSource, type === "anime" ? "anilist" : "tvmaze", "Provider identity persisted");
     await page.getByText("Individual editing & files", { exact: true }).click();
     await page.getByTestId("individual-episode-editor").getByRole("button", { name: /Season 1/ }).click();
     await page.getByText("Create a complete season", { exact: true }).waitFor();
