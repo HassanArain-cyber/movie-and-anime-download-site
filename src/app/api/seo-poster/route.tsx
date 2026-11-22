@@ -58,7 +58,7 @@ export async function GET(request: Request) {
           <img src={source} alt="" width={160} height={245} style={{ width: 160, height: 245, objectFit: "cover" }} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-          <div style={{ display: "flex", color: "#d7b5ff", fontSize: 17, fontWeight: 700, marginBottom: 16 }}>GOJO'S VAULT</div>
+          <div style={{ display: "flex", color: "#d7b5ff", fontSize: 17, fontWeight: 700, marginBottom: 16 }}>{"GOJO'S VAULT"}</div>
           <div style={{ display: "flex", fontSize: 37, fontWeight: 750, lineHeight: 1.16, wordBreak: "break-word" }}>
             {title.name.length > 85 ? title.name.slice(0, 82) + "…" : title.name}
           </div>
