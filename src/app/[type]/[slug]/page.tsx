@@ -51,7 +51,7 @@ export default async function DetailPage({ params }: PageProps) {
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">{item.title}</h1>
           </div>
-          <FollowButton mediaId={item.id} mediaType={item.type} followerCount={followerCount} />
+          <FollowButton mediaId={item.id} mediaType={item.type} followerCount={followerCount} shareTitle={item.title} />
         </div>
         {/* Separate from the header so mobile synopsis text can flow below the poster. */}
         {item.description && (
