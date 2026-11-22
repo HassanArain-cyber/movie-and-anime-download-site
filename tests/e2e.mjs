@@ -1330,6 +1330,29 @@ await page.goto(`${base}/anime/${anime.slug}`);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
   "desktop detail remains responsive after synopsis flow fix");
 
+// Compact, icon-only title share: use the phone share sheet when supported,
+// otherwise copy the public URL without query strings or account details.
+await page.evaluate(() => {
+  Object.defineProperty(navigator, "share", {
+    configurable: true, value: async (payload) => { window.__vaultShared = payload; },
+  });
+});
+await page.getByRole("button", { name: `Share E2E Anime ${run}` }).click();
+const shared = await page.evaluate(() => window.__vaultShared);
+assert.equal(shared.title, `E2E Anime ${run}`);
+assert.equal(shared.url, `${base}/anime/${anime.slug}`);
+await page.evaluate(() => {
+  Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text) => { window.__vaultCopied = text; } },
+  });
+});
+await page.getByRole("button", { name: `Share E2E Anime ${run}` }).click();
+assert.equal(await page.evaluate(() => window.__vaultCopied), `${base}/anime/${anime.slug}`);
+await page.getByRole("status").getByText("Link copied").waitFor();
+
+
 // Dedicated bulk creation: validation, duplicate numbers, partial failure/retry, and real multi-file R2 upload.
 const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
 const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);
