@@ -1300,10 +1300,14 @@ for (const title of [movie, anime]) {
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`${base}/${title.type}/${title.slug}`);
-    await page.locator(".vault-detail-description").waitFor();
+    await page.locator(".vault-detail-description:visible").first().waitFor();
     const layout = await page.evaluate(() => {
-      const poster = document.querySelector(".vault-detail-poster")?.getBoundingClientRect();
-      const synopsis = document.querySelector(".vault-detail-description");
+      // App Router may keep an inactive page in the DOM during navigation.
+      // Only measure the visible detail card, not its hidden cached duplicate.
+      const detail = Array.from(document.querySelectorAll(".vault-detail"))
+        .find((element) => element.getClientRects().length > 0);
+      const poster = detail?.querySelector(".vault-detail-poster")?.getBoundingClientRect();
+      const synopsis = detail?.querySelector(".vault-detail-description");
       if (!poster || !synopsis) return null;
       const text = document.createRange();
       text.selectNodeContents(synopsis);
