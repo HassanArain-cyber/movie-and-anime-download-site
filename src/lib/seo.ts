@@ -44,8 +44,9 @@ export function mediaSeoMetadata(item: SeoMedia): Metadata {
   const typeLabel = item.type === "movie" ? "Movie" : item.type === "anime" ? "Anime" : "TV series";
   const year = Number.isInteger(item.year) && (item.year ?? 0) > 1800 ? " (" + item.year + ")" : "";
   const title = item.title + year + " | " + SITE_NAME;
+  const details = item.type === "movie" ? "film synopsis and information" : "synopsis, seasons and episode information";
   const description = seoSummary(item.description,
-    "Explore " + item.title + year + " — " + typeLabel + " details, synopsis and available episodes on " + SITE_NAME + ".");
+    "Explore " + item.title + year + " — " + typeLabel + " " + details + " on " + SITE_NAME + ".");
   const url = mediaCanonicalUrl(item);
   const image = publicPosterUrl(item.posterUrl);
   return {

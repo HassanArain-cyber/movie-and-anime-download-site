@@ -22,7 +22,7 @@ test("anime/movie/series metadata is distinct and uses the Search Console canoni
   assert.deepEqual(anime.alternates, { canonical: SITE_ORIGIN + "/anime/firefly-wedding" });
   assert.equal(anime.openGraph?.url, SITE_ORIGIN + "/anime/firefly-wedding");
   assert.deepEqual(anime.twitter?.images, ["https://img.example.org/firefly-poster.jpg"]);
-  assert.equal(anime.twitter?.card, "summary_large_image");
+  assert.equal((anime.twitter as { card?: string })?.card, "summary_large_image");
   assert.equal(mediaSeoMetadata({ ...firefly, type: "movie" }).alternates?.canonical, SITE_ORIGIN + "/movie/firefly-wedding");
   assert.equal(mediaSeoMetadata({ ...firefly, type: "series" }).alternates?.canonical, SITE_ORIGIN + "/series/firefly-wedding");
   assert.equal(mediaCanonicalUrl({ type: "anime", slug: "space anime" }), SITE_ORIGIN + "/anime/space%20anime");
@@ -36,7 +36,7 @@ test("metadata excludes unsafe poster URLs and never leaks object keys or creden
   const r2 = "/api/image?upload=213e64b9-534a-4e38-bf5d-48e7d029c3b8";
   assert.equal(publicPosterUrl(r2), SITE_ORIGIN + r2);
   const meta = mediaSeoMetadata({ ...firefly, posterUrl: "r2:///secret-object" });
-  assert.equal(meta.twitter?.card, "summary");
+  assert.equal((meta.twitter as { card?: string })?.card, "summary");
   assert.equal(meta.twitter?.images, undefined);
 });
 
