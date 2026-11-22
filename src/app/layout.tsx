@@ -6,10 +6,18 @@ import CopyToast from "@/components/CopyToast";
 import PwaRegister from "@/components/PwaRegister";
 import WallpaperBackground from "@/components/WallpaperBackground";
 import "./globals.css";
+import { SITE_ORIGIN, SITE_NAME } from "@/lib/seo";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_ORIGIN),
   title: "Gojo’s Vault — Movies, Anime & Series",
   description: "A lightweight library for movies, anime, and TV series with direct downloads.",
+  openGraph: {
+    type: "website", siteName: SITE_NAME,
+    title: "Gojo’s Vault — Movies, Anime & Series",
+    description: "Explore movies, anime and series in Gojo’s Vault.",
+  },
+  twitter: { card: "summary", title: "Gojo’s Vault — Movies, Anime & Series" },
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [

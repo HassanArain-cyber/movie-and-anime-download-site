@@ -1,4 +1,6 @@
 import { activeContent, animeMovieFlag } from "@/lib/content-state";
+import type { Metadata } from "next";
+import { SITE_NAME, SITE_ORIGIN } from "@/lib/seo";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import MediaGrid from "@/components/MediaGrid";
@@ -24,6 +26,22 @@ interface PageProps {
 
 export async function generateStaticParams() {
   return Object.keys(VALID_TYPES).map((type) => ({ type }));
+}
+
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const [{ type }, query] = await Promise.all([params, searchParams]);
+  if (!VALID_TYPES[type]) notFound();
+  const label = VALID_TYPES[type].label;
+  const title = label + " | " + SITE_NAME;
+  const description = "Browse " + label.toLowerCase() + " on " + SITE_NAME + ". Find titles, posters and details.";
+  const url = SITE_ORIGIN + "/" + type;
+  const filtered = Object.values(query).some((value) => typeof value === "string" && value.trim().length > 0);
+  return {
+    title, description,
+    ...(filtered ? { robots: { index: false, follow: true } } : { alternates: { canonical: url } }),
+    openGraph: { type: "website", title, description, siteName: SITE_NAME, url },
+    twitter: { card: "summary", title, description },
+  };
 }
 
 export default async function TypePage({ params, searchParams }: PageProps) {

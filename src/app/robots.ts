@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
+import { SITE_ORIGIN } from "@/lib/seo";
 
 export default function robots(): MetadataRoute.Robots {
-  const base = "https://movie-and-anime-download-site.vercel.app";
+  const base = SITE_ORIGIN;
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/admin/", "/api/"] }],
+    rules: [{ userAgent: "*", allow: ["/", "/api/image"], disallow: ["/admin", "/api/"] }],
     sitemap: base + "/sitemap.xml",
   };
 }

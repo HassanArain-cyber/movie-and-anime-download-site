@@ -1283,6 +1283,23 @@ assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection rema
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 await page.goto(`${base}/movie/${movie.slug}`);
 for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
+// Server-generated SEO must identify each title and prefer the verified canonical URL.
+await page.waitForFunction((name) => document.title.includes(name), movie.title);
+const movieSeo = await page.evaluate(() => ({
+  title: document.title,
+  canonical: document.querySelector('link[rel="canonical"]')?.getAttribute("href"),
+  description: document.querySelector('meta[name="description"]')?.getAttribute("content"),
+  ogTitle: document.querySelector('meta[property="og:title"]')?.getAttribute("content"),
+  ogImage: document.querySelector('meta[property="og:image"]')?.getAttribute("content"),
+  structured: Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+    .map((element) => JSON.parse(element.textContent || "{}")).find((value) => value["@type"] === "Movie"),
+}));
+assert.equal(movieSeo.canonical, `https://movie-and-anime-download-site.vercel.app/movie/${movie.slug}`);
+assert.ok(movieSeo.title.includes(movie.title));
+assert.equal(movieSeo.ogTitle, movieSeo.title);
+assert.ok(movieSeo.description?.length > 10);
+assert.equal(movieSeo.structured?.name, movie.title);
+assert.equal(movieSeo.structured?.url, movieSeo.canonical);
 const detailBounds = await page.locator(".vault-detail").boundingBox();
 const downloadBounds = await page.locator('[aria-label="Available downloads"]').boundingBox();
 assert.ok(detailBounds && downloadBounds, "movie page has its detail and download sections");
