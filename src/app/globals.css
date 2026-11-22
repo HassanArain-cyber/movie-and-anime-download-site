@@ -61,7 +61,7 @@ button:not(:disabled), summary, select { cursor: pointer; }
    continues at full width BELOW the poster, rather than leaving the left half empty. */
 @media (max-width: 767px) {
   .vault-detail { display: flow-root; }
-  .vault-detail-poster { float: left; width: 35%; margin: 0 1rem .7rem 0; }
+  .vault-detail-poster { float: left; width: max(105px, 35%); margin: 0 1rem .7rem 0; }
   .vault-detail-info { display: flow-root; }
   .vault-detail-description { margin-top: .65rem; overflow-wrap: anywhere; }
 }
