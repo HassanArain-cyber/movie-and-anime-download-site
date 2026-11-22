@@ -1357,7 +1357,7 @@ await page.evaluate(() => {
 await page.getByRole("button", { name: `Share E2E Anime ${run}` }).click();
 const shared = await page.evaluate(() => window.__vaultShared);
 assert.equal(shared.title, `E2E Anime ${run}`);
-assert.equal(shared.url, `${base}/anime/${anime.slug}`);
+assert.equal(shared.url, `https://movie-and-anime-download-site.vercel.app/anime/${anime.slug}`);
 await page.evaluate(() => {
   Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
   Object.defineProperty(navigator, "clipboard", {
@@ -1366,7 +1366,7 @@ await page.evaluate(() => {
   });
 });
 await page.getByRole("button", { name: `Share E2E Anime ${run}` }).click();
-assert.equal(await page.evaluate(() => window.__vaultCopied), `${base}/anime/${anime.slug}`);
+assert.equal(await page.evaluate(() => window.__vaultCopied), `https://movie-and-anime-download-site.vercel.app/anime/${anime.slug}`);
 await page.getByRole("status").getByText("Link copied").waitFor();
 
 

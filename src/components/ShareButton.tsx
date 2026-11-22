@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { SITE_ORIGIN } from "@/lib/seo";
 
 /** Share only the public title URL, never admin or session information. */
 export default function ShareButton({ title }: { title: string }) {
   const [message, setMessage] = useState("");
 
   const share = async () => {
-    const url = window.location.origin + window.location.pathname;
+    // Always share the public canonical domain, never a login-protected Vercel Preview URL.
+    const url = SITE_ORIGIN + window.location.pathname;
     setMessage("");
 
     if (navigator.share) {
