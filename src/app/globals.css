@@ -53,9 +53,18 @@ button:not(:disabled), summary, select { cursor: pointer; }
 .vault-poster-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1.25rem .85rem; }
 .vault-card { transition: transform .2s; }
 .vault-card h3 { min-height: 2.5rem; line-height: 1.3rem; overflow-wrap: anywhere; }
-.vault-detail { display: grid; grid-template-columns: minmax(105px, .7fr) minmax(0, 1.3fr); gap: 1.1rem; align-items: start; padding: 1rem; border: 1px solid #ffffff10; border-radius: 1.25rem; background: linear-gradient(125deg, #25202c99, #0e0e12c9); }
-.vault-detail-poster { width: 100%; max-width: 290px; }
+.vault-detail { display: grid; grid-template-columns: minmax(105px, .7fr) minmax(0, 1.3fr); column-gap: 1.1rem; row-gap: .65rem; align-items: start; padding: 1rem; border: 1px solid #ffffff10; border-radius: 1.25rem; background: linear-gradient(125deg, #25202c99, #0e0e12c9); }
+.vault-detail-poster { width: 100%; max-width: 290px; grid-row: 1 / span 2; }
+.vault-detail-info, .vault-detail-description { grid-column: 2; }
 .vault-detail h1 { overflow-wrap: anywhere; }
+/* On phones the poster floats beside the heading; a long synopsis then
+   continues at full width BELOW the poster, rather than leaving the left half empty. */
+@media (max-width: 767px) {
+  .vault-detail { display: flow-root; }
+  .vault-detail-poster { float: left; width: 35%; margin: 0 1rem .7rem 0; }
+  .vault-detail-info { display: flow-root; }
+  .vault-detail-description { margin-top: .65rem; overflow-wrap: anywhere; }
+}
 .vault-season { overflow: hidden; border: 1px solid #ffffff12; border-radius: 1rem; background: #19191eb8; }
 .vault-season summary::-webkit-details-marker { display: none; }
 .vault-season summary:hover { background: #a855f708; }
@@ -67,7 +76,7 @@ button:not(:disabled), summary, select { cursor: pointer; }
 @media (min-width: 480px) { .vault-poster-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (min-width: 768px) {
   .vault-poster-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.5rem 1.1rem; }
-  .vault-detail { grid-template-columns: 240px minmax(0,1fr); gap: 2rem; padding: 2rem; }
+  .vault-detail { grid-template-columns: 240px minmax(0,1fr); column-gap: 2rem; row-gap: .65rem; padding: 2rem; }
 }
 @media (min-width: 1024px) { .vault-poster-grid { grid-template-columns: repeat(5,minmax(0,1fr)); } }
 @media (min-width: 1280px) { .vault-poster-grid { grid-template-columns: repeat(6,minmax(0,1fr)); } }
@@ -123,7 +132,7 @@ button:not(:disabled), summary, select { cursor: pointer; }
 /* Tighten supporting detail content only: poster dimensions and title size are unchanged. */
 .vault-detail-page > :not(:first-child) { margin-top: 1.25rem; }
 .vault-detail-page .vault-detail > div:nth-child(2) > :not(:first-child) { margin-top: .65rem; }
-.vault-detail-page .vault-detail > div:nth-child(2) > p { line-height: 1.6; }
+.vault-detail-page .vault-detail-description { line-height: 1.6; }
 .vault-detail-page .vault-detail a { padding-block: .5rem; min-height: 40px; }
 .vault-detail-page .vault-season summary { padding: .7rem .85rem; }
 .vault-detail-page .vault-season summary > span:first-child { width: 36px; height: 36px; }
