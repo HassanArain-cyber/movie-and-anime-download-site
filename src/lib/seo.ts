@@ -40,6 +40,14 @@ export function publicPosterUrl(value: string | null | undefined): string | unde
   } catch { return undefined; }
 }
 
+/** Large original private R2 posters may exceed WhatsApp's preview limits.
+ * Use our dedicated small public social card only for completed-image URLs. */
+export function socialPosterUrl(value: string | null | undefined): string | undefined {
+  const match = value?.match(/^\/api\/image\?upload=([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i);
+  if (match) return SITE_ORIGIN + "/api/seo-poster?upload=" + match[1].toLowerCase();
+  return publicPosterUrl(value);
+}
+
 export function mediaSeoMetadata(item: SeoMedia): Metadata {
   const typeLabel = item.type === "movie" ? "Movie" : item.type === "anime" ? "Anime" : "TV series";
   const year = Number.isInteger(item.year) && (item.year ?? 0) > 1800 ? " (" + item.year + ")" : "";
@@ -48,7 +56,7 @@ export function mediaSeoMetadata(item: SeoMedia): Metadata {
   const description = seoSummary(item.description,
     "Explore " + item.title + year + " — " + typeLabel + " " + details + " on " + SITE_NAME + ".");
   const url = mediaCanonicalUrl(item);
-  const image = publicPosterUrl(item.posterUrl);
+  const image = socialPosterUrl(item.posterUrl);
   return {
     title, description,
     alternates: { canonical: url },

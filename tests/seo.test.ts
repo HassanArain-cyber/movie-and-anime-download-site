@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   SITE_ORIGIN, mediaCanonicalUrl, mediaSeoMetadata, mediaStructuredData,
-  publicPosterUrl, safeJsonLd, seoSummary,
+  publicPosterUrl, socialPosterUrl, safeJsonLd, seoSummary,
 } from "../src/lib/seo";
 
 const firefly = {
@@ -35,6 +35,11 @@ test("metadata excludes unsafe poster URLs and never leaks object keys or creden
   }
   const r2 = "/api/image?upload=213e64b9-534a-4e38-bf5d-48e7d029c3b8";
   assert.equal(publicPosterUrl(r2), SITE_ORIGIN + r2);
+  assert.equal(socialPosterUrl(r2), SITE_ORIGIN + "/api/seo-poster?upload=213e64b9-534a-4e38-bf5d-48e7d029c3b8");
+  assert.equal(socialPosterUrl("https://img.example.org/poster.jpg"), "https://img.example.org/poster.jpg");
+  assert.equal(mediaSeoMetadata({ ...firefly, posterUrl: r2 }).openGraph?.images?.[0]?.url,
+    SITE_ORIGIN + "/api/seo-poster?upload=213e64b9-534a-4e38-bf5d-48e7d029c3b8");
+
   const meta = mediaSeoMetadata({ ...firefly, posterUrl: "r2:///secret-object" });
   assert.equal((meta.twitter as { card?: string })?.card, "summary");
   assert.equal(meta.twitter?.images, undefined);
