@@ -42,7 +42,7 @@ export default async function DetailPage({ params }: PageProps) {
             <PosterImage src={item.posterUrl} title={item.title} sizes="(max-width: 768px) 35vw, 240px" />
           </div>
         </div>
-        <div className="min-w-0 space-y-4">
+        <div className="vault-detail-info min-w-0 space-y-4">
           <div>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-md bg-purple-500/10 px-2 py-0.5 font-medium text-purple-300 ring-1 ring-purple-500/30">{typeLabel}</span>
@@ -52,9 +52,13 @@ export default async function DetailPage({ params }: PageProps) {
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">{item.title}</h1>
           </div>
           <FollowButton mediaId={item.id} mediaType={item.type} followerCount={followerCount} />
-          {item.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-300">{item.description}</p>}
-
         </div>
+        {/* Separate from the header so mobile synopsis text can flow below the poster. */}
+        {item.description && (
+          <p className="vault-detail-description min-w-0 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-neutral-300">
+            {item.description}
+          </p>
+        )}
       </div>
 
       {(item.downloadLinks?.length || 0) > 0 && (
