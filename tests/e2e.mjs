@@ -1288,6 +1288,44 @@ const downloadBounds = await page.locator('[aria-label="Available downloads"]').
 assert.ok(detailBounds && downloadBounds, "movie page has its detail and download sections");
 assert.ok(downloadBounds.width >= detailBounds.width - 2, "download panel must use the full content width, not the narrow poster-side column");
 assert.ok(downloadBounds.y >= detailBounds.y + detailBounds.height - 2, "downloads appear below the poster and synopsis");
+// Long synopsis must use the empty space below the poster on narrow screens.
+// Check actual text-line geometry, not just the width of its parent paragraph.
+const longSynopsis = Array.from({ length: 26 }, (_, index) =>
+  "A longer story chapter " + (index + 1) + " follows the same characters through the city and beyond."
+).join(" ");
+for (const title of [movie, anime]) {
+  ok(await api(`/api/media/${title.id}`, {
+    method: "PATCH", body: { description: longSynopsis },
+  }));
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${base}/${title.type}/${title.slug}`);
+    await page.locator(".vault-detail-description").waitFor();
+    const layout = await page.evaluate(() => {
+      const poster = document.querySelector(".vault-detail-poster")?.getBoundingClientRect();
+      const synopsis = document.querySelector(".vault-detail-description");
+      if (!poster || !synopsis) return null;
+      const text = document.createRange();
+      text.selectNodeContents(synopsis);
+      return {
+        posterX: poster.x, posterRight: poster.right, posterBottom: poster.bottom,
+        posterWidth: poster.width,
+        lines: Array.from(text.getClientRects(), (rect) => ({ x: rect.x, y: rect.y })),
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    assert.ok(layout && !layout.overflow, `${title.type} detail fits ${width}px`);
+    assert.ok(layout.posterWidth > 65 && layout.posterWidth < 160, "poster retains compact mobile width");
+    assert.ok(layout.lines.some((line) => line.y > layout.posterBottom + 3 &&
+      line.x <= layout.posterX + 12),
+      `${title.type} synopsis should expand left below poster on ${width}px screens`);
+  }
+}
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(`${base}/anime/${anime.slug}`);
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
+  "desktop detail remains responsive after synopsis flow fix");
+
 // Dedicated bulk creation: validation, duplicate numbers, partial failure/retry, and real multi-file R2 upload.
 const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
 const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);
