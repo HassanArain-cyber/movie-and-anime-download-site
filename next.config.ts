@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // WhatsApp and other link-preview clients only read the HTML <head>.
+  // Dynamic title/OG metadata must be resolved there, not streamed into <body>.
+  // Disables metadata streaming (slightly slower first byte on detail pages).
+  htmlLimitedBots: /.*/,
   // The Arena live preview is served from an e2b.app subdomain in development.
   allowedDevOrigins: ["*.e2b.app", "127.0.0.1", "localhost"],
   images: {

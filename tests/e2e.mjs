@@ -1283,6 +1283,23 @@ assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection rema
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 await page.goto(`${base}/movie/${movie.slug}`);
 for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
+// Link-preview crawlers do not execute JS and often ignore metadata in <body>.
+// Verify the ORIGINAL server response contains SEO tags inside <head>, not
+// only after the browser hydrates/moves streamed metadata into the DOM.
+for (const agent of ["Mozilla/5.0 (preview simulator)", "WhatsApp/2.22.20.72 A"]) {
+  const response = await fetch(`${base}/movie/${movie.slug}`, {
+    headers: { "User-Agent": agent },
+  });
+  assert.equal(response.status, 200, "raw movie page is public");
+  const html = await response.text();
+  const head = html.slice(0, html.indexOf("</head>"));
+  assert.ok(head.includes('property="og:title"') && head.includes(movie.title),
+    `og:title must be server-rendered inside <head> for ${agent}`);
+  assert.ok(head.includes('property="og:url"'),
+    `og:url must be inside <head> for ${agent}`);
+  assert.ok(head.includes('rel="canonical"'),
+    `canonical must be inside <head> for ${agent}`);
+}
 // Server-generated SEO must identify each title and prefer the verified canonical URL.
 await page.waitForFunction((name) => document.title.includes(name), movie.title);
 const movieSeo = await page.evaluate(() => ({
