@@ -20,8 +20,12 @@ test("Anime Open Graph metadata exposes the original title with a social JPEG pr
   assert.equal(metadata.title, "Blue Box (2024) | Gojo's Vault");
   const openGraph = metadata.openGraph;
   assert.ok(openGraph);
-  assert.equal(openGraph.images && Array.isArray(openGraph.images) && openGraph.images[0]?.url,
+  const images = openGraph.images;
+  assert.ok(Array.isArray(images));
+  const first = images[0];
+  assert.ok(typeof first === "object" && first !== null && "url" in first);
+  assert.equal(first.url,
     SITE_ORIGIN + "/api/seo-poster?upload=" + uploadId + "&v=2");
-  assert.equal(openGraph.images && Array.isArray(openGraph.images) && openGraph.images[0]?.type,
-    "image/jpeg");
+  assert.ok("type" in first);
+  assert.equal(first.type, "image/jpeg");
 });
