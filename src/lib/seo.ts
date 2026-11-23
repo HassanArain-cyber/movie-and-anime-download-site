@@ -44,7 +44,7 @@ export function publicPosterUrl(value: string | null | undefined): string | unde
  * Use our dedicated small public social card only for completed-image URLs. */
 export function socialPosterUrl(value: string | null | undefined): string | undefined {
   const match = value?.match(/^\/api\/image\?upload=([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i);
-  if (match) return SITE_ORIGIN + "/api/seo-poster?upload=" + match[1].toLowerCase();
+  if (match) return SITE_ORIGIN + "/api/seo-poster?upload=" + match[1].toLowerCase() + "&v=2";
   return publicPosterUrl(value);
 }
 
@@ -62,7 +62,7 @@ export function mediaSeoMetadata(item: SeoMedia): Metadata {
     alternates: { canonical: url },
     openGraph: {
       type: "website", siteName: SITE_NAME, title, description, url,
-      ...(image ? { images: [{ url: image, alt: item.title + " poster" }] } : {}),
+      ...(image ? { images: [{ url: image, alt: item.title + " poster", ...(image.includes("/api/seo-poster?") ? { width: 1200, height: 630, type: "image/jpeg" } : {}) }] } : {}),
     },
     twitter: {
       card: image ? "summary_large_image" : "summary", title, description,
