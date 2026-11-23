@@ -1,4 +1,6 @@
 import { activeContent } from "@/lib/content-state";
+import type { Metadata } from "next";
+import { mediaSeoMetadata, mediaStructuredData, safeJsonLd } from "@/lib/seo";
 import { notFound } from "next/navigation";
 import PosterImage from "@/components/PosterImage";
 import Link from "next/link";
@@ -16,6 +18,17 @@ import { getMediaDetails } from "@/lib/library";
 export const dynamic = "force-dynamic";
 
 interface PageProps { params: Promise<{ type: string; slug: string }>; }
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { type, slug } = await params;
+  const [item] = await db.select({
+    type: media.type, title: media.title, slug: media.slug,
+    description: media.description, posterUrl: media.posterUrl,
+    year: media.year, genres: media.genres,
+  }).from(media).where(and(eq(media.slug, slug), eq(media.type, type), await activeContent("media", media.id))).limit(1);
+  if (!item || !["anime", "movie", "series"].includes(item.type)) notFound();
+  return mediaSeoMetadata(item as Parameters<typeof mediaSeoMetadata>[0]);
+}
 
 export default async function DetailPage({ params }: PageProps) {
   const { type, slug } = await params;
@@ -35,6 +48,7 @@ export default async function DetailPage({ params }: PageProps) {
 
   return (
     <div className="vault-detail-page space-y-6">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(mediaStructuredData(item)) }} />
       <Link href={item.type === "movie" ? "/movie" : item.type === "anime" ? "/anime" : "/series"} className="inline-block text-sm text-neutral-400 hover:text-white">← Back to {typeLabel.toLowerCase()}</Link>
       <div className="vault-detail">
         <div className="vault-detail-poster">
