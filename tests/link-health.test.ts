@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyHeadStatus, isPublicIPv4, safeProbeUrl } from "../src/lib/link-health";
+import { classifyHeadStatus, getMediaAuditHref, isPublicIPv4, safeProbeUrl } from "../src/lib/link-health";
 
 test("HTTP checks never mark login, rate limits or redirects as broken", () => {
   assert.equal(classifyHeadStatus(200).status, "reachable");
@@ -33,4 +33,18 @@ test("public IPv4 detection excludes RFC1918, loopback and cloud metadata IPs", 
   assert.equal(isPublicIPv4("8.8.8.8"), true);
   assert.equal(isPublicIPv4("1.1.1.1"), true);
   assert.equal(isPublicIPv4("::1"), false);
+});
+
+test("link audit navigates to the exact movie, anime or series entry", () => {
+  assert.equal(getMediaAuditHref("anime", "tokyo-revengers", 128), "/anime/tokyo-revengers#episode-128");
+  assert.equal(getMediaAuditHref("series", "x-men", 30), "/series/x-men#episode-30");
+  assert.equal(getMediaAuditHref("movie", "avengers", null), "/movie/avengers");
+  assert.equal(getMediaAuditHref("movie", "avengers", 999), "/movie/avengers");
+  assert.equal(getMediaAuditHref("anime", "anime", null), "/anime/anime");
+  assert.equal(getMediaAuditHref("anime", "space anime", 11), "/anime/space%20anime#episode-11");
+  assert.equal(getMediaAuditHref("anime", "../movie/other", 4), "/anime/..%2Fmovie%2Fother#episode-4");
+  assert.equal(getMediaAuditHref("unknown", "anime", 1), null);
+  assert.equal(getMediaAuditHref("anime", "", null), null);
+  assert.equal(getMediaAuditHref("anime", null, null), null);
+  assert.equal(getMediaAuditHref("anime", "abc\nxyz", 1), null);
 });

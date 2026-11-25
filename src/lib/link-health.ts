@@ -44,3 +44,24 @@ export function safeProbeUrl(raw: string): URL | null {
       !/^[a-z0-9.-]+$/.test(host)) return null;
   return url;
 }
+
+/**
+ * Build an internal media detail link for an Admin audit result.
+ * Only known content types are accepted; slug is encoded as one path segment.
+ * Episode links jump directly to the matching episode on anime/series pages.
+ */
+export function getMediaAuditHref(
+  type: string | null, slug: string | null, episodeId: number | null,
+): string | null {
+  if (type !== "anime" && type !== "movie" && type !== "series") return null;
+  if (!slug || slug.length > 255 || /[\u0000-\u001f\u007f]/.test(slug)) return null;
+  try {
+    const base = "/" + type + "/" + encodeURIComponent(slug);
+    const episodeAnchor = type !== "movie" &&
+      Number.isSafeInteger(episodeId) && (episodeId ?? 0) > 0
+      ? "#episode-" + episodeId : "";
+    return base + episodeAnchor;
+  } catch {
+    return null;
+  }
+}
