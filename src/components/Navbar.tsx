@@ -23,6 +23,7 @@ const NAV_LINKS = [
   { href: "/", label: "Home", description: "Explore the collection", icon: "home" },
   { href: "/movie", label: "Movies", description: "Browse every movie", icon: "film" },
   { href: "/anime", label: "Anime & Movies", description: "Anime and anime films", icon: "sparkles" },
+  { href: "/discover", label: "Discover", description: "Explore anime from AniList", icon: "compass" },
   { href: "/series", label: "Series", description: "All TV series", icon: "tv" },
   { href: "/calendar", label: "Calendar", description: "Latest published episodes", icon: "calendar" },
   { href: "/following", label: "Following", description: "Your saved titles", icon: "bookmark" },
@@ -33,6 +34,7 @@ function NavGlyph({ name }: { name: (typeof NAV_LINKS)[number]["icon"] }) {
     {name === "home" && <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" /><path d="M9 21v-7h6v7" /></>}
     {name === "film" && <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4m-4 6h4m10-6h4m-4 6h4" /></>}
     {name === "sparkles" && <><path d="m12 2 1.9 5.8L20 10l-6.1 2.2L12 18l-1.9-5.8L4 10l6.1-2.2zM20 17l.8 2.2L23 20l-2.2.8L20 23l-.8-2.2L17 20l2.2-.8z" /></>}
+    {name === "compass" && <><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2.3 4.7-4.7 2.3 2.3-4.7z" /></>}
     {name === "tv" && <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m8 22 1-3m7 3-1-3M8 2l4 3 4-3" /></>}
     {name === "calendar" && <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18M8 14h3m-3 3h6" /></>}
     {name === "bookmark" && <path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4z" />}
