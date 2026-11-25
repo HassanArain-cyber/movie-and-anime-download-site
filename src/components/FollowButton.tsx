@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { WATCH_STATUSES, type WatchStatus } from "@/lib/watch-status";
 import { useUpdates } from "./UpdatesProvider";
-export default function FollowButton({ mediaId, mediaType, followerCount, compact = false }: { mediaId: number; mediaType?: string; followerCount?: number; compact?: boolean }) {
+import ShareButton from "./ShareButton";
+export default function FollowButton({ mediaId, mediaType, followerCount, compact = false, shareTitle }: { mediaId: number; mediaType?: string; followerCount?: number; compact?: boolean; shareTitle?: string }) {
   const { data, error: loadError, follow, refresh, setStatus } = useUpdates();
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [count, setCount] = useState(followerCount);
@@ -17,6 +18,7 @@ export default function FollowButton({ mediaId, mediaType, followerCount, compac
       }} className={`min-h-9 max-w-full rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ${following ? "border-purple-500/50 bg-purple-500/15 text-purple-200" : "border-neutral-700 text-white hover:border-purple-400"}`}>
         {busy ? "Saving…" : following ? "Unfollow" : "+ Follow"}
       </button>
+      {shareTitle && <ShareButton title={shareTitle} />}
       {followedTitle && <label className="min-w-0 max-w-full text-xs text-neutral-400">
         <span className={compact ? "sr-only" : "mb-1 block"}>Watch status</span>
         <select aria-label="Watch status" disabled={busy} value={followedTitle.watchStatus} onChange={async (event) => {

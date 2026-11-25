@@ -1,112 +1,103 @@
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { siteSettings } from "@/db/schema";
-import type { SourceOverride } from "@/app/api/discovery-sources/route";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { isPublicDiscoverAnime, plainDiscoverDescription, safeDiscoverUrl } from "@/lib/discover";
 
 export const revalidate = 3600;
 
-type Anime = {
+type AnimeDetail = {
   id: number;
+  isAdult: boolean;
   title: { english: string | null; romaji: string | null };
   description: string | null;
-  coverImage: { large: string | null };
+  coverImage: { large: string | null } | null;
   episodes: number | null;
   seasonYear: number | null;
-  siteUrl: string;
-  streamingEpisodes: { title: string | null; url: string | null; site: string | null }[];
+  siteUrl: string | null;
+  streamingEpisodes: Array<{ title: string | null; url: string | null; site: string | null }> | null;
 };
 
-export default async function AnimeDiscoveryDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  if (!/^\d{1,10}$/.test(id)) notFound();
-  const query = `query ($id: Int) {
-    Media(id: $id, type: ANIME, isAdult: false) {
-      id title { english romaji } description(asHtml: false)
-      coverImage { large } episodes seasonYear siteUrl
-      streamingEpisodes { title url site }
-    }
-  }`;
-  let anime: Anime | null = null;
+const QUERY = [
+  "query VaultDiscovery($id: Int!) {",
+  "  Media(id: $id, type: ANIME, isAdult: false) {",
+  "    id isAdult title { english romaji } description(asHtml: false)",
+  "    coverImage { large } episodes seasonYear siteUrl",
+  "    streamingEpisodes { title url site }",
+  "  }",
+  "}",
+].join("\n");
+
+async function fetchDetail(id: number): Promise<{ anime: AnimeDetail | null; unavailable: boolean }> {
   try {
     const response = await fetch("https://graphql.anilist.co", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ query, variables: { id: Number(id) } }),
+      body: JSON.stringify({ query: QUERY, variables: { id } }),
       next: { revalidate: 3600 },
       signal: AbortSignal.timeout(8000),
     });
-    if (response.ok) {
-      const payload = (await response.json()) as { data?: { Media?: Anime } };
-      anime = payload.data?.Media ?? null;
-    }
+    if (!response.ok) return { anime: null, unavailable: true };
+    const payload = await response.json() as { data?: { Media?: AnimeDetail | null }; errors?: unknown[] };
+    if (payload.errors?.length) return { anime: null, unavailable: true };
+    const anime = payload.data?.Media ?? null;
+    return { anime: isPublicDiscoverAnime(anime) ? anime : null, unavailable: false };
   } catch {
-    // Keep discovery failures isolated from manual Vault content.
+    return { anime: null, unavailable: true };
   }
-  if (!anime) return <main className="space-y-4"><Link href="/discover" className="text-purple-300">← Back to Discover</Link><p className="text-neutral-400">Anime details temporarily unavailable.</p></main>;
-  let override: SourceOverride | null = null;
-  try {
-    const [row] = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, "discovery_source_" + anime.id)).limit(1);
-    if (row) override = JSON.parse(row.value) as SourceOverride;
-  } catch { /* External source settings are optional. */ }
-  const title = override?.title || anime.title.english || anime.title.romaji || "Anime";
-  // Only explicitly observed source URLs; never fabricate episode URLs.
-  const source = anime.id === 113415 ? {
-    series: "https://animesalt.cx/series/jujutsu-kaisen/",
-    episodes: [{ season: 1, episode: 1, title: "Ryomen Sukuna", url: "https://animesalt.cx/episode/jujutsu-kaisen-1x1/" }],
-  } : null;
-  return <main className="space-y-6">
+}
+
+export default async function AnimeDiscoveryDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!/^[1-9]\d{0,8}$/.test(id)) notFound();
+  const { anime, unavailable } = await fetchDetail(Number(id));
+  if (unavailable) {
+    return <div className="space-y-4">
+      <Link href="/discover" className="text-sm text-purple-300">← Back to Discover</Link>
+      <p role="status" className="text-neutral-400">AniList is temporarily unavailable. Your Vault library is unaffected.</p>
+    </div>;
+  }
+  if (!anime) notFound();
+
+  const title = anime.title.english || anime.title.romaji || "Anime";
+  const description = plainDiscoverDescription(anime.description);
+  const posterUrl = safeDiscoverUrl(anime.coverImage?.large);
+  const catalogUrl = safeDiscoverUrl(anime.siteUrl);
+  const streaming = (anime.streamingEpisodes ?? [])
+    .map((episode) => ({
+      title: episode.title,
+      site: episode.site,
+      url: safeDiscoverUrl(episode.url),
+    }))
+    .filter((episode) => episode.url !== null)
+    .slice(0, 80);
+
+  return <div className="space-y-6">
     <Link href="/discover" className="text-sm text-purple-300">← Back to Discover</Link>
-    <div className="flex gap-5">
-      {(override?.posterUrl || anime.coverImage.large) && (
+    <div className="flex items-start gap-4 sm:gap-6">
+      {posterUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={override?.posterUrl || anime.coverImage.large || ""} alt="" className="h-44 w-28 shrink-0 rounded-lg object-cover sm:h-64 sm:w-44" />
+        <img src={posterUrl} alt={title + " poster"} className="h-44 w-28 shrink-0 rounded-xl bg-neutral-900 object-contain sm:h-64 sm:w-44" />
       )}
-      <div className="space-y-3">
-        <h1 className="text-2xl font-bold text-white">{title}</h1>
-        <p className="text-sm text-neutral-400">{[anime.seasonYear, anime.episodes ? `${anime.episodes} episodes` : null].filter(Boolean).join(" · ")}</p>
-        <p className="text-sm text-neutral-400">Audio and subtitle availability is not confirmed.</p>
+      <div className="min-w-0 space-y-3">
+        <span className="text-xs font-medium text-violet-300">Discover · AniList</span>
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">{title}</h1>
+        <p className="text-sm text-neutral-400">
+          {[anime.seasonYear, anime.episodes ? anime.episodes + " episodes" : null].filter(Boolean).join(" · ")}
+        </p>
+        <p className="text-xs text-neutral-400">Catalog information only. This title is not automatically added to the Vault library.</p>
+        {catalogUrl && <a href={catalogUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-sm text-violet-300 hover:underline">View on AniList ↗</a>}
       </div>
     </div>
-    {(override?.description || anime.description) && <p className="whitespace-pre-line text-sm leading-7 text-neutral-300">{(override?.description || anime.description || "").replace(/<[^>]*>/g, "")}</p>}
+    {description && <p className="max-w-3xl text-sm leading-7 text-neutral-300">{description}</p>}
     <section className="space-y-3">
-      <h2 className="text-xl font-semibold text-white">Episodes & watching</h2>
-      <p className="text-sm text-neutral-400">AniList episode totals are informational. Streaming links are only shown when supplied by the catalog; playback and language support depend on the provider.</p>
-      {override?.seriesUrl && <a href={override.seriesUrl} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg border border-violet-500 px-4 py-2 text-sm text-violet-200">View external source seasons ↗</a>}
-      {!!override?.episodes?.length && (
-        <div className="space-y-3">
-          <h3 className="font-semibold text-white">External episode links</h3>
-          {override.episodes.filter(ep => /^https:\/\//i.test(ep.url)).sort((a,b) => a.season-b.season || a.episode-b.episode).map((ep,index) => (
-            <div key={index} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 p-3">
-              <span className="text-sm text-neutral-200">S{ep.season} E{ep.episode} · {ep.title || "Episode"} · {ep.provider}</span>
-              <a href={ep.url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-violet-600 px-3 py-2 text-sm text-white">Watch / Download at source ↗</a>
-            </div>
-          ))}
-        </div>
-      )}
-      {source && !override?.episodes?.length && !override?.seriesUrl && (
-        <div className="space-y-3 rounded-xl border border-violet-500/30 bg-neutral-900/60 p-4">
-          <h3 className="font-semibold text-white">AnimeSalt · External source</h3>
-          <p className="text-xs text-neutral-400">Opens the original provider. Playback and download options are managed by AnimeSalt, not Vault.</p>
-          <a href={source.series} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg border border-violet-500/50 px-3 py-2 text-sm text-violet-200">View all seasons ↗</a>
-          {source.episodes.map((ep) => (
-            <div key={ep.url} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 p-3">
-              <span className="text-sm text-neutral-200">S{ep.season} E{ep.episode} · {ep.title}</span>
-              <a href={ep.url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white">Watch / Download at source ↗</a>
-            </div>
-          ))}
-        </div>
-      )}
-      {anime.streamingEpisodes.length ? (
-        <div className="space-y-2">
-          {anime.streamingEpisodes.filter(ep => ep.url && /^https:\/\//i.test(ep.url)).map((ep, index) => (
-            <a key={index} href={ep.url!} target="_blank" rel="noopener noreferrer" className="block rounded-lg border border-neutral-800 p-3 text-sm text-purple-300 hover:border-purple-500">
-              {ep.title || `Episode ${index + 1}`} · {ep.site || "External provider"} ↗
-            </a>
-          ))}
-        </div>
-      ) : <p className="text-sm text-neutral-500">No verified streaming provider available for this title.</p>}
+      <h2 className="text-xl font-semibold text-white">Streaming information</h2>
+      <p className="text-sm text-neutral-400">External links are listed by AniList, not hosted or verified by Vault. Availability, audio and subtitles depend on the provider.</p>
+      {streaming.length ? <div className="space-y-2">
+        {streaming.map((episode, index) => (
+          <a key={index} href={episode.url ?? undefined} target="_blank" rel="noopener noreferrer" className="block rounded-xl border border-neutral-800 p-3 text-sm text-violet-300 hover:border-violet-500">
+            {episode.title || "Streaming episode"} · {episode.site || "External provider"} ↗
+          </a>
+        ))}
+      </div> : <p className="text-sm text-neutral-500">No streaming links are listed for this title.</p>}
     </section>
-  </main>;
+  </div>;
 }

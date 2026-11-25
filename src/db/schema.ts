@@ -32,13 +32,19 @@ export const media = pgTable("media", {
   posterUrl: text("poster_url"),
   thumbnailUrl: text("thumbnail_url"),
   year: integer("year"),
+  genres: text("genres"),
+  episodeCount: integer("episode_count"),
+  externalSource: varchar("external_source", { length: 20 }),
+  externalId: varchar("external_id", { length: 60 }),
   categoryId: integer("category_id").references(() => categories.id, {
     onDelete: "set null",
   }),
   commentsEnabled: boolean("comments_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("media_external_source_id_idx").on(table.externalSource, table.externalId),
+]);
 
 export const seasons = pgTable("seasons", {
   id: serial("id").primaryKey(),

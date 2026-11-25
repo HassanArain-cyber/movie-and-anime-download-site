@@ -143,13 +143,18 @@ try {
   await page.getByRole("button", { name: "Unfollow", exact: true }).waitFor();
   await page.reload({ waitUntil: "networkidle" }); await page.getByRole("button", { name: "Unfollow", exact: true }).waitFor();
   await page.goto(`${base}/following`, { waitUntil: "networkidle" });
+  const watchStatusFilter = page.getByRole("group", { name: "Filter by watch status" });
+  const selectFollowingStatus = async (label, count) => {
+    await watchStatusFilter.getByRole("button", { name: "Watch status filter" }).click();
+    await watchStatusFilter.getByRole("button", { name: `${label} (${count})`, exact: true }).click();
+  };
   await page.getByLabel("Watch status", { exact: true }).selectOption("watching");
   await page.waitForFunction(() => !document.querySelector('select[aria-label="Watch status"]')?.disabled);
   await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.getByLabel("Watch status", { exact: true }).inputValue(), "watching");
-  await page.getByRole("button", { name: "Watched (0)", exact: true }).click();
+  await selectFollowingStatus("Watched", 0);
   await page.getByText("No titles with this status yet.").waitFor();
-  await page.getByRole("button", { name: "Watching (1)", exact: true }).click();
+  await selectFollowingStatus("Watching", 1);
   const ep6 = await episode(6); await link(ep6); await job();
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("link", { name: "New episodes", exact: true }).waitFor();
@@ -170,7 +175,7 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.getByLabel("Watch status", { exact: true }).inputValue(), "watched");
   await page.goto(`${base}/following`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Watched (1)", exact: true }).click();
+  await selectFollowingStatus("Watched", 1);
   assert.equal(await page.locator(`article a[href="/movie/${movie.slug}"]`).count(), 2);
   await page.getByRole("button", { name: "Unfollow", exact: true }).click();
   await page.getByText("You are not following anything yet.", { exact: false }).waitFor();
@@ -191,5 +196,22 @@ try {
       if (route.includes("#episode-")) await page.screenshot({ path: `test-results/notification-detail-${width}.png` });
     }
   }
+  // A backup restores anonymous follows to a different browser identity
+  // without touching the original subscriber or changing existing titles.
+  assert.equal((await a("/api/admin/link-health?offset=0")).res.status, 401);
+  assert.equal((await a("/api/admin/episode-suggestions?seasonId=" + season.id)).res.status, 401);
+  assert.equal((await b("/api/library-backup", "POST", {
+    follows: [{ id: media.id, watchStatus: "invalid" }],
+  })).res.status, 400);
+  assert.equal((await b("/api/library-backup", "POST", {
+    follows: [{ id: media.id, watchStatus: "on_hold" }],
+  }, { Origin: "https://evil.example" })).res.status, 403);
+  const restored = ok(await b("/api/library-backup", "POST", {
+    follows: [{ id: media.id, watchStatus: "on_hold" }, { id: 2147483647, watchStatus: "watched" }],
+  }));
+  assert.equal(restored.imported, 1);
+  assert.equal(restored.unavailable, 1);
+  assert.equal((await b("/api/updates")).data.following.find((title) => title.id === media.id).watchStatus, "on_hold");
+
   console.log("Movie follow/all-status/reload/unfollow and movie download overflow E2E PASS; Notification E2E PASS: five status persistence/validation/isolation, anonymous follows, publication/quality/concurrency dedup, 511 recipients, scoped/paginated read history, unfollow, filters, bell click and responsive 320/360/390/768/1280px.");
 } finally { await browser?.close(); await pool.end(); }

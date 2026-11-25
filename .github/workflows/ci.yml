@@ -71,6 +71,12 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Verify live anime schedule provider APIs
+        # Third-party outages or rate limits do not fail our deterministic app checks.
+        # Inspect this step's log for "LIVE VERIFIED" vs "LIVE UNAVAILABLE".
+        continue-on-error: true
+        run: node tests/calendar-live-smoke.mjs
+
   e2e:
     name: Browser and API E2E (disposable PostgreSQL + mock R2)
     # The whole job runs inside Playwright's official image, pinned to the playwright-core version
@@ -166,8 +172,8 @@ jobs:
       - name: Run browser/API E2E suite
         run: npm run test:e2e:ci
 
-      - name: Build and check guided Admin UI with fixture APIs
-        run: npm run build && npm run test:admin-ui
+      - name: Build and check guided Admin + Following UI with fixture APIs
+        run: npm run build && npm run test:admin-ui && npm run test:following-ui
 
       - name: Upload E2E logs
         if: failure()

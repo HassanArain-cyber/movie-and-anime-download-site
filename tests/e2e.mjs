@@ -175,6 +175,31 @@ assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: 
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
 ok(await api("/api/auth/login", { method: "POST", auth: false, body: { password } }));
 
+// Admin schedules are stored in existing site settings; no production migration.
+const calendarTestRelease = {
+  title: "Upcoming Calendar Fixture", kind: "episode",
+  airingAt: "2027-02-14T14:00:00.000Z", episode: 6, anilistId: 170001,
+  posterUrl: "https://example.com/calendar-poster.jpg",
+  url: "/anime/calendar-fixture", notes: "Preview episode",
+};
+assert.equal((await api("/api/admin/calendar", { method: "POST", auth: false, body: calendarTestRelease })).res.status, 401, "anonymous clients cannot edit the release calendar");
+assert.equal((await api("/api/admin/calendar", { method: "POST", body: calendarTestRelease, headers: { Origin: "https://evil.example" } })).res.status, 403, "cross-origin calendar writes are blocked");
+assert.equal((await api("/api/admin/calendar", { method: "POST", body: { ...calendarTestRelease, url: "javascript:alert(1)" } })).res.status, 400, "calendar cannot contain script links");
+assert.equal((await api("/api/calendar?year=2027&month=13", { auth: false })).res.status, 400, "invalid months cannot query providers");
+const createdCalendar = ok(await api("/api/admin/calendar", { method: "POST", body: calendarTestRelease }), 201);
+const calendarId = createdCalendar.entries.find((entry) => entry.title === calendarTestRelease.title)?.id;
+assert.ok(calendarId, "calendar entry must be saved with a unique id");
+const publicCalendar = ok(await api("/api/calendar?year=2027&month=2", { auth: false }));
+assert.equal(publicCalendar.anilistStatus, "disabled", "disposable tests never fetch external AniList/Jikan providers");
+assert.equal(ok(await api("/api/admin/calendar")).entries.some((entry) => entry.id === calendarId), true, "saved admin event persists in site settings");
+assert.equal(publicCalendar.events.find((event) => event.id === "manual:" + calendarId)?.episode, 6, "manual future episode is visible publicly");
+const updatedCalendar = ok(await api("/api/admin/calendar", { method: "PATCH", body: { ...calendarTestRelease, id: calendarId, title: "Edited Calendar Fixture", episode: 7 } }));
+assert.equal(updatedCalendar.entries.find((entry) => entry.id === calendarId)?.episode, 7, "editing a saved release is persistent");
+assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.find((event) => event.id === "manual:" + calendarId)?.title, "Edited Calendar Fixture");
+ok(await api("/api/admin/calendar", { method: "DELETE", body: { id: calendarId } }));
+assert.equal(ok(await api("/api/calendar?year=2027&month=2", { auth: false })).events.some((event) => event.id === "manual:" + calendarId), false, "deleted releases disappear from the public calendar");
+
+
 // Login hardening: origin checks, JSON content type/size, and DB-backed limits.
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { Origin: "https://evil.example" } })).res.status, 403);
 assert.equal((await api("/api/auth/login", { method: "POST", auth: false, body: { password }, headers: { "Sec-Fetch-Site": "cross-site" } })).res.status, 403);
@@ -288,9 +313,11 @@ assert.equal((await fetch(`${objectUrl.origin}${objectUrl.pathname}`)).status, 4
 const tampered = new URL(signedUrl); tampered.searchParams.set("X-Amz-Signature", "0".repeat(64));
 assert.equal((await fetch(tampered)).status, 403);
 const shortLived = new S3Client({ region: "auto", endpoint: process.env.R2_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }, requestChecksumCalculation: "WHEN_REQUIRED", responseChecksumValidation: "WHEN_REQUIRED" });
-const expiringUrl = await getSignedUrl(shortLived, new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: video.objectKey }), { expiresIn: 1 });
+const expiringUrl = await getSignedUrl(shortLived, new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: video.objectKey }), { expiresIn: 4 });
 assert.equal((await fetch(expiringUrl)).status, 200);
-await new Promise((resolve) => setTimeout(resolve, 1200));
+// AWS signs at whole-second precision; a one-second window can expire before
+// the first request in CI. Keep the real expiration check with a safe margin.
+await new Promise((resolve) => setTimeout(resolve, 4200));
 assert.equal((await fetch(expiringUrl)).status, 403, "expired signed URL must fail");
 assert.equal((await api(`/api/image?upload=${video.id}`)).res.status, 404, "video must not be exposed through image endpoint");
 
@@ -598,6 +625,12 @@ assert.equal(page.url(), desktopScrollUrl, "floating control must not navigate")
 assert.equal(frameNavigations.length, desktopNavigationCount, "floating control must not reload the page");
 
 await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${base}/calendar`);
+await page.getByRole("heading", { name: "Release Calendar" }).waitFor();
+const visualCalendar = page.getByRole("region", { name: "Anime release calendar" });
+await visualCalendar.getByRole("button", { name: "Next month" }).click();
+await visualCalendar.getByRole("button", { name: "Previous month" }).click();
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "visual release calendar fits phone screen");
 await page.goto(`${base}/`);
 assert.equal(await page.locator(".vault-hero").isVisible(), false, "mobile hero starts collapsed");
 await page.locator("summary").filter({ hasText: "Show or hide Vault introduction" }).click();
@@ -631,6 +664,7 @@ assert.equal(await page.evaluate(() => performance.timeOrigin), mobileLoadTime, 
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "mobile scroll control must not cause horizontal overflow");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
+await page.getByRole("combobox", { name: "Filter by tag" }).waitFor({ state: "visible", timeout: 15000 });
 assert.equal(await page.getByRole("combobox", { name: "Filter by tag" }).count(), 1, "tags should be available through a dropdown instead of a permanent list");
 async function chooseFilter(control, value) {
   await control.click();
@@ -667,16 +701,25 @@ assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Movi
 await page.goto(`${base}/anime?year=2024&category=filter-${run}&sort=az`);
 assert.deepEqual(await page.locator(".grid h3").allTextContents(), [`Filter Alpha ${run}`, `Filter Zulu ${run}`], "type pages should use the same combined library filters");
 await page.setViewportSize({ width: 390, height: 844 });
-await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`);
-const libraryFilterBounds = await page.locator('[aria-label="Library filters"]').boundingBox();
+await page.goto(`${base}/?type=anime&year=2024&category=filter-${run}&sort=az`, { waitUntil: "networkidle" });
+const activeLibraryFilters = page.locator('#library [aria-label="Library filters"]').last();
+await activeLibraryFilters.waitFor({ state: "visible", timeout: 15000 });
+const libraryFilterBounds = await activeLibraryFilters.boundingBox();
 assert.ok(libraryFilterBounds && libraryFilterBounds.x >= 0 && libraryFilterBounds.x + libraryFilterBounds.width <= 390, "combined filter controls should fit the mobile viewport");
-// The type dropdown must retain compatible filters; reset clears the entire query.
-await chooseFilter(page.getByRole("combobox", { name: "Filter by content type" }), "movie");
-await page.waitForURL((url) => url.searchParams.get("type") === "movie" && url.searchParams.get("year") === "2024" && url.searchParams.get("category") === `filter-${run}`);
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-active"), "true");
+// Main content types now live in the side drawer, never in a duplicate filter.
+assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).count(), 0);
+assert.equal(await page.locator('#library [aria-label="Library filters"]').last().getByRole("combobox").count(), 3, "only tag, year and sort filters remain");
+await page.getByRole("button", { name: "Open navigation menu" }).click();
+const mobileDrawer = page.getByRole("navigation", { name: "Site navigation" });
+await mobileDrawer.locator('a[href="/movie"]').click();
+await page.waitForURL((url) => url.pathname === "/movie");
+await page.getByRole("heading", { name: "Movies", exact: true }).waitFor();
+assert.equal(await page.getByRole("navigation", { name: "Site navigation" }).count(), 0, "drawer closes after navigation");
+await chooseFilter(page.getByRole("combobox", { name: "Sort library" }), "az");
+await page.waitForURL((url) => url.pathname === "/movie" && url.searchParams.get("sort") === "az");
 await page.getByRole("button", { name: "Reset filters" }).click();
 await page.waitForURL((url) => url.pathname === "/" && url.search === "");
-assert.equal(await page.getByRole("combobox", { name: "Filter by content type" }).getAttribute("data-value"), "");
+assert.equal(await page.getByRole("combobox", { name: "Sort library" }).getAttribute("data-value"), "newest");
 for (let index = 0; index < 20; index++) ok(await api("/api/categories", { method: "POST", body: { name: `Menu category ${run} ${index}`, slug: `menu-${run}-${index}` } }), 201);
 await page.reload({ waitUntil: "networkidle" });
 for (const width of [360, 390, 768, 1280]) {
@@ -690,7 +733,8 @@ for (const width of [360, 390, 768, 1280]) {
     return { heroHeight: hero.getBoundingClientRect().height, filterHeights: selects.map((rect) => rect.height), filterTops: selects.map((rect) => rect.top), actionHeights: actions.map((rect) => rect.height) };
   });
   assert.ok(compactLayout.filterHeights.every((height) => height <= 38), 'filter controls should stay compact');
-  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the four filters should fit on one row');
+  assert.equal(compactLayout.filterTops.length, 3, "content types appear only in the side drawer");
+  assert.ok(compactLayout.filterTops.every((top) => Math.abs(top - compactLayout.filterTops[0]) < 1), 'the three catalog filters should fit on one row');
   if (width <= 390) {
     assert.ok(compactLayout.heroHeight <= 410, `hero should be compact at ${width}px`);
     assert.ok(compactLayout.actionHeights.every((height) => height >= 44), 'hero actions should retain usable tap targets');
@@ -752,7 +796,7 @@ const titleSuggestion = suggestions.getByRole("link", { name: new RegExp(`Jujuts
 assert.match(await titleSuggestion.innerText(), /Anime/);
 assert.match(await titleSuggestion.innerText(), /2024/);
 const animeSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-assert.ok(animeSuggestionHrefs.length > 0 && animeSuggestionHrefs.every((href) => href?.startsWith("/anime/")), "selected Anime filter must scope every live suggestion");
+assert.ok(animeSuggestionHrefs.some((href) => href?.startsWith("/anime/")) && animeSuggestionHrefs.some((href) => href?.startsWith("/movie/")) && animeSuggestionHrefs.some((href) => href?.startsWith("/series/")), "Navbar search on the Anime listing must show movies, anime and series");
 await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${base}/?type=movie`);
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
@@ -761,7 +805,7 @@ await suggestions.getByText(`Juju Movie ${run}`, { exact: true }).waitFor();
 const mobileSuggestionBounds = await suggestions.boundingBox();
 assert.ok(mobileSuggestionBounds && mobileSuggestionBounds.x >= 0 && mobileSuggestionBounds.x + mobileSuggestionBounds.width <= 390, "mobile suggestions should stay within the viewport");
 const movieSuggestionHrefs = await suggestions.locator("a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-assert.ok(movieSuggestionHrefs.length > 0 && movieSuggestionHrefs.every((href) => href?.startsWith("/movie/")), "selected Movies filter must scope mobile suggestions");
+assert.ok(movieSuggestionHrefs.some((href) => href?.startsWith("/anime/")) && movieSuggestionHrefs.some((href) => href?.startsWith("/movie/")) && movieSuggestionHrefs.some((href) => href?.startsWith("/series/")), "Navbar search on the Movie listing must be global on mobile");
 await page.setViewportSize({ width: 1280, height: 900 });
 await page.goto(`${base}/`);
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
@@ -793,24 +837,32 @@ assert.equal(new URL(page.url()).searchParams.has("q"), false, "suggestions shou
 await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) }).click();
 await page.waitForURL((url) => url.pathname === `/anime/jujutsu-kaisen-${run}`);
 await page.getByRole("heading", { name: `Jujutsu Kaisen ${run}` }).waitFor();
+await page.setViewportSize({ width: 390, height: 844 });
 
 if (await page.getByRole("button", { name: "Open anime search", exact: true }).getAttribute("aria-expanded") === "false") await page.getByRole("button", { name: "Open anime search", exact: true }).click();
+await searchBox.fill("Juju");
+await suggestions.getByRole("link", { name: new RegExp(`Juju Movie ${run}.*Movie`) }).waitFor();
+await suggestions.getByRole("link", { name: new RegExp(`Juju Series ${run}.*Series`) }).waitFor();
+await suggestions.getByRole("link", { name: new RegExp(`Jujutsu Kaisen ${run}.*Anime`) }).waitFor();
+assert.equal(new URL(page.url()).pathname, `/anime/jujutsu-kaisen-${run}`, "cross-type suggestions must render on an anime detail page");
 await searchBox.fill("Legacy");
 await searchBox.press("Enter");
-await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && url.searchParams.get("type") === "anime");
+await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Legacy" && !url.searchParams.has("type") && !url.searchParams.has("category") && !url.searchParams.has("year"));
 await page.getByRole("heading", { name: /Search results for/ }).waitFor();
+await page.setViewportSize({ width: 1280, height: 900 });
 
 // Public comment surfaces render safely, reveal spoilers on demand, and remain
 // within desktop and narrow mobile viewports for title and episode discussions.
 await page.goto(`${base}/movie/${movie.slug}`);
 const titleCommentPanel = page.locator('[aria-label="Title comments"]');
-await titleCommentPanel.getByRole("heading", { name: /Community comments/ }).waitFor();
+await titleCommentPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).waitFor();
 const desktopCommentBounds = await titleCommentPanel.boundingBox();
 assert.ok(desktopCommentBounds && desktopCommentBounds.x >= 0 && desktopCommentBounds.x + desktopCommentBounds.width <= 1280, "desktop title comments should fit the viewport");
 await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).click();
 await titleCommentPanel.getByText("The final scene reveals the hidden truth.", { exact: true }).waitFor();
-await page.getByRole("textbox", { name: "Write a comment" }).fill(`Browser comment ${run}`);
+await titleCommentPanel.getByRole("button", { name: "Add a comment" }).click();
+await titleCommentPanel.getByRole("textbox", { name: "Write a comment" }).fill(`Browser comment ${run}`);
 await page.getByRole("button", { name: "Post comment" }).click();
 await titleCommentPanel.getByRole("status").getByText("Comment posted.").waitFor();
 await titleCommentPanel.getByText(`Browser comment ${run}`, { exact: true }).waitFor();
@@ -827,7 +879,7 @@ await page.goto(`${base}/anime/${anime.slug}`);
 const targetEpisodeRow = page.locator(`#episode-${ep1.id}`);
 await targetEpisodeRow.locator("button[aria-expanded]").click();
 const episodeCommentPanel = page.locator('[aria-label="Episode comments"]');
-await episodeCommentPanel.getByRole("heading", { name: /Episode discussion/ }).waitFor();
+await episodeCommentPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await episodeCommentPanel.getByText("This episode has great pacing.", { exact: true }).waitFor();
 const mobileEpisodeCommentBounds = await episodeCommentPanel.boundingBox();
 assert.ok(mobileEpisodeCommentBounds && mobileEpisodeCommentBounds.x >= 0 && mobileEpisodeCommentBounds.x + mobileEpisodeCommentBounds.width <= 390, "mobile episode discussion should stay inside the viewport");
@@ -847,7 +899,7 @@ await pool.query(
 // inline reply composer on every node and indentation capped for narrow screens.
 await page.goto(`${base}/movie/${nestedMedia.slug}`);
 const nestedPanel = page.locator('[aria-label="Title comments"]');
-await nestedPanel.getByRole("heading", { name: /Community comments/ }).waitFor();
+await nestedPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await nestedPanel.locator(`[data-comment-id="${deepestId}"]`).waitFor();
 assert.equal(await nestedPanel.locator('[data-testid="comment-node"]').count(), deepChain.length + 1, "the seeded previous-year comment is rendered too");
 const nestedDepths = await nestedPanel.locator('[data-testid="comment-node"]').evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute("data-depth"))));
@@ -1008,13 +1060,13 @@ page.on("popup", (popup) => requestPopups.push(popup));
 const failContactUi = (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "We couldn’t save your request right now. Please try again later." }) });
 await page.route("**/api/contact", failContactUi);
 await page.getByRole("button", { name: "Submit" }).click();
-await page.getByRole("alert").getByText(/couldn’t save your request/i).waitFor();
+await page.getByRole("alert").filter({ hasText: /couldn’t save your request/i }).waitFor();
 assert.equal(await page.getByRole("status").count(), 0, "a failed send must not show success");
 await page.unroute("**/api/contact", failContactUi);
 const failEmailUi = (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, id: 999, notificationSent: false }) });
 await page.route("**/api/contact", failEmailUi);
 await page.getByRole("button", { name: "Submit" }).click();
-await page.getByRole("status").getByText(/request was saved, but the email notification could not be sent/i).waitFor();
+await page.getByRole("status").filter({ hasText: /request was saved, but the email notification could not be sent/i }).waitFor();
 await page.unroute("**/api/contact", failEmailUi);
 await page.getByRole("textbox", { name: "Name" }).fill("E2E request sender");
 await page.getByLabel("Request Type").selectOption("Episode");
@@ -1027,6 +1079,21 @@ await page.getByRole("button", { name: "Close request form" }).click();
 await page.getByPlaceholder("Password").fill(password);
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.getByRole("heading", { name: "Admin Dashboard" }).waitFor();
+await page.getByRole("button", { name: "Release Calendar", exact: true }).click();
+const calendarEditor = page.locator("#calendar-admin-editor");
+await calendarEditor.getByLabel("Anime / release title").fill("UI Calendar Fixture");
+await calendarEditor.getByLabel("Date and time (your device local time)").fill("2027-02-14T19:00");
+await calendarEditor.getByLabel("Episode number").fill("5");
+await calendarEditor.getByRole("button", { name: "Add to calendar" }).click();
+await page.getByText("Release added to calendar.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+await calendarEditor.getByLabel("Episode number").fill("6");
+await calendarEditor.getByRole("button", { name: "Save changes" }).click();
+await page.getByText("Release updated.", { exact: true }).waitFor();
+page.once("dialog", (dialog) => dialog.accept());
+await page.getByRole("button", { name: "Delete calendar release UI Calendar Fixture" }).click();
+await page.getByText("Release deleted.", { exact: true }).waitFor();
+await page.getByRole("button", { name: "media", exact: true }).click();
 await page.getByRole("button", { name: "requests", exact: true }).click();
 await page.getByRole("heading", { name: "Submitted requests" }).waitFor();
 await page.getByText("Ari Smith", { exact: true }).waitFor();
@@ -1178,10 +1245,22 @@ assert.deepEqual(new Set(browserAnimeDetails.seasons[0].episodes[0].downloadLink
 for (const episode of browserEpisodes.filter((item) => item.episode_number > 1)) {
   ok(await api("/api/download-links", { method: "POST", body: { mediaId: browserAnime.id, seasonId: episode.season_id, episodeId: episode.id, quality: "1080p", label: "1080p", url: `https://example.com/browser-episode-${episode.episode_number}-1080.mp4` } }), 201);
 }
-await page.goto(`${base}/anime/browser-anime-${run}`);
+await page.goto(`${base}/anime/browser-anime-${run}`, { waitUntil: "networkidle" });
 await page.getByRole("heading", { name: `Browser Anime ${run}` }).waitFor();
-await page.getByText("Episode 1", { exact: true }).click();
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).last().click();
 await page.locator('a[title="Cloudflare R2"]').first().waitFor();
+await page.getByRole("button", { name: "Open navigation menu" }).click();
+await page.getByRole("navigation", { name: "Site navigation" }).getByRole("link", { name: "Anime & Movies" }).waitFor();
+await page.keyboard.press("Escape");
+assert.equal(await page.getByRole("navigation", { name: "Site navigation" }).count(), 0, "right-side menu closes with Escape");
+const lastEpisode = await page.evaluate(() => JSON.parse(localStorage.getItem("vault-continue-episodes-v1") || "[]")[0]);
+assert.equal(lastEpisode?.episodeNumber, 1, "opening an episode automatically remembers its shortcut");
+await page.goto(`${base}/`);
+await page.getByRole("heading", { name: "Continue Watching" }).waitFor();
+await page.getByRole("link", { name: /Return to Browser Anime .* episode 1/ }).waitFor();
+await page.goto(`${base}/anime/browser-anime-${run}`, { waitUntil: "networkidle" });
+await page.locator(`#episode-${browserEpisodes[0].id} button[aria-expanded]`).last().click();
+
 await page.getByRole("heading", { name: "720p", exact: true }).waitFor();
 await page.getByRole("heading", { name: "1080p", exact: true }).waitFor();
 const episodeOneCheckbox = page.getByRole("checkbox", { name: "Select episode 1 for bulk download" });
@@ -1204,6 +1283,110 @@ assert.equal(await episodeOneCheckbox.isVisible(), true, "episode selection rema
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "bulk controls should not cause horizontal overflow on mobile");
 await page.goto(`${base}/movie/${movie.slug}`);
 for (const qualityLabel of ["480p", "720p", "1080p", "4K (2160p)"]) await page.getByRole("heading", { name: qualityLabel, exact: true }).waitFor();
+// Link-preview crawlers do not execute JS and often ignore metadata in <body>.
+// Verify the ORIGINAL server response contains SEO tags inside <head>, not
+// only after the browser hydrates/moves streamed metadata into the DOM.
+for (const agent of ["Mozilla/5.0 (preview simulator)", "WhatsApp/2.22.20.72 A"]) {
+  const response = await fetch(`${base}/movie/${movie.slug}`, {
+    headers: { "User-Agent": agent },
+  });
+  assert.equal(response.status, 200, "raw movie page is public");
+  const html = await response.text();
+  const head = html.slice(0, html.indexOf("</head>"));
+  assert.ok(head.includes('property="og:title"') && head.includes(movie.title),
+    `og:title must be server-rendered inside <head> for ${agent}`);
+  assert.ok(head.includes('property="og:url"'),
+    `og:url must be inside <head> for ${agent}`);
+  assert.ok(head.includes('rel="canonical"'),
+    `canonical must be inside <head> for ${agent}`);
+}
+// Server-generated SEO must identify each title and prefer the verified canonical URL.
+await page.waitForFunction((name) => document.title.includes(name), movie.title);
+const movieSeo = await page.evaluate(() => ({
+  title: document.title,
+  canonical: document.querySelector('link[rel="canonical"]')?.getAttribute("href"),
+  description: document.querySelector('meta[name="description"]')?.getAttribute("content"),
+  ogTitle: document.querySelector('meta[property="og:title"]')?.getAttribute("content"),
+  ogImage: document.querySelector('meta[property="og:image"]')?.getAttribute("content"),
+  structured: Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+    .map((element) => JSON.parse(element.textContent || "{}")).find((value) => value["@type"] === "Movie"),
+}));
+assert.equal(movieSeo.canonical, `https://movie-and-anime-download-site.vercel.app/movie/${movie.slug}`);
+assert.ok(movieSeo.title.includes(movie.title));
+assert.equal(movieSeo.ogTitle, movieSeo.title);
+assert.ok(movieSeo.description?.length > 10);
+assert.equal(movieSeo.structured?.name, movie.title);
+assert.equal(movieSeo.structured?.url, movieSeo.canonical);
+const detailBounds = await page.locator(".vault-detail").boundingBox();
+const downloadBounds = await page.locator('[aria-label="Available downloads"]').boundingBox();
+assert.ok(detailBounds && downloadBounds, "movie page has its detail and download sections");
+assert.ok(downloadBounds.width >= detailBounds.width - 2, "download panel must use the full content width, not the narrow poster-side column");
+assert.ok(downloadBounds.y >= detailBounds.y + detailBounds.height - 2, "downloads appear below the poster and synopsis");
+// Long synopsis must use the empty space below the poster on narrow screens.
+// Check actual text-line geometry, not just the width of its parent paragraph.
+const longSynopsis = Array.from({ length: 26 }, (_, index) =>
+  "A longer story chapter " + (index + 1) + " follows the same characters through the city and beyond."
+).join(" ");
+for (const title of [movie, anime]) {
+  ok(await api(`/api/media/${title.id}`, {
+    method: "PATCH", body: { description: longSynopsis },
+  }));
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${base}/${title.type}/${title.slug}`);
+    await page.locator(".vault-detail-description:visible").first().waitFor();
+    const layout = await page.evaluate(() => {
+      // App Router may keep an inactive page in the DOM during navigation.
+      // Only measure the visible detail card, not its hidden cached duplicate.
+      const detail = Array.from(document.querySelectorAll(".vault-detail"))
+        .find((element) => element.getClientRects().length > 0);
+      const poster = detail?.querySelector(".vault-detail-poster")?.getBoundingClientRect();
+      const synopsis = detail?.querySelector(".vault-detail-description");
+      if (!poster || !synopsis) return null;
+      const text = document.createRange();
+      text.selectNodeContents(synopsis);
+      return {
+        posterX: poster.x, posterRight: poster.right, posterBottom: poster.bottom,
+        posterWidth: poster.width,
+        lines: Array.from(text.getClientRects(), (rect) => ({ x: rect.x, y: rect.y })),
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    assert.ok(layout && !layout.overflow, `${title.type} detail fits ${width}px`);
+    assert.ok(layout.posterWidth > 65 && layout.posterWidth < 160, "poster retains compact mobile width");
+    assert.ok(layout.lines.some((line) => line.y > layout.posterBottom + 3 &&
+      line.x <= layout.posterX + 12),
+      `${title.type} synopsis should expand left below poster on ${width}px screens`);
+  }
+}
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(`${base}/anime/${anime.slug}`);
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true,
+  "desktop detail remains responsive after synopsis flow fix");
+
+// Compact, icon-only title share: use the phone share sheet when supported,
+// otherwise copy the public URL without query strings or account details.
+await page.evaluate(() => {
+  Object.defineProperty(navigator, "share", {
+    configurable: true, value: async (payload) => { window.__vaultShared = payload; },
+  });
+});
+await page.getByRole("button", { name: `Share E2E Anime ${run}` }).click();
+const shared = await page.evaluate(() => window.__vaultShared);
+assert.equal(shared.title, `E2E Anime ${run}`);
+assert.equal(shared.url, `https://movie-and-anime-download-site.vercel.app/anime/${anime.slug}`);
+await page.evaluate(() => {
+  Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text) => { window.__vaultCopied = text; } },
+  });
+});
+await page.getByRole("button", { name: `Share E2E Anime ${run}` }).click();
+assert.equal(await page.evaluate(() => window.__vaultCopied), `https://movie-and-anime-download-site.vercel.app/anime/${anime.slug}`);
+await page.getByRole("status").getByText("Link copied").waitFor();
+
+
 // Dedicated bulk creation: validation, duplicate numbers, partial failure/retry, and real multi-file R2 upload.
 const bulkTitle = ok(await api("/api/media", { method: "POST", body: { type: "anime", title: `Bulk UI Anime ${run}` } }), 201);
 const bulkSeason = ok(await api("/api/seasons", { method: "POST", body: { mediaId: bulkTitle.id, seasonNumber: 1 } }), 201);

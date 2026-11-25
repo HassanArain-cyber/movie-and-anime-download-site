@@ -1,6 +1,9 @@
 import { activeContent, animeMovieFlag } from "@/lib/content-state";
+import type { Metadata } from "next";
+import { SITE_ORIGIN } from "@/lib/seo";
 import Link from "next/link";
 import MediaGrid from "@/components/MediaGrid";
+import { ContinueWatching } from "@/components/ContinueWatching";
 import CategoryFilter from "@/components/CategoryFilter";
 import { db } from "@/db";
 import { media, categories } from "@/db/schema";
@@ -18,6 +21,19 @@ interface HomeProps {
     year?: string;
     sort?: string;
   }>;
+}
+
+export async function generateMetadata({ searchParams }: HomeProps): Promise<Metadata> {
+  const params = await searchParams;
+  const filtered = ["q", "type", "category", "year", "sort"].some((key) => {
+    const value = params[key as keyof typeof params];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+  if (filtered) return { robots: { index: false, follow: true } };
+  return {
+    alternates: { canonical: SITE_ORIGIN + "/" },
+    openGraph: { type: "website", title: "Gojo’s Vault — Movies, Anime & Series", url: SITE_ORIGIN + "/" },
+  };
 }
 
 export default async function Home({ searchParams }: HomeProps) {
@@ -112,6 +128,7 @@ export default async function Home({ searchParams }: HomeProps) {
         </section>
       ) : null}
 
+      {!hasBrowseFilters && <ContinueWatching />}
       <section id="library" className="scroll-mt-52 space-y-5" aria-label="Browse the library">
         <div className="relative">
           <div className="min-w-0 w-full">

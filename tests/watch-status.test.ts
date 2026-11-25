@@ -34,6 +34,9 @@ test("historical 0007 SQL/snapshot agree with generated schema and unqualified s
   const saved = JSON.parse(JSON.stringify(snapshot));
   // download_links.link_behavior (0009) and after_copy_url (0010) are later additions.
   for (const column of ["link_behavior", "after_copy_url"]) delete normalized.tables["public.download_links"].columns[column];
+  // Nullable media metadata fields and its index were introduced by 0011, not historical 0007.
+  for (const column of ["genres", "episode_count", "external_source", "external_id"]) delete normalized.tables["public.media"].columns[column];
+  delete normalized.tables["public.media"].indexes?.media_external_source_id_idx;
   for (const key of ["id", "prevId"]) { delete normalized[key]; delete saved[key]; }
   assert.deepEqual(normalized, saved, "entire serialized snapshot must match schema.ts, excluding lineage IDs");
   const ddl = await generateMigration(JSON.parse(read("drizzle/meta/0006_snapshot.json")), fresh);

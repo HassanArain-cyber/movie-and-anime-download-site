@@ -38,6 +38,39 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/auth/session") return json({ authed: true });
     if (url.pathname === "/api/categories") return json([{ id: 1, name: "Action", slug: "action" }]);
     if (url.pathname === "/api/storage/status") return json({ configured: false, missing: ["test R2 configuration"], maxVideoBytes: 100000, maxImageBytes: 100000, partSizeBytes: 5242880, privateDownloads: true });
+    if (url.pathname === "/api/admin/link-health") return json({
+      links: [
+        {
+          id: 41, mediaId: 200, mediaTitle: "Tokyo Revengers",
+          mediaType: "anime", mediaHref: "/anime/tokyo-revengers#episode-32",
+          label: "ep1 - 5", provider: "external", status: "review",
+          reason: "Provider did not answer the safe check.",
+        },
+        {
+          id: 42, mediaId: 201, mediaTitle: "X-Men Apocalypse",
+          mediaType: "movie", mediaHref: "/movie/x-men-apocalypse",
+          label: "1080p", provider: "external", status: "broken",
+          reason: "Provider reports Not Found or Gone.",
+        },
+        {
+          id: 43, mediaId: 202, mediaTitle: "A Working Link",
+          mediaType: "anime", mediaHref: "/anime/working#episode-3",
+          label: "720p", provider: "external", status: "reachable",
+          reason: "Provider responded to a HEAD request.",
+        },
+      ], nextOffset: null,
+    });
+    if (url.pathname === "/api/admin/media-import") {
+      const type = url.searchParams.get("type"), query = url.searchParams.get("q");
+      if (type === "series" && url.searchParams.get("details") === "888") return json({ episodeCount: 12 });
+      if (!["anime", "movie", "series"].includes(type) || !query) return json({ error: "Invalid query" }, 400);
+      return json({ results: [{
+        title: query, description: "Auto imported synopsis", posterUrl: null,
+        year: 2026, genres: "Action, Fantasy", episodeCount: type === "movie" ? null : 12,
+        externalSource: type === "anime" ? "anilist" : type === "series" ? "tvmaze" : "tmdb",
+        externalId: type === "anime" ? "777" : "888",
+      }], configured: true });
+    }
     if (["/api/contact/requests", "/api/admin/comments"].includes(url.pathname)) {
       const comments = url.pathname === "/api/admin/comments";
       if (req.method === "DELETE") {
@@ -118,6 +151,20 @@ try {
   await context.route("**/*", (route) => { if (new URL(route.request().url()).origin !== base) { external.push(route.request().url()); return route.abort(); } return route.continue(); });
   const page = await context.newPage(); page.on("pageerror", (error) => errors.push(error.message)); const automaticDialog = (dialog) => dialog.accept(); page.on("dialog", automaticDialog);
   await page.goto(`${base}/admin`, { waitUntil: "networkidle" });
+  // Link audit cards must take Admin directly to the right anime/movie and
+  // must not present an inconclusive HEAD check as a yellow broken warning.
+  await page.getByRole("button", { name: "Link checker", exact: true }).click();
+  await page.getByRole("button", { name: "Check links", exact: true }).click();
+  const animeAudit = page.getByRole("link", { name: "Open Tokyo Revengers to review download link 41" });
+  await animeAudit.waitFor();
+  assert.equal(await animeAudit.getAttribute("href"), "/anime/tokyo-revengers#episode-32");
+  assert.equal(await page.getByRole("link", { name: "Open X-Men Apocalypse to review download link 42" }).getAttribute("href"), "/movie/x-men-apocalypse");
+  assert.equal(await animeAudit.getByText("Unverified", { exact: true }).count(), 1);
+  assert.equal((await animeAudit.getByText("Unverified", { exact: true }).getAttribute("class")).includes("amber"), false);
+  await page.getByLabel("Show issues only").check();
+  assert.equal(await page.getByRole("link", { name: "Open A Working Link to review download link 43" }).count(), 0);
+  await page.getByRole("button", { name: "media", exact: true }).click();
+
   const assertFits = async (screen) => {
     for (const width of [320, 360, 390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -130,6 +177,14 @@ try {
     await page.getByLabel("Type", { exact: true }).selectOption(type);
     await page.getByLabel("Title", { exact: true }).fill(title);
     await page.getByLabel("Year", { exact: true }).fill("2026");
+    if (type === "anime" || type === "series") {
+      await page.getByLabel("Search title to auto-fill").fill(title);
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByRole("button", { name: "Use " + title + " details" }).click();
+      assert.equal(await page.getByLabel("Total episodes (if known)").inputValue(), "12", "Episode count auto-filled");
+      assert.equal(await page.getByLabel("Genres (comma separated)").inputValue(), "Action, Fantasy", "Genres auto-filled");
+      assert.equal(await page.getByText("Synopsis / description · imported").count(), 1);
+    }
     await assertFits("details and poster");
     assert.equal(await page.getByLabel("Poster URL", { exact: true }).isVisible(), true);
     await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -162,6 +217,9 @@ try {
     await page.getByRole("button", { name: "Create & Continue", exact: true }).click();
     await page.getByLabel("Link batch season", { exact: true }).waitFor();
     assert.equal(items.at(-1).seasons.length, 1);
+    assert.equal(items.at(-1).genres, "Action, Fantasy", "Metadata genres persisted");
+    assert.equal(items.at(-1).episodeCount, 12, "Metadata episode total persisted");
+    assert.equal(items.at(-1).externalSource, type === "anime" ? "anilist" : "tvmaze", "Provider identity persisted");
     await page.getByText("Individual editing & files", { exact: true }).click();
     await page.getByTestId("individual-episode-editor").getByRole("button", { name: /Season 1/ }).click();
     await page.getByText("Create a complete season", { exact: true }).waitFor();

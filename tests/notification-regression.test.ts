@@ -24,6 +24,7 @@ function button(data: unknown, error = "") {
     react: { ...React, useState: (initial: unknown) => [initial, () => {}] },
     "react/jsx-runtime": jsx, "@/lib/watch-status": { WATCH_STATUSES },
     "./UpdatesProvider": { useUpdates: () => ({ data, error }) },
+    "./ShareButton": { __esModule: true, default: () => null },
   }).default as unknown as React.ComponentType<{ mediaId: number; mediaType: string }>;
   return renderToStaticMarkup(React.createElement(component, { mediaId: 7, mediaType: "anime" }));
 }
@@ -184,6 +185,10 @@ test("bell and Following share the actual outage, never show an empty-success st
     "./UpdatesProvider": { useUpdates: () => context },
     "./PosterImage": { default: () => null, __esModule: true },
     "./FollowButton": { default: () => null, __esModule: true },
+    "./LibraryBackup": { default: () => null, __esModule: true },
+    "./BrowserNotificationOptIn": { default: () => null, __esModule: true },
+    "./useCalendarFollows": { useCalendarFollows: () => [] },
+    "@/lib/calendar-follows": { updateCalendarFollow: () => {} },
     "@/lib/watch-status": { WATCH_STATUSES },
   };
   for (const file of ["src/components/NotificationBell.tsx", "src/components/FollowingPage.tsx"]) {
