@@ -50,7 +50,8 @@ for (const table of ["comments", "comment_likes", "comment_reports", "subscriber
   assert.equal(exists.rows[0].relation, table, `${table} should be added by migrations`);
 }
 for (const table of ["push_subscriptions", "push_deliveries"]) {
-  assert.equal((await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`])).rows[0].relation, null);
+  assert.equal((await pool.query("SELECT to_regclass($1) AS relation", [`public.${table}`])).rows[0].relation, table, "migration 0012 creates optional push table");
+  assert.equal((await pool.query("SELECT count(*)::integer AS count FROM " + table)).rows[0].count, 0, "old inbox is not retroactively queued for push");
 }
 const statusSubscriber = "9".repeat(64);
 await pool.query("INSERT INTO subscribers (id) VALUES ($1)", [statusSubscriber]);
