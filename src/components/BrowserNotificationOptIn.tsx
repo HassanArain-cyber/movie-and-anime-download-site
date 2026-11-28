@@ -80,6 +80,12 @@ export default function BrowserNotificationOptIn() {
     if (pushPending || !pushKey || !data) return;
     setPushPending(true); setPushError("");
     try {
+      // Request permission directly from the click gesture, before awaiting
+      // registration, or some browsers reject it.
+      if (pushState !== "on") {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") throw Error("Browser notification permission was not granted.");
+      }
       const registration = await navigator.serviceWorker.ready;
       const current = await registration.pushManager.getSubscription();
       if (pushState === "on") {
@@ -94,8 +100,6 @@ export default function BrowserNotificationOptIn() {
         }
         setPushState("off");
       } else {
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") throw Error("Browser notification permission was not granted.");
         const padding = "=".repeat((4 - pushKey.length % 4) % 4);
         const raw = atob((pushKey + padding).replace(/-/g, "+").replace(/_/g, "/"));
         const applicationServerKey = Uint8Array.from(raw, (char) => char.charCodeAt(0));
