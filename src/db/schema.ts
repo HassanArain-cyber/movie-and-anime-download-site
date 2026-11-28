@@ -263,3 +263,33 @@ export const contentState = pgTable("content_state", {
   check("content_state_kind_check", sql`"kind" IN ('media', 'season', 'episode')`),
   check("content_state_anime_movie_check", sql`NOT "is_anime_movie" OR "kind" = 'media'`),
 ]);
+
+
+// Optional Web Push delivery is isolated from the in-site notification inbox.
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  subscriberId: varchar("subscriber_id", { length: 64 }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  endpointHash: varchar("endpoint_hash", { length: 64 }).notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("push_subscriptions_endpoint_hash_unique").on(t.endpointHash),
+  index("push_subscriptions_subscriber_idx").on(t.subscriberId),
+]);
+export const pushDeliveries = pgTable("push_deliveries", {
+  id: serial("id").primaryKey(),
+  notificationId: integer("notification_id").notNull().references(() => episodeNotifications.id, { onDelete: "cascade" }),
+  subscriptionId: integer("subscription_id").notNull().references(() => pushSubscriptions.id, { onDelete: "cascade" }),
+  attempts: integer("attempts").notNull().default(0),
+  retryAt: timestamp("retry_at", { withTimezone: true }).notNull().defaultNow(),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  leaseToken: varchar("lease_token", { length: 36 }),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("push_deliveries_notification_subscription_unique").on(t.notificationId, t.subscriptionId),
+  index("push_deliveries_pending_idx").on(t.sentAt, t.retryAt, t.id),
+]);

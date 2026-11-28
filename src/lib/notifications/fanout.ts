@@ -24,6 +24,28 @@ async function fanoutBatch(pool: Pool) {
       WHERE f.media_id=p.media_id AND f.created_at<=p.published_at
       AND NOT EXISTS (SELECT 1 FROM episode_notifications n WHERE n.subscriber_id=f.subscriber_id AND n.episode_id=$1)
       ORDER BY f.subscriber_id LIMIT $2 ON CONFLICT DO NOTHING RETURNING id`, [event.episode_id, RECIPIENT_BATCH_SIZE]);
+    // Queue only newly-created notifications and subscriptions that already existed.
+    // A missing or failing optional Push setup must never roll back the in-site inbox.
+    if (inserted.rows.length) {
+      const present = await client.query("SELECT to_regclass('push_subscriptions') IS NOT NULL AND to_regclass('push_deliveries') IS NOT NULL AS ready");
+      if (present.rows[0]?.ready) {
+        await client.query("SAVEPOINT optional_push_queue");
+        try {
+          await client.query([
+            "INSERT INTO push_deliveries (notification_id,subscription_id)",
+            "SELECT n.id,s.id FROM episode_notifications n",
+            "JOIN push_subscriptions s ON s.subscriber_id=n.subscriber_id",
+            "AND s.created_at <= n.created_at",
+            "WHERE n.id=ANY($1::integer[]) ON CONFLICT DO NOTHING",
+          ].join(" "), [inserted.rows.map((row: { id: number }) => row.id)]);
+          await client.query("RELEASE SAVEPOINT optional_push_queue");
+        } catch {
+          await client.query("ROLLBACK TO SAVEPOINT optional_push_queue");
+          await client.query("RELEASE SAVEPOINT optional_push_queue");
+          console.error("Optional background push enqueue deferred");
+        }
+      }
+    }
     // Completion is an explicit absence of outstanding recipients, not a row
     // count heuristic (which is ambiguous at exact boundaries/conflicts).
     await client.query(`UPDATE episode_publications p SET processed_at=now() WHERE p.episode_id=$1
