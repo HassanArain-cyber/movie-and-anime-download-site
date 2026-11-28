@@ -28,7 +28,7 @@ test("historical 0007 SQL/snapshot agree with generated schema and unqualified s
   assert.equal(follows.checkConstraints.anime_follows_watch_status_check.value, expression);
   // Pure in-memory generation only: no db/index import, config, CLI, writes or DB.
   // Later additive migrations are excluded so this stays a historical assertion.
-  const { contentState: _newLifecycleTable, ...historicSchema } = schema;
+  const { contentState: _newLifecycleTable, pushSubscriptions: _laterPushSubscriptions, pushDeliveries: _laterPushDeliveries, ...historicSchema } = schema;
   const fresh = generateDrizzleJson(historicSchema);
   const normalized = JSON.parse(JSON.stringify(fresh));
   const saved = JSON.parse(JSON.stringify(snapshot));
@@ -46,11 +46,11 @@ test("historical 0007 SQL/snapshot agree with generated schema and unqualified s
   assert.doesNotMatch(sql, /push_subscriptions|push_deliveries|\bDROP\b|\bTRUNCATE\b|DELETE FROM/);
   assert.ok(JSON.parse(read("drizzle/meta/_journal.json")).entries.length >= 9, "0007 remains recorded in the journal");
 });
-test("build stays migration-free and episode notifications are in-site only", () => {
+test("build stays migration-free and optional Web Push remains separate", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.scripts.build, "next build");
   assert.equal(pkg.scripts["db:migrate"], "drizzle-kit migrate");
-  assert.equal(pkg.dependencies["web-push"], undefined);
+  assert.equal(pkg.dependencies["web-push"], "3.6.7");
   for (const path of ["src/app/api/push-subscription", "src/components/PushPreferences.tsx"]) assert.equal(existsSync(path), false);
 });
 
