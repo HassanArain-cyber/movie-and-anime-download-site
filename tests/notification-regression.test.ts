@@ -125,6 +125,7 @@ function updatesFixture(ready: boolean, lifecycle = false) {
   const worker = load("src/lib/notifications/worker.ts", {
     "server-only": {}, "@/db": { pool }, "./readiness": readiness,
     "./fanout": { drainFanout: async () => { fanoutCalls++; return 0; } },
+    "./push-worker": { drainPushQueue: async () => ({ sent: 0, attempted: 0 }) },
   }, { console, Date });
   return {
     sql, logs, setReady: (value: boolean) => { currentReady = value; },

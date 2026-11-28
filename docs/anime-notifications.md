@@ -1,5 +1,7 @@
 # Following, watch statuses and in-site episode updates
 
+This document records the earlier in-site-only feature. The optional PR #33 Web Push extension is specified separately in [web-push.md](web-push.md), and is not live until approved.
+
 ## Scope
 
 Movie, anime and series detail pages support anonymous Follow/Unfollow, a compact Following

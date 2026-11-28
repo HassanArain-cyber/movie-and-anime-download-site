@@ -853,7 +853,10 @@ await page.setViewportSize({ width: 1280, height: 900 });
 
 // Public comment surfaces render safely, reveal spoilers on demand, and remain
 // within desktop and narrow mobile viewports for title and episode discussions.
-await page.goto(`${base}/movie/${movie.slug}`);
+await page.goto(`${base}/movie/${movie.slug}`, { waitUntil: "networkidle" });
+// A streaming App Router transition may briefly contain both the old and new
+// React trees. Require exactly one settled comments panel before measuring it.
+await page.waitForFunction(() => document.querySelectorAll('section[aria-label="Title comments"]').length === 1);
 const titleCommentPanel = page.locator('[aria-label="Title comments"]');
 await titleCommentPanel.getByRole("heading", { name: /Comments/ }).waitFor();
 await titleCommentPanel.getByRole("button", { name: "Show Spoiler" }).waitFor();

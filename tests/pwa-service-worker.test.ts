@@ -16,6 +16,7 @@ function worker() {
   const stores = new Map<string, Map<string, MockResponse>>();
   const requests: { url: string; cache?: string }[] = [];
   let offline = false, installed = false, claimed = false;
+  const shown: Array<{ title: string; options: Record<string, unknown> }> = [];
   const key = (input: string | { url: string }) => typeof input === "string" ? input : input.url;
   const caches = {
     open: async (name: string) => {
@@ -33,7 +34,7 @@ function worker() {
     get cache() { return this.options.cache; }
   }
   vm.runInNewContext(readFileSync("public/sw.js", "utf8"), {
-    self: { location: { origin }, addEventListener: (type: string, callback: (event: Record<string, unknown>) => void) => { handlers[type] = callback; }, skipWaiting: async () => { installed = true; }, clients: { claim: async () => { claimed = true; } } },
+    self: { location: { origin }, registration: { showNotification: async (title: string, options: Record<string, unknown>) => { shown.push({ title, options }); } }, addEventListener: (type: string, callback: (event: Record<string, unknown>) => void) => { handlers[type] = callback; }, skipWaiting: async () => { installed = true; }, clients: { claim: async () => { claimed = true; } } },
     URL, caches, Request: MockRequest, Response: MockResponse,
     fetch: async (request: { url: string; cache?: string }) => { requests.push({ url: request.url, cache: request.cache }); if (offline) throw Error("offline"); return new MockResponse("network"); },
   });
@@ -47,12 +48,17 @@ function worker() {
     handlers.fetch({ request: { url: new URL(path, origin).href, method, mode }, respondWith: (promise: Promise<MockResponse>) => { response = promise; } });
     return response;
   };
-  return { handlers, stores, requests, lifecycle, fetch, goOffline: () => { offline = true; }, installed: () => installed, claimed: () => claimed };
+  const push = async (data: Record<string, unknown>) => {
+    let waiting: Promise<unknown> | undefined;
+    handlers.push({ data: { json: () => data }, waitUntil: (promise: Promise<unknown>) => { waiting = promise; } });
+    await waiting;
+  };
+  return { handlers, stores, requests, lifecycle, fetch, push, shown, goOffline: () => { offline = true; }, installed: () => installed, claimed: () => claimed };
 }
-test("PWA keeps offline precache and notification-click handling without background push", async () => {
+test("PWA keeps offline precache and notification-click handling with opt-in Web Push", async () => {
   const w = worker();
-  assert.deepEqual(Object.keys(w.handlers).sort(), ["activate", "fetch", "install", "notificationclick"]);
-  assert.equal("push" in w.handlers, false, "no unsupported background-push listener");
+  assert.deepEqual(Object.keys(w.handlers).sort(), ["activate", "fetch", "install", "notificationclick", "push"]);
+  assert.equal("push" in w.handlers, true, "background-push listener must exist");
   await w.lifecycle("install");
   assert.equal(w.installed(), true);
   for (const path of ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png"]) assert.ok(w.stores.get("vault-static-v1")?.has(path));
@@ -79,4 +85,15 @@ test("PWA navigation remains network-only/no-store and uses existing offline fal
   assert.equal((await w.fetch("/following", "navigate"))?.body, "/offline.html");
   w.stores.get("vault-static-v1")?.delete("/offline.html");
   assert.equal((await w.fetch("/notifications", "navigate"))?.status, 503);
+});
+
+test("Web Push displays a user-visible notification and restricts destination to an internal title", async () => {
+  const w = worker();
+  await w.push({ id: 42, title: "Anime", season: 2, episode: 3, url: "/anime/test#episode-3" });
+  assert.equal(w.shown.length, 1);
+  assert.equal(w.shown[0].title, "Vault · Anime");
+  assert.equal(w.shown[0].options.tag, "vault-episode-42");
+  assert.equal((w.shown[0].options.data as { url: string }).url, "/anime/test#episode-3");
+  await w.push({ id: 43, url: "https://example.com/phishing" });
+  assert.equal((w.shown[1].options.data as { url: string }).url, "/notifications");
 });

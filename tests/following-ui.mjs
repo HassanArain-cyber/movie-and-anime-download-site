@@ -16,6 +16,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   const json = (data) => { res.setHeader("Content-Type", "application/json"); res.setHeader("Cache-Control", "private, no-store"); res.end(JSON.stringify(data)); };
   try {
+    if (url.pathname === "/api/push") return json({ configured: false });
     if (url.pathname === "/api/updates") return json({ following, notifications: [notification], unread: notification.readAt ? 0 : 1, hasMore: false });
     if (url.pathname === "/api/next-airings") return json({ airings: [{ anilistId: 777, episode: 13, airingAt: new Date(Date.now() + 48 * 3600000).toISOString(), totalEpisodes: 24 }, { anilistId: 888, episode: 5, airingAt: new Date(Date.now() + 24 * 3600000).toISOString(), totalEpisodes: 12 }] });
     if (url.pathname === "/api/site-settings") return json({ wallpaperUrl: null });

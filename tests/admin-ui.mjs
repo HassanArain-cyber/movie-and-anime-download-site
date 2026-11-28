@@ -87,6 +87,7 @@ const server = createServer(async (req, res) => {
       // in the default report queue. DELETE still removes every fixture record.
       return json(comments ? url.searchParams.get("view") === "all" ? { comments: moderationItems.slice(0, 200) } : [] : requestItems.slice(0, 200));
     }
+    if (url.pathname === "/api/push") return json({ configured: false });
     if (url.pathname === "/api/updates") return json({ following: [], notifications: [], unread: 0 });
     if (url.pathname === "/api/admin/recycle-bin") {
       if (req.method === "GET") {

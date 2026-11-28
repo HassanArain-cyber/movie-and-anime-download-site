@@ -56,6 +56,28 @@ self.addEventListener("fetch", (event) => {
 });
 
 
+// Browser Push can wake this service worker while the PWA is closed.
+// Only display a small, user-visible message; never fetch private APIs here.
+self.addEventListener("push", (event) => {
+  event.waitUntil((async () => {
+    let item = {};
+    try { item = event.data ? event.data.json() : {}; }
+    catch { item = {}; }
+    const title = typeof item.title === "string" ? item.title.trim().slice(0, 100) : "";
+    const season = Number.isSafeInteger(item.season) && item.season > 0 ? item.season : null;
+    const episode = Number.isSafeInteger(item.episode) && item.episode > 0 ? item.episode : null;
+    const id = Number.isSafeInteger(item.id) && item.id > 0 ? item.id : null;
+    const route = typeof item.url === "string" && /^\/(?:anime|series)\/[a-z0-9_-]+(?:#episode-\d+)?$/i.test(item.url)
+      ? item.url : "/notifications";
+    await self.registration.showNotification(title ? "Vault · " + title : "Vault · New episode", {
+      body: season && episode ? "New episode available: Season " + season + ", Episode " + episode : "New episode available.",
+      tag: id ? "vault-episode-" + id : "vault-episode-update",
+      icon: "/icons/icon-192.png",
+      data: { url: route },
+    });
+  })());
+});
+
 // Foreground opt-in notifications use the existing PWA registration.
 // A real push subscription/server is required for alerts while the app is closed.
 self.addEventListener("notificationclick", (event) => {
