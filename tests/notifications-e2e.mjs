@@ -33,6 +33,8 @@ let browser;
 try {
   ok(await admin("/api/auth/login", "POST", { password: process.env.E2E_ADMIN_PASSWORD || "test-admin-password" }));
   const first = await a("/api/updates"); ok(first);
+  assert.equal((await a("/api/push")).data.configured, false, "push remains disabled without VAPID keys");
+  assert.equal((await a("/api/push", "POST", { endpoint: "https://fcm.googleapis.com/a" })).res.status, 503, "unconfigured push must fail closed");
   assert.match(first.res.headers.get("set-cookie"), /HttpOnly/i); assert.match(first.res.headers.get("set-cookie"), /SameSite=lax/i);
   assert.match(first.res.headers.get("cache-control"), /no-store/);
   ok(await b("/api/updates"));
@@ -47,6 +49,15 @@ try {
   assert.equal((await a("/api/updates")).data.following.filter((m) => m.id === media.id).length, 1, "concurrent follows deduplicate");
   assert.equal((await b("/api/updates")).data.following.length, 0, "browser identities stay private");
   assert.equal((await a("/api/follows", "POST", { mediaId: media.id }, { Origin: "https://evil.example", "sec-fetch-site": "cross-site" })).res.status, 403);
+  // Synthetic device record: delivery is queued locally but never sent to a real
+  // push provider in this E2E run (VAPID is intentionally unconfigured).
+  const subscriberId = (await pool.query("SELECT subscriber_id FROM anime_follows WHERE media_id=$1", [media.id])).rows[0].subscriber_id;
+  const pushRecord = (await pool.query(
+    "INSERT INTO push_subscriptions (subscriber_id,endpoint_hash,endpoint,p256dh,auth) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+    [subscriberId, randomBytes(32).toString("hex"), "https://fcm.googleapis.com/fcm/send/disposable-e2e-" + run,
+     Buffer.concat([Buffer.from([4]), randomBytes(64)]).toString("base64url"), randomBytes(16).toString("base64url")],
+  )).rows[0].id;
+  assert.equal((await pool.query("SELECT count(*)::integer AS count FROM push_deliveries")).rows[0].count, 0);
   const originalFollow = (await pool.query("SELECT created_at FROM anime_follows WHERE media_id=$1", [media.id])).rows[0].created_at;
   for (const status of ["plan_to_watch", "watching", "continue", "on_hold", "watched"]) {
     ok(await a("/api/follows", "PATCH", { mediaId: media.id, watchStatus: status }));
@@ -61,10 +72,12 @@ try {
   assert.equal(inbox.unread, 1); assert.equal(inbox.notifications[0].title, media.title); assert.equal(inbox.notifications[0].episodeTitle, ep.title);
   assert.equal(inbox.following.find((m) => m.id === media.id).hasNew, true);
   const notification = inbox.notifications[0];
+  assert.equal((await pool.query("SELECT count(*)::integer AS count FROM push_deliveries WHERE notification_id=$1 AND subscription_id=$2", [notification.id, pushRecord])).rows[0].count, 1, "first publication creates exactly one durable device delivery");
   assert.equal((await b("/api/updates")).data.notifications.length, 0);
   assert.equal((await b("/api/notifications", "PATCH", { id: notification.id })).res.status, 404);
   await Promise.all([job(), job(), job()]);
   assert.equal((await a("/api/updates")).data.notifications.length, 1);
+  assert.equal((await pool.query("SELECT count(*)::integer AS count FROM push_deliveries WHERE notification_id=$1", [notification.id])).rows[0].count, 1, "worker retry does not duplicate push queue");
   const secondaryLink = await link(ep, "1080p");
   ok(await admin(`/api/download-links/${primaryLink.id}`, "PATCH", { url: `https://example.com/edited-${run}` }));
   await job();
@@ -78,6 +91,8 @@ try {
   let updates = ok(await a("/api/updates")); assert.equal(updates.notifications.length, 2);
   const ep3 = await episode(3); await link(ep3); await job();
   updates = ok(await a("/api/updates")); assert.equal(updates.notifications.length, 3);
+  await pool.query("DELETE FROM push_subscriptions WHERE id=$1", [pushRecord]);
+  assert.equal((await pool.query("SELECT count(*)::integer AS count FROM push_deliveries WHERE subscription_id=$1", [pushRecord])).rows[0].count, 0, "unsubscription cascades queued push work");
   ok(await a("/api/follows", "DELETE", { mediaId: media.id })); const ep4 = await episode(4); await link(ep4); await job();
   assert.equal((await a("/api/updates")).data.notifications.length, 3, "unfollow blocks future alerts");
   ok(await a("/api/notifications", "PATCH", { all: true })); assert.equal((await a("/api/updates")).data.unread, 0);
